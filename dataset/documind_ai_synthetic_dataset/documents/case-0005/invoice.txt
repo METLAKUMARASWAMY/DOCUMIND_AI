@@ -1,0 +1,8 @@
+Invoice INV-9031
+Vendor: LedgerPoint Data Labs
+Bill To: FinTrust Capital
+Purchase Order Reference: PO-9031
+Amount Due: USD 155,000.00
+Payment Terms: Net 30
+Due Date: 2026-02-15
+Note: This invoice number was previously submitted for review in the vendor portal.

@@ -1,0 +1,5 @@
+From: payments@paygridinfrastructure.example
+To: accounts.payable@summitpaymentscorp.example
+Subject: Payment instructions for INV-5502
+Please process payment for invoice INV-5502 against purchase order PO-5502.
+Please use the bank account already registered in the vendor master record.

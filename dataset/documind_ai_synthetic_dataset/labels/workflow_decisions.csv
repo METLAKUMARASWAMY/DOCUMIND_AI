@@ -1,0 +1,13 @@
+case_id,assigned_team,recommended_action,reason,approval_blocked
+case-df5ea07cd6,Risk Operations,hold_payment,High risk/compliance/fraud findings require review.,true
+case-0002,Risk Operations,escalate_to_finance,High risk/compliance/fraud findings require review.,true
+case-0003,Risk Operations,request_changes,High risk/compliance/fraud findings require review.,true
+case-0004,Finance Approval,approve,No blocking findings detected.,false
+case-0005,Risk Operations,hold_payment,High risk/compliance/fraud findings require review.,true
+case-0006,Risk Operations,request_changes,High risk/compliance/fraud findings require review.,true
+case-0007,Risk Operations,escalate_to_finance,High risk/compliance/fraud findings require review.,true
+case-0008,Finance Approval,approve,No blocking findings detected.,false
+case-0009,Risk Operations,request_changes,High risk/compliance/fraud findings require review.,true
+case-0010,Risk Operations,request_changes,High risk/compliance/fraud findings require review.,true
+case-0011,Finance Approval,approve,No blocking findings detected.,false
+case-0012,Finance Approval,approve,No blocking findings detected.,false

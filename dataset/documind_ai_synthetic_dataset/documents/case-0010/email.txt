@@ -1,0 +1,6 @@
+From: payments@careopsanalytics.example
+To: accounts.payable@northstarclinics.example
+Subject: Payment instructions for INV-3917
+Please process payment for invoice INV-3917 against purchase order PO-3917.
+Please use the bank account already registered in the vendor master record.
+This is urgent. Please wire funds today to avoid service interruption.

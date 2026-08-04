@@ -1,0 +1,7 @@
+Purchase Order PO-9031
+Buyer: FinTrust Capital
+Vendor: LedgerPoint Data Labs
+Related Contract: MSA-9031
+Approved Amount: USD 155,000.00
+Payment Terms: Net 30
+Approval Status: Approved by Procurement.

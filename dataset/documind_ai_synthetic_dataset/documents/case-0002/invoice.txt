@@ -1,0 +1,7 @@
+Invoice INV-1182
+Vendor: NorthBridge Supplies LLC
+Bill To: NovaShield Insurance
+Purchase Order Reference: PO-1182
+Amount Due: USD 19,750.00
+Payment Terms: Net 45
+Due Date: 2026-02-15

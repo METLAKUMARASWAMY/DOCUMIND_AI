@@ -1,0 +1,5 @@
+From: payments@claimassisttechnologies.example
+To: accounts.payable@anchorlifeinsurance.example
+Subject: Payment instructions for INV-8840
+Please process payment for invoice INV-8840 against purchase order PO-8840.
+Please use the bank account already registered in the vendor master record.

@@ -1,0 +1,13 @@
+Finance Services Agreement
+Customer: Northwind Bank Finance Operations
+Vendor: ABC Suppliers Pvt Ltd
+Start Date: April 1, 2026
+End Date: March 31, 2027
+Payment Terms: Net 30 after receipt of valid invoice and matching purchase order.
+Renewal Clause: Automatic renewal for one year unless either party gives 60 days written notice.
+Termination Clause: Either party may terminate for material breach after 30 days cure period.
+Penalty Clause: Late service credits apply, but no explicit liability cap is stated.
+Obligations: Vendor shall provide GPU support renewal and monthly service reports.
+Confidentiality: Both parties must protect confidential financial and technical information.
+Audit Rights: Customer may audit vendor controls once per year.
+This contract does not include indemnity language.

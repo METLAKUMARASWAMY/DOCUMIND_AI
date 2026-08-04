@@ -1,0 +1,7 @@
+Purchase Order PO-3108
+Buyer: UnionTrust Bank
+Vendor: SecureLedger AI
+Related Contract: MSA-3108
+Approved Amount: USD 25,000.00
+Payment Terms: Net 30
+Approval Status: Approved by Procurement.

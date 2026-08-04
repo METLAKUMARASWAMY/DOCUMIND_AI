@@ -1,0 +1,7 @@
+Invoice INV-5421
+Vendor: LexData Review Services
+Bill To: Harbor Legal Group
+Purchase Order Reference: PO-5421
+Amount Due: USD 38,400.00
+Payment Terms: Net 15
+Due Date: 2026-02-15

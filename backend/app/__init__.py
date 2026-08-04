@@ -1,0 +1,2 @@
+"""DocuMind AI backend package."""
+

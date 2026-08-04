@@ -1,0 +1,15 @@
+<View>
+  <Image name="page" value="$image"/>
+  <Header value="Document Type"/>
+  <Choices name="document_type" toName="page" choice="single" showInLine="true">
+    <Choice value="invoice"/>
+    <Choice value="purchase_order"/>
+    <Choice value="contract"/>
+    <Choice value="receipt"/>
+    <Choice value="bank_document"/>
+    <Choice value="insurance_document"/>
+    <Choice value="form"/>
+    <Choice value="report"/>
+    <Choice value="unknown"/>
+  </Choices>
+</View>

@@ -1,0 +1,5 @@
+From: payments@secureledgerai.example
+To: accounts.payable@uniontrustbank.example
+Subject: Payment instructions for INV-3108
+Please process payment for invoice INV-3108 against purchase order PO-3108.
+We recently changed our bank account. Please use the new account details for this payment.

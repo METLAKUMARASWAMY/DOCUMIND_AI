@@ -1,0 +1,17 @@
+{
+  "case_id": "bank-change-risk-demo",
+  "document_type": "bank_change_request",
+  "fields": {
+    "vendor_name": "ABC Suppliers Pvt Ltd",
+    "old_bank_account": "****9012",
+    "new_bank_account": "****1098",
+    "bank_name": "HDFC Bank",
+    "account_number_masked": "****1098",
+    "IFSC_or_SWIFT": "HDFC0002045",
+    "request_date": "May 15, 2026",
+    "requester_email_or_contact": "collections@abcsuppliers-payments.co",
+    "mismatch_indicators": ["old_new_account_changed", "urgent_change_request"],
+    "fraud_risk_level": "high",
+    "recommended_human_action": "Escalate to finance reviewer and verify bank change out of band before payment."
+  }
+}

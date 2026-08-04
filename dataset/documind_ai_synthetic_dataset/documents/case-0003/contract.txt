@@ -1,0 +1,12 @@
+Master Services Agreement MSA-2260
+Customer: Medora Health Network
+Vendor: MedSecure Systems
+Effective Date: 2026-01-15
+Payment Terms: Net 30
+Governing Law: Texas
+Services: vendor will provide document processing, analytics, and enterprise support.
+Termination: either party may terminate for uncured material breach after thirty days written notice.
+Confidentiality: both parties shall protect confidential information using reasonable safeguards.
+Indemnity: vendor shall indemnify customer against third-party claims arising from vendor negligence.
+Data Handling: vendor will follow general privacy practices for operational data.
+Manual overrides require written approval from customer finance and compliance teams.

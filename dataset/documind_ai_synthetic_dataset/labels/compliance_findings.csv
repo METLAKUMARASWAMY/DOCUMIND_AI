@@ -1,0 +1,8 @@
+finding_id,case_id,severity,framework,finding,recommendation,approval_blocking,evidence_id
+cmp-case-df5ea07cd6-missing_indemnity,case-df5ea07cd6,high,SOC2/Contract Policy,Missing indemnity requirement,Add or verify indemnity clause before approval.,true,ev-case-df5ea07cd6-contract-001
+cmp-case-0003-missing_audit_rights,case-0003,medium,SOC2,Missing audit rights,Add annual audit-rights language.,false,ev-case-0003-contract-001
+cmp-case-0003-missing_hipaa_baa,case-0003,critical,HIPAA,Missing HIPAA BAA,Attach Business Associate Addendum before approval.,true,ev-case-0003-contract-001
+cmp-case-0006-missing_confidentiality,case-0006,critical,ISO27001/Contract Policy,Missing confidentiality clause,Add confidentiality clause before sharing confidential data.,true,ev-case-0006-contract-001
+cmp-case-0009-missing_indemnity,case-0009,high,SOC2/Contract Policy,Missing indemnity requirement,Add or verify indemnity clause before approval.,true,ev-case-0009-contract-001
+cmp-case-0009-missing_confidentiality,case-0009,critical,ISO27001/Contract Policy,Missing confidentiality clause,Add confidentiality clause before sharing confidential data.,true,ev-case-0009-contract-001
+cmp-case-0010-missing_hipaa_baa,case-0010,critical,HIPAA,Missing HIPAA BAA,Attach Business Associate Addendum before approval.,true,ev-case-0010-contract-001

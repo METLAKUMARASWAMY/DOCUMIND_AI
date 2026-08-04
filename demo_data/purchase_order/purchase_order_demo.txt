@@ -1,0 +1,12 @@
+Purchase Order
+Buyer: Northwind Bank Finance Operations
+Supplier: ABC Suppliers Pvt Ltd
+PO Number: PO-1045
+PO Date: May 1, 2026
+Delivery Date: May 30, 2026
+Item: GPU support renewal | Quantity: 5 | Unit Price: INR 49,000 | Amount: INR 2,45,000
+Total Value: INR 2,45,000
+Currency: INR
+Payment Terms: Net 30 after accepted invoice
+Approval Status: Approved by Finance Controller
+Ship To: Northwind Bank Data Center

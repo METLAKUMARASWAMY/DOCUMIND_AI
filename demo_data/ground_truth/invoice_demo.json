@@ -1,0 +1,21 @@
+{
+  "case_id": "invoice-demo",
+  "document_type": "invoice",
+  "fields": {
+    "vendor_name": "ABC Suppliers Pvt Ltd",
+    "invoice_number": "INV-2045",
+    "invoice_date": "May 12, 2026",
+    "due_date": "June 11, 2026",
+    "po_number": "PO-1045",
+    "subtotal": "INR 2,25,000",
+    "tax_amount": "INR 20,000",
+    "total_amount": "INR 2,45,000",
+    "currency": "INR",
+    "payment_terms": "Net 30 after invoice approval",
+    "bank_account_details": {
+      "bank_name": "Axis Bank",
+      "account_number_masked": "****9012",
+      "IFSC_or_SWIFT": "UTIB0001045"
+    }
+  }
+}

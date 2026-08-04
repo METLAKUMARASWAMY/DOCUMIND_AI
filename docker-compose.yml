@@ -1,0 +1,145 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env.example
+    environment:
+      DOCUMIND_DATASET_PATH: /data/documind_ai_synthetic_dataset
+      ENABLE_CHROMA: "false"
+      ENABLE_NEO4J: "false"
+      ENABLE_MONGODB: "false"
+      ENABLE_REDIS: "true"
+      ENABLE_MINIO: "false"
+      ENABLE_QDRANT: "false"
+      MONGODB_URI: mongodb://mongodb:27017/documind
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: minio:9000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./dataset/documind_ai_synthetic_dataset:/data/documind_ai_synthetic_dataset:ro
+      - ./var:/app/var
+    depends_on:
+      - postgres
+      - chroma
+      - neo4j
+      - mongodb
+      - redis
+      - qdrant
+      - minio
+
+  worker:
+    build:
+      context: ./backend
+    command:
+      - celery
+      - -A
+      - app.workers.vision_tasks:celery_app
+      - worker
+      - --loglevel=INFO
+      - -Q
+      - vision-processing
+      - --pool=solo
+    env_file:
+      - ./backend/.env.example
+    environment:
+      DOCUMIND_DATASET_PATH: /data/documind_ai_synthetic_dataset
+      ENABLE_CHROMA: "false"
+      ENABLE_NEO4J: "false"
+      ENABLE_MONGODB: "false"
+      ENABLE_REDIS: "true"
+      ENABLE_MINIO: "false"
+      ENABLE_QDRANT: "false"
+      MONGODB_URI: mongodb://mongodb:27017/documind
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: minio:9000
+    volumes:
+      - ./dataset/documind_ai_synthetic_dataset:/data/documind_ai_synthetic_dataset:ro
+      - ./var:/app/var
+    depends_on:
+      - redis
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./frontend/Dockerfile
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-documind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-documind_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-documind}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres-init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+
+  chroma:
+    image: chromadb/chroma:0.5.5
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+
+  neo4j:
+    image: neo4j:5.22-community
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/documind_dev_password}
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.11.0
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  minio:
+    image: minio/minio:RELEASE.2024-07-16T23-46-41Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-documind}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-documind_dev_password}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+volumes:
+  postgres_data:
+  chroma_data:
+  neo4j_data:
+  mongodb_data:
+  redis_data:
+  qdrant_data:
+  minio_data:

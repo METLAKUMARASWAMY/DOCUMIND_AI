@@ -1,0 +1,5 @@
+From: payments@civiccloudsolutions.example
+To: accounts.payable@metropublicworks.example
+Subject: Payment instructions for INV-6724
+Please process payment for invoice INV-6724 against purchase order PO-6724.
+Please use the bank account already registered in the vendor master record.

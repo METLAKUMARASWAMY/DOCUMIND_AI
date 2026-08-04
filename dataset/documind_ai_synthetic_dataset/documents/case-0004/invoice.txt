@@ -1,0 +1,7 @@
+Invoice INV-7710
+Vendor: PrimeParts Global
+Bill To: VoltEdge Manufacturing
+Purchase Order Reference: PO-7710
+Amount Due: USD 91,200.00
+Payment Terms: Net 60
+Due Date: 2026-02-15

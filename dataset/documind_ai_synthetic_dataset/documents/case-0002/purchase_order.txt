@@ -1,0 +1,7 @@
+Purchase Order PO-1182
+Buyer: NovaShield Insurance
+Vendor: NorthBridge Supplies LLC
+Related Contract: MSA-1182
+Approved Amount: USD 18,750.00
+Payment Terms: Net 45
+Approval Status: Approved by Procurement.

@@ -1,0 +1,46 @@
+<View>
+  <Image name="page" value="$image"/>
+  <Header value="Layout Regions"/>
+  <RectangleLabels name="layout" toName="page">
+    <Label value="document_title" background="#2f6df6"/>
+    <Label value="paragraph_title" background="#0f9f6e"/>
+    <Label value="paragraph" background="#64748b"/>
+    <Label value="header" background="#0891b2"/>
+    <Label value="footer" background="#0369a1"/>
+    <Label value="page_number" background="#475569"/>
+    <Label value="table" background="#c47a12"/>
+    <Label value="image" background="#7c3aed"/>
+    <Label value="chart" background="#9333ea"/>
+    <Label value="formula" background="#6d28d9"/>
+    <Label value="list" background="#0d9488"/>
+    <Label value="caption" background="#14b8a6"/>
+    <Label value="footnote" background="#64748b"/>
+    <Label value="form_region" background="#16a34a"/>
+    <Label value="signature_area" background="#dc2626"/>
+    <Label value="stamp_area" background="#be123c"/>
+  </RectangleLabels>
+  <Header value="Visual Objects"/>
+  <RectangleLabels name="objects" toName="page">
+    <Label value="signature" background="#dc2626"/>
+    <Label value="stamp" background="#be123c"/>
+    <Label value="company_logo" background="#2563eb"/>
+    <Label value="checkbox_checked" background="#16a34a"/>
+    <Label value="checkbox_unchecked" background="#65a30d"/>
+    <Label value="handwritten_note" background="#c47a12"/>
+    <Label value="approval_mark" background="#0f766e"/>
+    <Label value="seal" background="#9f1239"/>
+    <Label value="QR_code" background="#475569"/>
+    <Label value="barcode" background="#334155"/>
+    <Label value="altered_region_candidate" background="#991b1b"/>
+  </RectangleLabels>
+  <Header value="Tamper Masks"/>
+  <BrushLabels name="tamper" toName="page">
+    <Label value="amount_replacement" background="#dc2626"/>
+    <Label value="date_replacement" background="#f97316"/>
+    <Label value="account_number_replacement" background="#be123c"/>
+    <Label value="copied_signature" background="#9f1239"/>
+    <Label value="pasted_stamp" background="#a21caf"/>
+    <Label value="inconsistent_font_region" background="#7c3aed"/>
+    <Label value="altered_background_region" background="#475569"/>
+  </BrushLabels>
+</View>

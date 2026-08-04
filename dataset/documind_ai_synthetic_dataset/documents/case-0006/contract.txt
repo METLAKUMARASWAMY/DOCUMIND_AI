@@ -1,0 +1,11 @@
+Master Services Agreement MSA-5421
+Customer: Harbor Legal Group
+Vendor: LexData Review Services
+Effective Date: 2026-01-15
+Payment Terms: Net 15
+Governing Law: New York
+Services: vendor will provide document processing, analytics, and enterprise support.
+Termination: either party may terminate for uncured material breach after thirty days written notice.
+Indemnity: vendor shall indemnify customer against third-party claims arising from vendor negligence.
+Audit Rights: customer may audit vendor controls with reasonable notice once per year.
+Manual overrides require written approval from customer finance and compliance teams.

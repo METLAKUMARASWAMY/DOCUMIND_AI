@@ -1,0 +1,5 @@
+From: payments@lexdatareviewservices.example
+To: accounts.payable@harborlegalgroup.example
+Subject: Payment instructions for INV-5421
+Please process payment for invoice INV-5421 against purchase order PO-5421.
+Please use the bank account already registered in the vendor master record.

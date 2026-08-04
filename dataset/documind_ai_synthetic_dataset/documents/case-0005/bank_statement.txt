@@ -1,0 +1,4 @@
+Bank Activity Review for FinTrust Capital
+Vendor: LedgerPoint Data Labs
+Invoice: INV-9031
+No matching outgoing payment recorded.

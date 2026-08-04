@@ -1,0 +1,13 @@
+case_id,industry,company,vendor,documents_count,compliance_score,risk_score,fraud_probability,recommended_workflow_action,approval_blocked
+case-df5ea07cd6,Banking,Titan Commercial Bank,Aster Analytics Inc,6,82,51,0.75,hold_payment,true
+case-0002,Insurance,NovaShield Insurance,NorthBridge Supplies LLC,6,100,23,0.3,escalate_to_finance,true
+case-0003,Healthcare,Medora Health Network,MedSecure Systems,6,66,27,0.05,request_changes,true
+case-0004,Manufacturing,VoltEdge Manufacturing,PrimeParts Global,6,100,12,0.05,approve,false
+case-0005,Finance,FinTrust Capital,LedgerPoint Data Labs,6,100,41,0.7,hold_payment,true
+case-0006,Legal,Harbor Legal Group,LexData Review Services,6,80,21,0.05,request_changes,true
+case-0007,Government,Metro Public Works,CivicCloud Solutions,6,100,33,0.52,escalate_to_finance,true
+case-0008,Banking,UnionTrust Bank,SecureLedger AI,6,100,25,0.35,approve,false
+case-0009,Insurance,AnchorLife Insurance,ClaimAssist Technologies,6,62,29,0.05,request_changes,true
+case-0010,Healthcare,NorthStar Clinics,CareOps Analytics,6,78,41,0.48,request_changes,true
+case-0011,Manufacturing,Apex Robotics Ltd,MachineIQ Services,6,100,23,0.3,approve,false
+case-0012,Finance,Summit Payments Corp,PayGrid Infrastructure,6,100,12,0.05,approve,false

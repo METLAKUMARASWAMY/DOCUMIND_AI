@@ -1,0 +1,7 @@
+Government Payment and Compliance Policy
+All invoices must reference an approved purchase order.
+Invoice amount must match the approved purchase order amount unless finance approves an exception.
+New vendor bank account requests must be verified through an independent channel before payment.
+Contracts must include confidentiality, indemnity, termination, governing law, and audit rights clauses.
+Healthcare vendors handling PHI require a HIPAA Business Associate Addendum.
+High-risk compliance findings or fraud signals must block automatic approval.

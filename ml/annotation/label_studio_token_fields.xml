@@ -1,0 +1,30 @@
+<View>
+  <Image name="page" value="$image"/>
+  <Labels name="field" toName="page">
+    <Label value="vendor_name" background="#2f6df6"/>
+    <Label value="vendor_address" background="#64748b"/>
+    <Label value="vendor_tax_id" background="#0f9f6e"/>
+    <Label value="invoice_number" background="#c47a12"/>
+    <Label value="invoice_date" background="#b45309"/>
+    <Label value="due_date" background="#d97706"/>
+    <Label value="purchase_order_number" background="#7c3aed"/>
+    <Label value="contract_number" background="#6d28d9"/>
+    <Label value="bank_name" background="#0891b2"/>
+    <Label value="bank_account_number" background="#be123c"/>
+    <Label value="IFSC_or_bank_code" background="#e11d48"/>
+    <Label value="subtotal" background="#16a34a"/>
+    <Label value="tax" background="#15803d"/>
+    <Label value="discount" background="#65a30d"/>
+    <Label value="total_amount" background="#dc2626"/>
+    <Label value="currency" background="#475569"/>
+    <Label value="payment_terms" background="#0d9488"/>
+    <Label value="party_name" background="#2563eb"/>
+    <Label value="effective_date" background="#9333ea"/>
+    <Label value="expiry_date" background="#a21caf"/>
+    <Label value="governing_law" background="#0f766e"/>
+    <Label value="termination_clause" background="#9f1239"/>
+    <Label value="liability_clause" background="#991b1b"/>
+    <Label value="signature_name" background="#1d4ed8"/>
+    <Label value="approval_date" background="#0369a1"/>
+  </Labels>
+</View>

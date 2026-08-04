@@ -1,0 +1,8 @@
+Invoice INV-4409
+Vendor: Aster Analytics Inc
+Bill To: Titan Commercial Bank
+Purchase Order Reference: PO-4409
+Amount Due: USD 42,500.00
+Payment Terms: Net 30
+Due Date: 2026-02-15
+Manual override applied without prior approval from finance operations.

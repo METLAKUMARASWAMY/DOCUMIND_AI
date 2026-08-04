@@ -1,0 +1,37 @@
+case_id,check_name,left_document_id,right_document_id,left_value,right_value,result
+case-df5ea07cd6,invoice_amount_matches_po_amount,doc-case-df5ea07cd6-invoice,doc-case-df5ea07cd6-purchase_order,"USD 42,500.00","USD 42,500.00",pass
+case-df5ea07cd6,invoice_vendor_matches_contract_vendor,doc-case-df5ea07cd6-invoice,doc-case-df5ea07cd6-contract,Aster Analytics Inc,Aster Analytics Inc,pass
+case-df5ea07cd6,invoice_po_reference_matches_purchase_order,doc-case-df5ea07cd6-invoice,doc-case-df5ea07cd6-purchase_order,PO-4409,PO-4409,pass
+case-0002,invoice_amount_matches_po_amount,doc-case-0002-invoice,doc-case-0002-purchase_order,"USD 19,750.00","USD 18,750.00",fail
+case-0002,invoice_vendor_matches_contract_vendor,doc-case-0002-invoice,doc-case-0002-contract,NorthBridge Supplies LLC,NorthBridge Supplies LLC,pass
+case-0002,invoice_po_reference_matches_purchase_order,doc-case-0002-invoice,doc-case-0002-purchase_order,PO-1182,PO-1182,pass
+case-0003,invoice_amount_matches_po_amount,doc-case-0003-invoice,doc-case-0003-purchase_order,"USD 64,000.00","USD 64,000.00",pass
+case-0003,invoice_vendor_matches_contract_vendor,doc-case-0003-invoice,doc-case-0003-contract,MedSecure Systems,MedSecure Systems,pass
+case-0003,invoice_po_reference_matches_purchase_order,doc-case-0003-invoice,doc-case-0003-purchase_order,PO-2260,PO-2260,pass
+case-0004,invoice_amount_matches_po_amount,doc-case-0004-invoice,doc-case-0004-purchase_order,"USD 91,200.00","USD 91,200.00",pass
+case-0004,invoice_vendor_matches_contract_vendor,doc-case-0004-invoice,doc-case-0004-contract,PrimeParts Global,PrimeParts Global,pass
+case-0004,invoice_po_reference_matches_purchase_order,doc-case-0004-invoice,doc-case-0004-purchase_order,PO-7710,PO-7710,pass
+case-0005,invoice_amount_matches_po_amount,doc-case-0005-invoice,doc-case-0005-purchase_order,"USD 155,000.00","USD 155,000.00",pass
+case-0005,invoice_vendor_matches_contract_vendor,doc-case-0005-invoice,doc-case-0005-contract,LedgerPoint Data Labs,LedgerPoint Data Labs,pass
+case-0005,invoice_po_reference_matches_purchase_order,doc-case-0005-invoice,doc-case-0005-purchase_order,PO-9031,PO-9031,pass
+case-0006,invoice_amount_matches_po_amount,doc-case-0006-invoice,doc-case-0006-purchase_order,"USD 38,400.00","USD 38,400.00",pass
+case-0006,invoice_vendor_matches_contract_vendor,doc-case-0006-invoice,doc-case-0006-contract,LexData Review Services,LexData Review Services,pass
+case-0006,invoice_po_reference_matches_purchase_order,doc-case-0006-invoice,doc-case-0006-purchase_order,PO-5421,PO-5421,pass
+case-0007,invoice_amount_matches_po_amount,doc-case-0007-invoice,doc-case-0007-purchase_order,"USD 74,900.00","USD 73,500.00",fail
+case-0007,invoice_vendor_matches_contract_vendor,doc-case-0007-invoice,doc-case-0007-contract,CivicCloud Solutions,CivicCloud Solutions,pass
+case-0007,invoice_po_reference_matches_purchase_order,doc-case-0007-invoice,doc-case-0007-purchase_order,PO-6724,PO-6724,pass
+case-0008,invoice_amount_matches_po_amount,doc-case-0008-invoice,doc-case-0008-purchase_order,"USD 25,000.00","USD 25,000.00",pass
+case-0008,invoice_vendor_matches_contract_vendor,doc-case-0008-invoice,doc-case-0008-contract,SecureLedger AI,SecureLedger AI,pass
+case-0008,invoice_po_reference_matches_purchase_order,doc-case-0008-invoice,doc-case-0008-purchase_order,PO-3108,PO-3108,pass
+case-0009,invoice_amount_matches_po_amount,doc-case-0009-invoice,doc-case-0009-purchase_order,"USD 48,800.00","USD 48,800.00",pass
+case-0009,invoice_vendor_matches_contract_vendor,doc-case-0009-invoice,doc-case-0009-contract,ClaimAssist Technologies,ClaimAssist Technologies,pass
+case-0009,invoice_po_reference_matches_purchase_order,doc-case-0009-invoice,doc-case-0009-purchase_order,PO-8840,PO-8840,pass
+case-0010,invoice_amount_matches_po_amount,doc-case-0010-invoice,doc-case-0010-purchase_order,"USD 82,000.00","USD 80,500.00",fail
+case-0010,invoice_vendor_matches_contract_vendor,doc-case-0010-invoice,doc-case-0010-contract,CareOps Analytics,CareOps Analytics,pass
+case-0010,invoice_po_reference_matches_purchase_order,doc-case-0010-invoice,doc-case-0010-purchase_order,PO-3917,PO-3917,pass
+case-0011,invoice_amount_matches_po_amount,doc-case-0011-invoice,doc-case-0011-purchase_order,"USD 120,000.00","USD 120,000.00",pass
+case-0011,invoice_vendor_matches_contract_vendor,doc-case-0011-invoice,doc-case-0011-contract,MachineIQ Services,MachineIQ Services,pass
+case-0011,invoice_po_reference_matches_purchase_order,doc-case-0011-invoice,doc-case-0011-purchase_order,PO-7199,PO-7199,pass
+case-0012,invoice_amount_matches_po_amount,doc-case-0012-invoice,doc-case-0012-purchase_order,"USD 53,000.00","USD 53,000.00",pass
+case-0012,invoice_vendor_matches_contract_vendor,doc-case-0012-invoice,doc-case-0012-contract,PayGrid Infrastructure,PayGrid Infrastructure,pass
+case-0012,invoice_po_reference_matches_purchase_order,doc-case-0012-invoice,doc-case-0012-purchase_order,PO-5502,PO-5502,pass

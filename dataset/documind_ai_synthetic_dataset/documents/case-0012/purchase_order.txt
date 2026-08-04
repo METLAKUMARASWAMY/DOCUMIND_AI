@@ -1,0 +1,7 @@
+Purchase Order PO-5502
+Buyer: Summit Payments Corp
+Vendor: PayGrid Infrastructure
+Related Contract: MSA-5502
+Approved Amount: USD 53,000.00
+Payment Terms: Net 30
+Approval Status: Approved by Procurement.

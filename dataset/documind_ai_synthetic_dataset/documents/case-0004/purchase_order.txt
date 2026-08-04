@@ -1,0 +1,7 @@
+Purchase Order PO-7710
+Buyer: VoltEdge Manufacturing
+Vendor: PrimeParts Global
+Related Contract: MSA-7710
+Approved Amount: USD 91,200.00
+Payment Terms: Net 60
+Approval Status: Approved by Procurement.

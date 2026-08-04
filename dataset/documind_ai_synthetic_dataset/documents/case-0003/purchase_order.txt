@@ -1,0 +1,7 @@
+Purchase Order PO-2260
+Buyer: Medora Health Network
+Vendor: MedSecure Systems
+Related Contract: MSA-2260
+Approved Amount: USD 64,000.00
+Payment Terms: Net 30
+Approval Status: Approved by Procurement.

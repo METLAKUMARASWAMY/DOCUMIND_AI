@@ -1,0 +1,4 @@
+Bank Activity Review for Summit Payments Corp
+Vendor: PayGrid Infrastructure
+Invoice: INV-5502
+Scheduled payment created for USD 53,000.00 to PayGrid Infrastructure.

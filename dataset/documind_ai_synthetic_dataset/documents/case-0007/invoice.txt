@@ -1,0 +1,8 @@
+Invoice INV-6724
+Vendor: CivicCloud Solutions
+Bill To: Metro Public Works
+Purchase Order Reference: PO-6724
+Amount Due: USD 74,900.00
+Payment Terms: Net 30
+Due Date: 2026-02-15
+Manual override applied without prior approval from finance operations.

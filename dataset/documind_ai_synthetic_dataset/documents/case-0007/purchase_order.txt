@@ -1,0 +1,7 @@
+Purchase Order PO-6724
+Buyer: Metro Public Works
+Vendor: CivicCloud Solutions
+Related Contract: MSA-6724
+Approved Amount: USD 73,500.00
+Payment Terms: Net 30
+Approval Status: Approved by Procurement.

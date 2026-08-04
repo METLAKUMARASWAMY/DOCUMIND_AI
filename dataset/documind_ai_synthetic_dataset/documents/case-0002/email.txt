@@ -1,0 +1,5 @@
+From: payments@northbridgesuppliesllc.example
+To: accounts.payable@novashieldinsurance.example
+Subject: Payment instructions for INV-1182
+Please process payment for invoice INV-1182 against purchase order PO-1182.
+Please use the bank account already registered in the vendor master record.

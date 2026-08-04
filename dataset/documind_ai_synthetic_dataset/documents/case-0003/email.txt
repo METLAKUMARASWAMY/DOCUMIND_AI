@@ -1,0 +1,5 @@
+From: payments@medsecuresystems.example
+To: accounts.payable@medorahealthnetwork.example
+Subject: Payment instructions for INV-2260
+Please process payment for invoice INV-2260 against purchase order PO-2260.
+Please use the bank account already registered in the vendor master record.

@@ -1,0 +1,7 @@
+Invoice INV-5502
+Vendor: PayGrid Infrastructure
+Bill To: Summit Payments Corp
+Purchase Order Reference: PO-5502
+Amount Due: USD 53,000.00
+Payment Terms: Net 30
+Due Date: 2026-02-15

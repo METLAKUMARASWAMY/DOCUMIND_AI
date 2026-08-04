@@ -1,0 +1,5 @@
+From: payments@ledgerpointdatalabs.example
+To: accounts.payable@fintrustcapital.example
+Subject: Payment instructions for INV-9031
+Please process payment for invoice INV-9031 against purchase order PO-9031.
+Please use the bank account already registered in the vendor master record.

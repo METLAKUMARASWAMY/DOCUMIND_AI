@@ -1,0 +1,42 @@
+<View>
+  <Text name="document_text" value="$text"/>
+  <Header value="Risk Labels"/>
+  <Choices name="risk_label" toName="document_text" choice="multiple">
+    <Choice value="amount_mismatch"/>
+    <Choice value="date_mismatch"/>
+    <Choice value="bank_account_mismatch"/>
+    <Choice value="duplicate_document"/>
+    <Choice value="missing_signature"/>
+    <Choice value="contract_expired"/>
+    <Choice value="currency_conflict"/>
+    <Choice value="payment_terms_conflict"/>
+    <Choice value="possible_visual_manipulation"/>
+    <Choice value="requires_human_review"/>
+  </Choices>
+  <Header value="Relationship Labels"/>
+  <Labels name="entities" toName="document_text">
+    <Label value="vendor"/>
+    <Label value="document"/>
+    <Label value="invoice"/>
+    <Label value="purchase_order"/>
+    <Label value="contract"/>
+    <Label value="bank_account"/>
+    <Label value="employee"/>
+    <Label value="approver"/>
+    <Label value="payment"/>
+    <Label value="tax_identifier"/>
+  </Labels>
+  <Relations>
+    <Relation value="SUBMITTED"/>
+    <Relation value="REFERENCES"/>
+    <Relation value="PAID_TO"/>
+    <Relation value="APPROVED_BY"/>
+    <Relation value="GOVERNED_BY"/>
+    <Relation value="REGISTERED_WITH"/>
+    <Relation value="SHARES_ACCOUNT_WITH"/>
+    <Relation value="DUPLICATE_OF"/>
+    <Relation value="AMENDS"/>
+    <Relation value="MATCHES"/>
+    <Relation value="CONFLICTS_WITH"/>
+  </Relations>
+</View>

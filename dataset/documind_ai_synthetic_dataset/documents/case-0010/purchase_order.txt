@@ -1,0 +1,7 @@
+Purchase Order PO-3917
+Buyer: NorthStar Clinics
+Vendor: CareOps Analytics
+Related Contract: MSA-3917
+Approved Amount: USD 80,500.00
+Payment Terms: Net 30
+Approval Status: Approved by Procurement.

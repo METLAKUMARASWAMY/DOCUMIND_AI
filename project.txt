@@ -1,0 +1,2425 @@
+Your existing master prompt already defines the selective hybrid architecture—PP-OCRv5, PP-StructureV3, LayoutLMv3, Donut fallback, BGE retrieval, Qwen-based reasoning, GraphRAG, human review and visual evidence preservation. The prompt below consolidates that architecture and adds an explicit **Generative AI layer** for grounded question answering, summarisation, contract explanations, finance narratives, cross-document comparison and explainable risk reporting. 
+
+# DocuMind Vision AI — BigDaddy Final Super Prompt
+
+```text
+You are acting as a principal AI architect, senior computer-vision engineer,
+document-AI researcher, Generative AI engineer, RAG/GraphRAG specialist,
+backend engineer, frontend engineer, database architect, MLOps engineer,
+security engineer, QA engineer and enterprise UI/UX designer.
+
+Your task is to design and build a complete, runnable, production-structured
+final-year project named:
+
+DOCUMIND VISION AI
+
+Full title:
+
+“DocuMind Vision AI: An Explainable Multimodal Enterprise Document
+Intelligence System for Evidence-Grounded Analysis and Risk Detection”
+
+Do not provide only architecture diagrams, suggestions, mockups, pseudocode,
+partial snippets or theoretical explanations.
+
+Create a complete working application with:
+
+- frontend
+- backend
+- AI and machine-learning services
+- Generative AI services
+- databases
+- vector database
+- knowledge graph
+- asynchronous workers
+- authentication
+- human-review workflow
+- reporting
+- tests
+- Docker configuration
+- documentation
+- model-training scripts
+- evaluation scripts
+- seeded demonstration data
+
+The application must process:
+
+- invoices
+- purchase orders
+- contracts
+- receipts
+- bank-related documents
+- vendor records
+- insurance documents
+- enterprise forms
+- financial statements
+- reports
+- scanned PDFs
+- document photographs
+
+The system must transform enterprise documents into structured, searchable,
+verifiable and explainable information while preserving visual source evidence.
+
+=======================================================================
+1. CORE PROJECT VISION
+=======================================================================
+
+DocuMind Vision AI must not be built as only:
+
+- an OCR application
+- a PDF chatbot
+- a basic RAG application
+- an invoice extractor
+- a fraud classifier
+- a contract summariser
+- a document uploader
+
+It must be built as an integrated multimodal document-intelligence platform.
+
+The complete intelligence flow must be:
+
+Document image
+    ↓
+Image preprocessing
+    ↓
+OCR and layout analysis
+    ↓
+Multimodal document understanding
+    ↓
+Structured information extraction
+    ↓
+Table and visual-object detection
+    ↓
+Business-rule validation
+    ↓
+Cross-document comparison
+    ↓
+Duplicate and anomaly detection
+    ↓
+Vector indexing and knowledge-graph construction
+    ↓
+RAG and GraphRAG retrieval
+    ↓
+Generative AI explanation and report generation
+    ↓
+Confidence-based human review
+    ↓
+Approved output and immutable audit trail
+
+=======================================================================
+2. NON-NEGOTIABLE PRINCIPLES
+=======================================================================
+
+1. Visual document understanding must be implemented before chatbot or
+   Generative AI functionality.
+
+2. OCR, page layout, bounding boxes, tables, images, signatures, stamps,
+   checkboxes, logos, handwritten regions and reading order must be preserved.
+
+3. Never send a raw document directly to an LLM and trust its response.
+
+   Correct flow:
+
+   Extraction
+       ↓
+   Validation
+       ↓
+   Retrieval
+       ↓
+   Generative AI
+
+4. The LLM must never invent:
+
+   - invoice values
+   - names
+   - financial amounts
+   - dates
+   - contract clauses
+   - purchase-order numbers
+   - bank-account details
+   - vendor identities
+   - signatures
+   - risk evidence
+   - graph relationships
+   - approval information
+
+5. When evidence is unavailable, return:
+
+   “The available documents do not contain sufficient evidence to answer
+   this question.”
+
+6. The application must never automatically declare:
+
+   “This document is fraudulent.”
+
+   It may output:
+
+   “The document contains suspicious indicators and requires human review.”
+
+7. Only an authorised human reviewer may assign:
+
+   - CONFIRMED_ERROR
+   - CONFIRMED_FRAUD
+   - APPROVED
+   - REJECTED
+
+8. Every extracted field, generated answer, warning, summary and risk indicator
+   must preserve:
+
+   - organisation ID
+   - document ID
+   - page number
+   - source text
+   - bounding box or polygon
+   - source image region
+   - OCR confidence
+   - model confidence
+   - model name
+   - model version
+   - processing timestamp
+   - verification status
+   - reviewer status
+
+9. Do not generate fake accuracy, fake confidence values, fake model outputs
+   or fake benchmark results.
+
+10. Model accuracy must only be displayed when measured on a labelled
+    validation or test dataset.
+
+11. Use selective model routing.
+
+    Normal document pages:
+
+    PP-OCRv5
+        +
+    PP-StructureV3
+        +
+    LayoutLMv3
+
+    Complex or low-confidence pages:
+
+    PaddleOCR-VL
+        +
+    Donut comparison
+        +
+    human review when necessary
+
+12. All models must be replaceable through adapter interfaces and
+    configuration files.
+
+=======================================================================
+3. PRIMARY PROJECT OBJECTIVES
+=======================================================================
+
+The platform must:
+
+1. Accept PDF, PNG, JPG, JPEG and TIFF documents.
+
+2. Validate file type, file size, MIME type and document integrity.
+
+3. Render PDF pages into configurable-resolution images.
+
+4. Assess page quality using blur, skew, contrast, noise and DPI indicators.
+
+5. Perform:
+
+   - deskewing
+   - rotation correction
+   - denoising
+   - contrast enhancement
+   - perspective correction
+   - shadow removal
+   - cropping
+   - optional thresholding
+
+6. Perform OCR with word-level:
+
+   - text
+   - confidence
+   - polygon
+   - bounding box
+   - line ID
+   - block ID
+   - page number
+   - reading order
+
+7. Detect document layout and reading order.
+
+8. Classify the document type.
+
+9. Extract schema-specific fields using LayoutLMv3.
+
+10. Extract tables while retaining:
+
+    - rows
+    - columns
+    - merged cells
+    - cell values
+    - cell coordinates
+    - HTML representation
+    - Markdown representation
+
+11. Detect:
+
+    - signatures
+    - stamps
+    - company logos
+    - checkboxes
+    - handwritten notes
+    - seals
+    - approval marks
+    - QR codes
+    - barcodes
+
+12. Generate structured JSON output.
+
+13. Validate arithmetic, formats and cross-field relationships.
+
+14. Compare invoices with:
+
+    - purchase orders
+    - contracts
+    - vendor master data
+    - approved bank details
+    - historical invoices
+    - payment records
+
+15. Detect exact duplicates, visual near-duplicates and semantic duplicates.
+
+16. Identify unusual financial, visual and relational patterns.
+
+17. Extract and explain important contract clauses.
+
+18. Create searchable text, structured records and vector embeddings.
+
+19. Construct a knowledge graph connecting enterprise entities.
+
+20. Answer single-document and multi-document questions.
+
+21. Generate evidence-grounded summaries and reports.
+
+22. Route uncertain or high-risk results to a human reviewer.
+
+23. Save reviewer corrections as active-learning data.
+
+24. Maintain a complete immutable audit trail.
+
+=======================================================================
+4. COMPLETE MODEL STACK
+=======================================================================
+
+A. DOCUMENT RENDERING AND IMAGE PREPROCESSING
+
+Use:
+
+- PyMuPDF for PDF rendering
+- OpenCV
+- Pillow
+- NumPy
+
+Implement:
+
+- PDF page rendering
+- orientation detection
+- automatic rotation
+- deskewing
+- perspective correction
+- denoising
+- contrast enhancement
+- shadow reduction
+- adaptive thresholding
+- blur detection
+- page cropping
+- DPI estimation
+- image-quality scoring
+
+Store:
+
+- original uploaded file
+- original rendered page
+- processed page image
+- preprocessing metadata
+
+Never overwrite the original document.
+
+-----------------------------------------------------------------------
+B. PRIMARY OCR
+-----------------------------------------------------------------------
+
+Use:
+
+- PP-OCRv5 server model for the standard profile
+- PP-OCRv5 mobile model for the lightweight profile
+
+Required OCR output:
+
+{
+  "document_id": "...",
+  "page_number": 1,
+  "words": [
+    {
+      "text": "INV-1042",
+      "confidence": 0.97,
+      "polygon": [[x1,y1],[x2,y2],[x3,y3],[x4,y4]],
+      "bounding_box": [x1,y1,x2,y2],
+      "line_id": "line_12",
+      "block_id": "block_3",
+      "reading_order": 18
+    }
+  ]
+}
+
+Do not discard low-confidence words.
+
+Mark them as:
+
+{
+  "verification_status": "low_confidence"
+}
+
+-----------------------------------------------------------------------
+C. LAYOUT AND TABLE UNDERSTANDING
+-----------------------------------------------------------------------
+
+Use:
+
+- PP-StructureV3
+- PP-DocLayoutV3
+- compatible table-recognition components
+
+Recognise:
+
+- title
+- heading
+- paragraph
+- list
+- header
+- footer
+- page number
+- table
+- chart
+- image
+- formula
+- caption
+- footnote
+- form region
+- signature region
+- stamp region
+
+Preserve relationships among:
+
+- labels and values
+- table headers and cells
+- checkbox and question text
+- signature and signer name
+- section heading and paragraph
+- clause heading and clause text
+
+-----------------------------------------------------------------------
+D. DOCUMENT CLASSIFICATION
+-----------------------------------------------------------------------
+
+Use LayoutLMv3 with a classification head.
+
+Supported classes:
+
+- invoice
+- purchase_order
+- contract
+- receipt
+- bank_document
+- insurance_document
+- vendor_form
+- financial_report
+- general_form
+- unknown
+
+Training output must include:
+
+- predicted class
+- probability per class
+- selected model version
+- classification confidence
+- source pages considered
+
+-----------------------------------------------------------------------
+E. KEY INFORMATION EXTRACTION
+-----------------------------------------------------------------------
+
+Use:
+
+- LayoutLMv3-base for lightweight development
+- LayoutLMv3-large for the standard GPU profile
+
+Pass:
+
+- RGB document image
+- OCR words
+- normalised 0–1000 bounding boxes
+- token IDs
+- attention masks
+- page metadata
+
+Extract fields such as:
+
+Invoice fields:
+
+- vendor_name
+- vendor_address
+- vendor_tax_id
+- invoice_number
+- invoice_date
+- due_date
+- purchase_order_number
+- subtotal
+- tax
+- discount
+- total_amount
+- currency
+- payment_terms
+- bank_name
+- bank_account_number
+- IFSC_or_bank_code
+
+Contract fields:
+
+- party_name
+- agreement_date
+- effective_date
+- expiry_date
+- governing_law
+- renewal_term
+- termination_clause
+- liability_clause
+- confidentiality_clause
+- indemnification_clause
+- payment_terms
+- notice_period
+
+Approval fields:
+
+- signer_name
+- signature_present
+- approval_date
+- approval_mark
+- stamp_present
+
+Use BIO-style token labels where appropriate.
+
+Example:
+
+Invoice      → O
+Number       → O
+INV-1042     → B-INVOICE_NUMBER
+Total        → O
+₹1,18,000    → B-TOTAL_AMOUNT
+
+Convert model output into structured JSON while preserving token-to-word and
+word-to-region mappings.
+
+-----------------------------------------------------------------------
+F. OCR-FREE FALLBACK
+-----------------------------------------------------------------------
+
+Use Donut as:
+
+- an OCR-free image-to-JSON model
+- a comparison baseline
+- a fallback for low-quality OCR
+- a disagreement-verification model
+- an ablation-study model
+
+Do not execute Donut on every page.
+
+Execute it when:
+
+- OCR confidence is low
+- page quality is poor
+- LayoutLMv3 and OCR disagree
+- critical fields have low confidence
+- the page contains a complex structure
+- model comparison is manually enabled
+
+Compare:
+
+- OCR result
+- LayoutLMv3 extraction
+- Donut extraction
+- field format
+- arithmetic consistency
+- database consistency
+
+Critical disagreement must create a review task.
+
+-----------------------------------------------------------------------
+G. ADVANCED DOCUMENT PARSING
+-----------------------------------------------------------------------
+
+Use PaddleOCR-VL as an optional advanced parser when:
+
+- the page contains complex tables
+- the page contains charts
+- reading order is uncertain
+- multiple languages are present
+- standard OCR confidence is low
+- visual and textual results conflict
+
+Record:
+
+- why the advanced model was activated
+- standard result
+- fallback result
+- final selected result
+- reviewer decision when applicable
+
+-----------------------------------------------------------------------
+H. VISUAL OBJECT DETECTION
+-----------------------------------------------------------------------
+
+Use a configurable Ultralytics YOLO detector.
+
+Fine-tune classes for:
+
+- signature
+- stamp
+- company_logo
+- checkbox_checked
+- checkbox_unchecked
+- handwritten_note
+- approval_mark
+- seal
+- QR_code
+- barcode
+- possible_altered_region
+
+Return:
+
+{
+  "class": "signature",
+  "confidence": 0.92,
+  "page": 2,
+  "bounding_box": [x1,y1,x2,y2],
+  "evidence_crop": "storage_reference"
+}
+
+Signature detection does not prove signature authenticity.
+
+-----------------------------------------------------------------------
+I. CONTRACT INTELLIGENCE
+-----------------------------------------------------------------------
+
+Use:
+
+- LayoutLMv3 for visual localisation
+- DeBERTa-v3 fine-tuned using CUAD-style categories
+- Generative AI only for evidence-grounded explanation
+
+Extract:
+
+- parties
+- agreement date
+- effective date
+- expiry date
+- governing law
+- renewal term
+- termination for convenience
+- notice period
+- assignment restrictions
+- exclusivity
+- non-compete
+- audit rights
+- insurance obligations
+- liability cap
+- uncapped liability
+- perpetual licence
+- revenue sharing
+- change of control
+- confidentiality
+- indemnification
+- payment terms
+
+The system may say:
+
+“The clause appears to permit automatic renewal unless notice is provided.”
+
+It must not say:
+
+“This contract is legally invalid.”
+
+Final legal judgement requires a qualified human reviewer.
+
+-----------------------------------------------------------------------
+J. DUPLICATE DETECTION
+-----------------------------------------------------------------------
+
+Implement three levels.
+
+Level 1 — Exact duplicate:
+
+- SHA-256 file hash
+
+Level 2 — Visual near-duplicate:
+
+- perceptual hash
+- document-image embeddings
+- cosine similarity
+
+Level 3 — Semantic duplicate:
+
+Compare:
+
+- vendor name
+- invoice number
+- amount
+- date
+- purchase-order number
+- account number
+- extracted text embedding
+
+Return:
+
+- exact_duplicate
+- probable_duplicate
+- related_document
+- no_duplicate
+
+Show matching documents and supporting evidence.
+
+-----------------------------------------------------------------------
+K. ANOMALY AND RISK ANALYSIS
+-----------------------------------------------------------------------
+
+Use layered risk analysis.
+
+Layer 1 — Deterministic business rules:
+
+- subtotal + tax - discount approximately equals total
+- due date must not precede invoice date
+- duplicate invoice number must be checked
+- vendor account must match approved master data
+- invoice vendor must match PO vendor
+- invoice amount must be within PO tolerance
+- required signature or approval must be present
+- contract must be active on invoice date
+- currency must be consistent
+- tax identifier must have a valid format
+- invoice payment terms must not conflict with contract terms
+
+Layer 2 — Unsupervised anomaly detection:
+
+Use Isolation Forest when labelled data is unavailable.
+
+Features may include:
+
+- vendor amount z-score
+- amount-to-average ratio
+- invoice frequency
+- time since previous invoice
+- bank-account change frequency
+- validation-failure count
+- OCR uncertainty
+- document similarity
+- unusual submission time
+- number of vendors sharing an account
+
+Layer 3 — Supervised risk model:
+
+Use XGBoost only when sufficient labelled data exists.
+
+Evaluate using:
+
+- precision
+- recall
+- F1
+- AUPRC
+- false-positive rate
+- recall at fixed review capacity
+
+Use SHAP for model explanations.
+
+Layer 4 — Graph anomaly analysis:
+
+Use GraphSAGE or GAT only after sufficient connected and labelled graph data
+exists.
+
+Do not train a GNN using isolated invoice images.
+
+-----------------------------------------------------------------------
+L. VISUAL TAMPERING SCREENING
+-----------------------------------------------------------------------
+
+Build this as a separate research module.
+
+Possible inputs:
+
+- RGB page image
+- compression map
+- noise residual
+- high-pass image
+- metadata inconsistencies
+- error-level analysis representation
+
+Use a configurable segmentation or vision-transformer model such as:
+
+- SegFormer
+- Swin-based document-forensics model
+
+Possible indicators:
+
+- amount replacement
+- date replacement
+- bank-account replacement
+- copied signature
+- pasted stamp
+- inconsistent font region
+- inconsistent background
+- unusual compression region
+
+Return:
+
+- possible manipulation probability
+- suspicious region
+- heatmap
+- visual explanation
+- review recommendation
+
+Use the label:
+
+“Possible visual manipulation”
+
+Never label it as confirmed forgery automatically.
+
+=======================================================================
+5. GENERATIVE AI LAYER
+=======================================================================
+
+Generative AI must be used only after extraction, validation and retrieval.
+
+Use a provider-independent LLM adapter.
+
+Default local model:
+
+- Qwen-based instruction model
+
+Allow optional adapters for:
+
+- Llama
+- Mistral
+- Gemini
+- OpenAI-compatible models
+- other local models
+
+The model must support constrained JSON output.
+
+-----------------------------------------------------------------------
+GENAI FEATURE 1 — ASK DOCUMENTS
+-----------------------------------------------------------------------
+
+Users may ask:
+
+- What is the invoice total?
+- What are the payment terms?
+- Who are the parties in this contract?
+- Does the invoice match its purchase order?
+- Which documents contain a particular vendor?
+- Which invoices have a bank-account mismatch?
+
+Flow:
+
+User question
+    ↓
+Question classification
+    ↓
+Evidence retrieval
+    ↓
+Verified context construction
+    ↓
+Generative AI
+    ↓
+Answer with citations and confidence
+
+Required output:
+
+{
+  "answer": "...",
+  "answer_status": "supported|partially_supported|not_found",
+  "citations": [
+    {
+      "document_id": "...",
+      "page": 1,
+      "source_text": "...",
+      "bounding_boxes": []
+    }
+  ],
+  "confidence": 0.0,
+  "evidence_summary": "...",
+  "requires_review": false
+}
+
+-----------------------------------------------------------------------
+GENAI FEATURE 2 — DOCUMENT SUMMARISATION
+-----------------------------------------------------------------------
+
+Generate evidence-grounded summaries for:
+
+- invoices
+- contracts
+- purchase orders
+- financial reports
+- vendor records
+- collections of related documents
+
+Summary types:
+
+- executive summary
+- financial summary
+- contract summary
+- clause summary
+- risk summary
+- comparison summary
+- approval summary
+
+Every summary statement must map to document evidence.
+
+Do not produce unsupported conclusions.
+
+-----------------------------------------------------------------------
+GENAI FEATURE 3 — CONTRACT EXPLANATION
+-----------------------------------------------------------------------
+
+The clause model extracts the actual clause.
+
+Generative AI explains it in clear language.
+
+Example:
+
+Extracted clause:
+
+“This Agreement shall automatically renew for successive periods of twelve
+months unless either party provides thirty days’ prior written notice.”
+
+Generated explanation:
+
+“The agreement may renew automatically for another year unless one party gives
+written notice at least thirty days before renewal.”
+
+Include:
+
+- extracted clause
+- page number
+- bounding box
+- clause category
+- model confidence
+- explanation
+- review recommendation
+
+-----------------------------------------------------------------------
+GENAI FEATURE 4 — FINANCE NARRATIVE GENERATION
+-----------------------------------------------------------------------
+
+Create a module named:
+
+Finance Narrative
+
+Generate:
+
+- monthly invoice summary
+- vendor payment summary
+- outstanding payment summary
+- tax summary
+- anomaly summary
+- approval-status summary
+- contract exposure summary
+
+All totals must be calculated using deterministic Python or database queries.
+
+The LLM must only convert verified calculations into readable language.
+
+Never allow the LLM to perform hidden arithmetic.
+
+Every number must contain:
+
+- source record IDs
+- date range
+- calculation function
+- verification status
+
+-----------------------------------------------------------------------
+GENAI FEATURE 5 — EXPLAINABLE RISK REPORTING
+-----------------------------------------------------------------------
+
+The risk engine detects the actual indicators.
+
+Generative AI creates a readable explanation.
+
+Example input:
+
+{
+  "bank_account_mismatch": true,
+  "duplicate_invoice_number": true,
+  "amount_calculation_failure": true
+}
+
+Generated explanation:
+
+“This document requires manual review because the payment account differs from
+the approved vendor record, the invoice number was previously submitted and
+the calculated total does not match the displayed total.”
+
+The LLM must not independently create new risk indicators.
+
+-----------------------------------------------------------------------
+GENAI FEATURE 6 — MULTI-DOCUMENT COMPARISON
+-----------------------------------------------------------------------
+
+Compare:
+
+- invoice versus purchase order
+- invoice versus contract
+- invoice versus vendor master
+- invoice versus earlier invoices
+- contract versus company policy
+- bank details across document versions
+
+Structured comparison format:
+
+{
+  "comparison_type": "invoice_vs_purchase_order",
+  "matching_fields": [],
+  "conflicting_fields": [],
+  "missing_fields": [],
+  "calculated_differences": [],
+  "evidence": [],
+  "generated_explanation": "...",
+  "requires_review": true
+}
+
+-----------------------------------------------------------------------
+GENAI FEATURE 7 — AUTOMATIC REPORT GENERATION
+-----------------------------------------------------------------------
+
+Generate:
+
+- document intelligence report
+- invoice validation report
+- contract review report
+- vendor-risk report
+- duplicate-document report
+- human-review report
+- finance narrative report
+- audit summary
+- model-evaluation report
+
+Support:
+
+- PDF
+- JSON
+- optional HTML
+
+Every report must include evidence references.
+
+-----------------------------------------------------------------------
+GENAI FEATURE 8 — REVIEWER ASSISTANCE
+-----------------------------------------------------------------------
+
+Generate reviewer-assistance content such as:
+
+- concise issue summary
+- list of conflicting fields
+- recommended verification steps
+- comparison of model outputs
+- explanation of confidence
+- draft review note
+
+The LLM must not approve or reject the document automatically.
+
+-----------------------------------------------------------------------
+GENAI FEATURE 9 — GRAPH RELATIONSHIP PROPOSALS
+-----------------------------------------------------------------------
+
+The LLM may suggest candidate relationships from text.
+
+Example:
+
+Vendor A → SUBMITTED → Invoice 1042
+
+However, every LLM-generated relationship must initially be stored as:
+
+{
+  "status": "proposed",
+  "confidence": 0.0,
+  "source_document": "...",
+  "source_page": 1,
+  "evidence_text": "...",
+  "review_status": "pending"
+}
+
+Do not treat proposed relationships as verified facts.
+
+=======================================================================
+6. RAG AND GRAPHRAG METHODOLOGY
+=======================================================================
+
+A. STRUCTURE-AWARE CHUNKING
+
+Do not chunk documents only by fixed character length.
+
+Create chunks using:
+
+- document
+- page
+- section
+- heading
+- paragraph
+- clause
+- table
+- table row
+- form section
+- extracted key-value group
+
+Chunk metadata:
+
+{
+  "document_id": "...",
+  "organisation_id": "...",
+  "page_number": 1,
+  "section": "...",
+  "document_type": "...",
+  "vendor_id": "...",
+  "source_type": "paragraph|table|field|clause",
+  "bounding_boxes": [],
+  "verification_status": "verified|unverified",
+  "model_version": "..."
+}
+
+Prefer verified evidence during retrieval.
+
+-----------------------------------------------------------------------
+B. EMBEDDING MODEL
+-----------------------------------------------------------------------
+
+Use:
+
+- BGE-M3
+
+Generate:
+
+- dense representation
+- sparse representation where supported
+- metadata filters
+
+-----------------------------------------------------------------------
+C. VECTOR DATABASE
+-----------------------------------------------------------------------
+
+Use:
+
+- Qdrant as the default vector database
+
+Provide adapter support for:
+
+- pgvector
+- MongoDB Atlas Vector Search
+
+-----------------------------------------------------------------------
+D. RERANKING
+-----------------------------------------------------------------------
+
+Use:
+
+- BGE reranker
+
+Recommended retrieval sequence:
+
+1. Retrieve top 30 candidates.
+2. Apply organisation and document-access filters.
+3. Apply document-type and verification-status filters.
+4. Combine dense and sparse scores.
+5. Rerank the top 15.
+6. Send the best 5–8 evidence blocks to the LLM.
+
+-----------------------------------------------------------------------
+E. QUERY ROUTER
+-----------------------------------------------------------------------
+
+Classify every user question.
+
+1. structured_lookup
+
+   Use MongoDB or structured records.
+
+   Example:
+
+   “What is the total amount of invoice INV-1042?”
+
+2. semantic_question
+
+   Use vector retrieval.
+
+   Example:
+
+   “Explain the termination clause.”
+
+3. relationship_question
+
+   Use Neo4j and GraphRAG.
+
+   Example:
+
+   “Which invoices are linked to unapproved bank accounts?”
+
+4. arithmetic_question
+
+   Retrieve verified values and calculate using deterministic Python.
+
+   Example:
+
+   “What is the total tax paid to Vendor A this quarter?”
+
+5. visual_question
+
+   Use page regions and visual detection.
+
+   Example:
+
+   “Is this document signed?”
+
+6. comparison_question
+
+   Retrieve and compare multiple structured documents.
+
+   Example:
+
+   “Compare the invoice with its purchase order.”
+
+7. non_answerable_question
+
+   Return an evidence-not-found result.
+
+-----------------------------------------------------------------------
+F. KNOWLEDGE GRAPH
+-----------------------------------------------------------------------
+
+Use Neo4j.
+
+Nodes:
+
+- Organisation
+- Vendor
+- Document
+- Invoice
+- PurchaseOrder
+- Contract
+- BankAccount
+- TaxIdentifier
+- Payment
+- Employee
+- Approver
+- Signature
+- RiskIndicator
+
+Relationships:
+
+- SUBMITTED
+- REFERENCES
+- PAID_TO
+- APPROVED_BY
+- GOVERNED_BY
+- REGISTERED_WITH
+- SHARES_ACCOUNT_WITH
+- DUPLICATE_OF
+- AMENDS
+- MATCHES
+- CONFLICTS_WITH
+- CONTAINS
+- SIGNED_BY
+- ASSOCIATED_WITH
+
+Construct verified graph relationships primarily from:
+
+- reviewed structured fields
+- deterministic links
+- trusted master data
+- approved entities
+
+Use GraphRAG for:
+
+- entity-specific local search
+- global corpus summaries
+- relationship questions
+- path explanations
+- cross-document verification
+
+Update the graph incrementally.
+
+Do not rebuild the complete graph after every query.
+
+=======================================================================
+7. CONFIDENCE AND DECISION ROUTING
+=======================================================================
+
+Create field-level confidence using:
+
+- OCR confidence
+- LayoutLMv3 probability
+- Donut agreement
+- layout-parser agreement
+- field-format validity
+- arithmetic consistency
+- cross-document consistency
+- retrieval evidence quality
+- model disagreement
+- reviewer history
+
+Do not use arbitrary weights permanently.
+
+Store initial weights in configuration.
+
+Calibrate confidence using:
+
+- temperature scaling
+- isotonic regression
+- Expected Calibration Error
+- AURC
+- risk-coverage curves
+
+Suggested routing:
+
+Confidence >= 0.90
+and no critical rule failure:
+    eligible for approval workflow
+
+Confidence between 0.70 and 0.90:
+    medium-priority human review
+
+Confidence below 0.70:
+    mandatory human review
+
+Any critical bank-account, amount, identity, duplicate or contract mismatch:
+    mandatory human review regardless of confidence
+
+All thresholds must be configurable.
+
+=======================================================================
+8. HUMAN REVIEW WORKFLOW
+=======================================================================
+
+Statuses:
+
+- UPLOADED
+- QUEUED
+- PREPROCESSING
+- OCR_COMPLETED
+- EXTRACTION_COMPLETED
+- VALIDATION_COMPLETED
+- INDEXED
+- REVIEW_REQUIRED
+- UNDER_REVIEW
+- APPROVED
+- REJECTED
+- CONFIRMED_ERROR
+- CONFIRMED_FRAUD
+- COMPLETED
+
+Review interface:
+
+Left side:
+
+- document viewer
+- page navigation
+- zoom
+- rotate
+- OCR overlays
+- field overlays
+- layout overlays
+- table overlays
+- signature and stamp overlays
+- possible manipulation heatmap
+
+Right side:
+
+- extracted fields
+- OCR value
+- LayoutLMv3 value
+- Donut value when available
+- final selected value
+- confidence
+- validation failures
+- related documents
+- duplicate matches
+- model disagreement
+- risk indicators
+- reviewer comments
+
+Actions:
+
+- accept field
+- edit field
+- reject field
+- accept high-confidence fields
+- request reprocessing
+- approve document
+- reject document
+- escalate
+- mark confirmed error
+- mark confirmed fraud
+
+Store every modification in an immutable audit event:
+
+{
+  "actor": "...",
+  "action": "...",
+  "old_value": "...",
+  "new_value": "...",
+  "reason": "...",
+  "timestamp": "...",
+  "document_version": "...",
+  "model_version": "...",
+  "session_metadata": "..."
+}
+
+Export reviewer corrections as active-learning data.
+
+=======================================================================
+9. DATABASE AND STORAGE
+=======================================================================
+
+Use:
+
+1. MongoDB
+
+Store:
+
+- users
+- organisations
+- refresh tokens
+- documents
+- pages
+- OCR results
+- layout regions
+- extracted fields
+- tables
+- visual detections
+- risk indicators
+- duplicate matches
+- review tasks
+- questions
+- answers
+- reports
+- model runs
+- audit events
+
+2. Qdrant
+
+Store:
+
+- dense embeddings
+- sparse vectors
+- chunk metadata
+- document filters
+- verification status
+
+3. Neo4j
+
+Store:
+
+- entities
+- verified relationships
+- proposed relationships
+- relationship evidence
+- graph confidence
+
+4. MinIO or S3-compatible object storage
+
+Store:
+
+- original documents
+- rendered pages
+- processed images
+- evidence crops
+- table crops
+- signature crops
+- heatmaps
+- reports
+
+5. Redis
+
+Use for:
+
+- Celery queue
+- processing state
+- cache
+- retry coordination
+- temporary locks
+- rate limiting
+
+Mask and encrypt sensitive information where appropriate.
+
+Do not log:
+
+- passwords
+- access tokens
+- complete bank-account numbers
+- private document content
+- secret keys
+
+=======================================================================
+10. BACKEND ARCHITECTURE
+=======================================================================
+
+Use:
+
+- Python
+- FastAPI
+- Pydantic
+- Celery
+- Redis
+- PyTorch
+- Transformers
+- PaddleOCR
+- Ultralytics
+- Qdrant client
+- Neo4j driver
+- MongoDB async driver
+- MLflow
+- structured logging
+
+Use:
+
+- dependency injection
+- repository pattern
+- service interfaces
+- model adapters
+- typed schemas
+- centralised exception handling
+- configuration through environment variables
+
+Required APIs:
+
+Authentication:
+
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+POST /api/v1/auth/logout
+GET  /api/v1/auth/me
+
+Documents:
+
+POST   /api/v1/documents/upload
+GET    /api/v1/documents
+GET    /api/v1/documents/{id}
+DELETE /api/v1/documents/{id}
+POST   /api/v1/documents/{id}/reprocess
+GET    /api/v1/documents/{id}/status
+GET    /api/v1/documents/{id}/pages
+GET    /api/v1/documents/{id}/ocr
+GET    /api/v1/documents/{id}/layout
+GET    /api/v1/documents/{id}/fields
+GET    /api/v1/documents/{id}/tables
+GET    /api/v1/documents/{id}/visual-elements
+GET    /api/v1/documents/{id}/risk
+GET    /api/v1/documents/{id}/related
+
+Generative AI:
+
+POST /api/v1/ai/ask
+POST /api/v1/ai/summarise
+POST /api/v1/ai/explain-clause
+POST /api/v1/ai/compare-documents
+POST /api/v1/ai/generate-risk-explanation
+POST /api/v1/ai/generate-finance-narrative
+POST /api/v1/ai/generate-report
+GET  /api/v1/ai/responses/{id}
+POST /api/v1/ai/responses/{id}/feedback
+
+Review:
+
+GET   /api/v1/reviews
+GET   /api/v1/reviews/{id}
+PATCH /api/v1/reviews/{id}/fields/{field_id}
+POST  /api/v1/reviews/{id}/approve
+POST  /api/v1/reviews/{id}/reject
+POST  /api/v1/reviews/{id}/escalate
+POST  /api/v1/reviews/{id}/confirm-error
+POST  /api/v1/reviews/{id}/confirm-fraud
+
+Graph:
+
+GET  /api/v1/graph/document/{id}
+GET  /api/v1/graph/entity/{id}
+POST /api/v1/graph/query
+POST /api/v1/graph/relationships/{id}/verify
+
+Analytics:
+
+GET /api/v1/analytics/overview
+GET /api/v1/analytics/vendors
+GET /api/v1/analytics/risk
+GET /api/v1/analytics/reviews
+GET /api/v1/analytics/models
+GET /api/v1/analytics/genai
+
+Reports:
+
+POST /api/v1/reports/generate
+GET  /api/v1/reports/{id}
+GET  /api/v1/reports/{id}/download
+
+Admin:
+
+GET   /api/v1/admin/models
+PATCH /api/v1/admin/models/{id}
+GET   /api/v1/admin/rules
+PATCH /api/v1/admin/rules/{id}
+GET   /api/v1/admin/audit
+GET   /api/v1/admin/prompts
+PATCH /api/v1/admin/prompts/{id}
+
+Use WebSocket or Server-Sent Events for live processing progress.
+
+=======================================================================
+11. ASYNCHRONOUS CONNECTIVITY
+=======================================================================
+
+Implement this exact end-to-end connectivity:
+
+React upload page
+    ↓
+FastAPI upload endpoint
+    ↓
+File validation
+    ↓
+Create MongoDB document record
+    ↓
+Store original file in MinIO
+    ↓
+Send processing task through Redis
+    ↓
+Celery worker receives task
+    ↓
+Render PDF pages
+    ↓
+Assess page quality
+    ↓
+Preprocess image
+    ↓
+PP-OCRv5
+    ↓
+PP-StructureV3
+    ↓
+Document classification
+    ↓
+LayoutLMv3 field extraction
+    ↓
+YOLO visual-element detection
+    ↓
+Table extraction
+    ↓
+Contract model when applicable
+    ↓
+Low-confidence router
+        ├── PaddleOCR-VL
+        └── Donut
+    ↓
+Field normalisation
+    ↓
+Business-rule validation
+    ↓
+Duplicate detection
+    ↓
+Anomaly and risk analysis
+    ↓
+Store structured data in MongoDB
+    ↓
+Create structure-aware chunks
+    ↓
+Generate BGE embeddings
+    ↓
+Store vectors in Qdrant
+    ↓
+Create or update entities in Neo4j
+    ↓
+Create review task when required
+    ↓
+Send progress updates to frontend
+    ↓
+Display document, fields, evidence and risk indicators
+    ↓
+User asks a question
+    ↓
+Query router selects MongoDB, Qdrant or Neo4j
+    ↓
+Retrieve verified evidence
+    ↓
+Rerank evidence
+    ↓
+Generative AI produces constrained answer
+    ↓
+Answer citations open the exact source page and region
+
+All processing jobs must be idempotent.
+
+A failed stage must be retryable without creating duplicate records.
+
+=======================================================================
+12. FRONTEND AND UI/UX
+=======================================================================
+
+Use:
+
+- React
+- TypeScript
+- Vite
+- Material UI
+- TanStack Query
+- React Router
+- React Hook Form
+- PDF.js or react-pdf
+- Cytoscape.js
+- Recharts
+
+Create:
+
+1. Login page
+2. Signup page
+3. Forgot-password page
+4. Dashboard
+5. Upload wizard
+6. Processing-status page
+7. Document library
+8. Document intelligence viewer
+9. Review queue
+10. Review workspace
+11. Ask Documents page
+12. Document summary page
+13. Contract intelligence page
+14. Multi-document comparison page
+15. Knowledge-graph explorer
+16. Finance Narrative page
+17. Risk analytics page
+18. Model comparison laboratory
+19. Reports page
+20. Audit-history page
+21. Admin model settings
+22. Prompt and rule configuration page
+
+Document viewer must support:
+
+- PDF rendering
+- page navigation
+- zoom
+- rotate
+- OCR overlays
+- field overlays
+- layout overlays
+- table overlays
+- signature and stamp overlays
+- manipulation heatmap
+- click a field to highlight evidence
+- click a citation to open its page and bounding box
+- toggle LayoutLMv3, Donut, OCR and YOLO outputs
+
+Design requirements:
+
+- enterprise appearance
+- responsive layout
+- accessible controls
+- consistent spacing
+- clear typography
+- loading skeletons
+- error recovery
+- meaningful empty states
+- no broken routes
+- no fake charts
+- no oversized cards
+- restrained navy, white, grey and teal visual theme
+
+=======================================================================
+13. AUTHENTICATION AND SECURITY
+=======================================================================
+
+Roles:
+
+- ADMIN
+- PROCESSOR
+- REVIEWER
+- AUDITOR
+- VIEWER
+
+Implement:
+
+- JWT access tokens
+- refresh-token rotation
+- Argon2 password hashing
+- role-based endpoint protection
+- organisation-level tenant isolation
+- document-level access checks
+- API rate limiting
+- secure headers
+- MIME validation
+- file-size limits
+- malware-scanning integration point
+- audit logging
+- secret management
+- CORS configuration
+
+Never expose one organisation’s documents to another organisation.
+
+=======================================================================
+14. DATASET METHODOLOGY
+=======================================================================
+
+Support a configurable dataset root.
+
+Do not hard-code local paths.
+
+Create adapters for:
+
+- custom synthetic enterprise dataset
+- RVL-CDIP
+- FUNSD
+- CORD
+- SROIE
+- PubLayNet
+- DocVQA
+- DUDE
+- CUAD
+
+Split data by complete document, not page.
+
+Suggested split:
+
+- 70% training
+- 15% validation
+- 15% testing
+
+Create annotation templates for:
+
+- document classes
+- token fields
+- layout regions
+- tables
+- signatures
+- stamps
+- manipulation masks
+- risk labels
+- graph relationships
+
+Augment training data using:
+
+- rotation
+- perspective distortion
+- blur
+- shadows
+- compression
+- brightness changes
+- scanning noise
+- partial occlusion
+- realistic synthetic edits
+
+Never augment the final test set.
+
+=======================================================================
+15. TRAINING AND MLOPS
+=======================================================================
+
+Use MLflow to track:
+
+- dataset version
+- model name
+- configuration
+- training seed
+- hyperparameters
+- checkpoints
+- metrics
+- artefacts
+- confusion matrices
+- model version
+
+Implement reproducible scripts for:
+
+- LayoutLMv3 document classification
+- LayoutLMv3 token classification
+- Donut image-to-JSON extraction
+- visual-object detection
+- contract clause extraction
+- manipulation localisation
+- Isolation Forest
+- XGBoost
+
+Use:
+
+- transfer learning
+- parameter-efficient fine-tuning where suitable
+- early stopping
+- checkpointing
+- mixed precision
+- weighted losses
+- deterministic seeds
+- validation-based model selection
+
+Do not train foundation models from scratch.
+
+=======================================================================
+16. EVALUATION
+=======================================================================
+
+OCR:
+
+- Character Error Rate
+- Word Error Rate
+- text-detection precision
+- text-detection recall
+
+Classification:
+
+- accuracy
+- macro precision
+- macro recall
+- macro F1
+- confusion matrix
+
+Information extraction:
+
+- field precision
+- field recall
+- field F1
+- exact match
+- normalised value accuracy
+
+Layout and visual detection:
+
+- IoU
+- mAP50
+- mAP50-95
+- per-class precision and recall
+
+Tables:
+
+- cell precision
+- cell recall
+- cell F1
+- structure accuracy
+- TEDS when applicable
+
+Question answering:
+
+- exact match
+- ANLS
+- list-answer ANLS
+- no-answer accuracy
+
+Retrieval:
+
+- Recall@k
+- Precision@k
+- MRR
+- nDCG
+- evidence-document MAP
+
+Generative AI:
+
+- faithfulness
+- answer relevance
+- context relevance
+- citation correctness
+- unsupported-claim rate
+- hallucination rate
+- structured-output validity
+- abstention correctness
+
+Risk analysis:
+
+- precision
+- recall
+- F1
+- AUPRC
+- false-positive rate
+- recall at fixed review capacity
+
+Confidence:
+
+- ECE
+- AURC
+- risk-coverage curve
+
+Human review:
+
+- reviewer acceptance rate
+- field correction rate
+- review time
+- escalation rate
+- reviewer agreement
+- critical-error escape rate
+
+System:
+
+- latency per page
+- complete-document latency
+- throughput
+- memory usage
+- queue time
+- retrieval latency
+- LLM generation latency
+- processing failure rate
+
+=======================================================================
+17. REQUIRED EXPERIMENTS
+=======================================================================
+
+Compare:
+
+1. Tesseract versus PP-OCRv5.
+2. OCR text only versus OCR plus layout.
+3. LayoutLMv3 versus Donut.
+4. LayoutLMv3 alone versus LayoutLMv3 with Donut disagreement routing.
+5. Fixed-length chunking versus structure-aware chunking.
+6. Dense retrieval versus hybrid retrieval.
+7. Vector RAG versus GraphRAG.
+8. LLM without retrieval versus evidence-grounded RAG.
+9. RAG without citations versus RAG with region-level citations.
+10. Rules-only risk analysis versus rules plus Isolation Forest.
+11. Rules plus Isolation Forest versus supervised XGBoost.
+12. Uncalibrated confidence versus calibrated human-review routing.
+13. GenAI finance narrative with direct LLM arithmetic versus deterministic
+    calculation plus LLM wording.
+14. Single-document retrieval versus multi-document graph retrieval.
+
+Generate graphs and tables only from actual experimental results.
+
+=======================================================================
+18. DEMONSTRATION CASES
+=======================================================================
+
+Case 1 — Normal invoice:
+
+- values match
+- vendor and bank details match
+- high confidence
+- eligible for approval
+
+Case 2 — Amount mismatch:
+
+- subtotal plus tax does not equal total
+- highlight all related fields
+- create high-priority review task
+
+Case 3 — Bank-account mismatch:
+
+- invoice account differs from vendor master
+- show masked account values
+- pause automatic processing
+
+Case 4 — Duplicate invoice:
+
+- matching invoice number
+- visually similar document
+- semantic field match
+- display previous document
+
+Case 5 — Contract-risk indicator:
+
+- automatic renewal or uncapped liability
+- highlight clause
+- explain clause
+- recommend legal review
+
+Case 6 — Poor-quality scan:
+
+- low OCR confidence
+- activate advanced parser
+- compare standard and fallback results
+
+Case 7 — Multi-document question:
+
+“Which invoices from Vendor A requested payment to a bank account not approved
+in the vendor master?”
+
+Return:
+
+- document list
+- matching fields
+- graph path
+- evidence citations
+- highlighted source regions
+- generated explanation
+
+Case 8 — Non-answerable question:
+
+Return an evidence-not-found response without guessing.
+
+Case 9 — Finance narrative:
+
+Generate a monthly vendor summary using verified database calculations.
+
+Case 10 — Reviewer correction:
+
+- reviewer changes an extracted amount
+- audit event is created
+- vector and graph indexes are updated
+- correction is exported as active-learning data
+
+=======================================================================
+19. DEPLOYMENT
+=======================================================================
+
+Provide three model profiles.
+
+LITE:
+
+- CPU or Mac development
+- mobile OCR
+- LayoutLMv3-base
+- lightweight YOLO
+- fallback models disabled by default
+- optional quantised local LLM
+
+STANDARD:
+
+- server OCR
+- PP-StructureV3
+- LayoutLMv3-large
+- standard visual detector
+- BGE embeddings
+- reranker
+- quantised local LLM
+- Qdrant
+- Neo4j
+
+FULL:
+
+- all standard components
+- advanced document parser
+- Donut ensemble
+- manipulation localisation
+- GraphRAG
+- graph anomaly experiment
+- complete Generative AI reporting
+
+Docker Compose services:
+
+- frontend
+- backend
+- Celery worker
+- MongoDB
+- Redis
+- Qdrant
+- Neo4j
+- MinIO
+- MLflow
+- Nginx
+- optional Prometheus
+- optional Grafana
+
+Provide:
+
+- Dockerfiles
+- health checks
+- readiness checks
+- persistent volumes
+- CPU configuration
+- GPU configuration
+- environment templates
+- GitHub Actions pipeline
+- optional Kubernetes manifests
+
+=======================================================================
+20. TESTING
+=======================================================================
+
+Backend:
+
+- unit tests
+- service tests
+- repository tests
+- API integration tests
+- authentication tests
+- tenant-isolation tests
+- pipeline tests
+- model-adapter contract tests
+- RAG tests
+- GraphRAG tests
+- LLM structured-output tests
+- citation tests
+- hallucination-abstention tests
+
+Frontend:
+
+- Vitest
+- React Testing Library
+- Playwright
+
+Required end-to-end test:
+
+1. Register.
+2. Log in.
+3. Upload a demo invoice.
+4. Observe live processing.
+5. Open OCR output.
+6. Open extracted fields.
+7. Click a field and verify visual highlighting.
+8. View validation results.
+9. View a risk indicator.
+10. Open review workspace.
+11. Correct a field.
+12. Approve the document.
+13. Ask a question.
+14. Verify answer citations.
+15. Generate a summary.
+16. Generate a finance narrative.
+17. Generate a report.
+18. Verify the audit history.
+
+No module may be marked complete while its required tests fail.
+
+=======================================================================
+21. DOCUMENTATION
+=======================================================================
+
+Create:
+
+- README
+- installation guide
+- architecture document
+- methodology chapter
+- Mermaid architecture diagram
+- sequence diagram
+- database schema
+- API documentation
+- dataset card
+- model cards
+- prompt and GenAI policy
+- retrieval methodology
+- GraphRAG methodology
+- human-review workflow
+- security document
+- responsible-AI document
+- evaluation report
+- literature-to-module mapping
+- problem statement
+- abstract
+- objectives
+- research gaps
+- research questions
+- project limitations
+- viva questions and answers
+- five-minute demo script
+- fifteen-minute demo script
+
+=======================================================================
+22. IMPLEMENTATION ORDER
+=======================================================================
+
+Phase 1:
+
+- repository scaffold
+- environment configuration
+- Docker Compose
+- MongoDB
+- Redis
+- MinIO
+- authentication
+- login and signup UI
+
+Phase 2:
+
+- upload API
+- file validation
+- document library
+- background processing
+- PDF rendering
+- live status updates
+
+Phase 3:
+
+- preprocessing
+- OCR
+- OCR result storage
+- document viewer
+- OCR overlays
+
+Phase 4:
+
+- layout detection
+- reading order
+- table extraction
+- layout overlays
+
+Phase 5:
+
+- document classification
+- LayoutLMv3 extraction
+- structured fields
+- confidence
+- evidence mapping
+
+Phase 6:
+
+- signature detection
+- stamp detection
+- checkbox detection
+- visual-element overlays
+
+Phase 7:
+
+- field normalisation
+- business-rule validation
+- duplicate detection
+- anomaly analysis
+- risk indicators
+
+Phase 8:
+
+- review queue
+- review workspace
+- immutable audit trail
+- active-learning export
+
+Phase 9:
+
+- structure-aware chunking
+- BGE embeddings
+- Qdrant
+- reranking
+- evidence retrieval
+
+Phase 10:
+
+- Generative AI Ask Documents
+- grounded summarisation
+- clause explanation
+- risk explanation
+- finance narrative
+- report generation
+
+Phase 11:
+
+- Neo4j graph
+- entity resolution
+- GraphRAG
+- multi-document comparison
+- relationship explanations
+
+Phase 12:
+
+- Donut fallback
+- advanced parser
+- manipulation-screening research module
+- graph anomaly extension
+
+Phase 13:
+
+- evaluation
+- ablation studies
+- performance optimisation
+- security testing
+- documentation
+- final demonstration
+
+=======================================================================
+23. COMPLETION CRITERIA
+=======================================================================
+
+The project is complete only when:
+
+1. Users can register and log in.
+2. Documents can be uploaded.
+3. Processing runs asynchronously.
+4. OCR words and bounding boxes are displayed.
+5. Document types are predicted.
+6. Fields are extracted into JSON.
+7. Field clicks highlight source regions.
+8. Tables are displayed structurally.
+9. Signatures and stamps are detected.
+10. Validation rules generate evidence.
+11. Duplicate documents can be identified.
+12. Risk indicators never automatically confirm fraud.
+13. Low-confidence cases enter human review.
+14. Reviewer corrections are persisted.
+15. Audit events are immutable.
+16. Vector retrieval works.
+17. Graph relationships are visible.
+18. Questions produce evidence-grounded answers.
+19. Unsupported questions return not-found responses.
+20. Generated summaries include citations.
+21. Finance narratives use deterministic calculations.
+22. Multi-document questions use graph evidence.
+23. Reports can be downloaded.
+24. Docker Compose starts the application.
+25. Tests pass.
+26. README instructions work from a clean environment.
+27. There are no placeholder buttons.
+28. There are no fake predictions.
+29. There are no fake metrics.
+30. There are no broken routes.
+31. There are no hard-coded document results.
+
+=======================================================================
+24. CODING AGENT BEHAVIOUR
+=======================================================================
+
+Before coding:
+
+1. Inspect the existing repository.
+2. Preserve working modules.
+3. Identify missing components.
+4. Identify broken frontend-backend connections.
+5. Prepare a migration and implementation plan.
+6. Verify environment variables and dependencies.
+
+While coding:
+
+- produce complete files
+- write typed and modular code
+- use meaningful names
+- handle errors
+- use structured logs
+- validate inputs
+- avoid duplicated logic
+- use interfaces for AI models
+- run tests frequently
+- fix errors before moving forward
+- do not create fake model responses
+- do not leave placeholder implementations
+- do not stop after creating UI mockups
+
+When a heavy model is unavailable:
+
+- implement a real adapter
+- disable it through configuration
+- show its disabled status in the UI
+- provide preparation instructions
+- never replace it with random values
+
+At the end:
+
+1. Print the complete directory tree.
+2. List all implemented modules.
+3. List installation commands.
+4. List model-preparation commands.
+5. List database-initialisation commands.
+6. List frontend and backend run commands.
+7. List Docker commands.
+8. List testing commands.
+9. Provide secure seed-user creation.
+10. Provide demo data.
+11. Provide a complete demo walkthrough.
+12. List genuine limitations.
+13. Confirm every acceptance criterion individually.
+
+Begin by providing:
+
+1. repository assessment,
+2. final architecture,
+3. exact implementation phases,
+4. database design,
+5. model registry,
+6. and then immediately create the complete working project files.
+
+Do not stop after planning.
+Do not provide only snippets.
+Do not generate fake outputs.
+Build the project module by module until the complete application is runnable.
+```
+
+This final prompt places Generative AI **after verified extraction and retrieval**, rather than allowing it to directly interpret raw documents. It also keeps the original system requirement that extracted values, warnings and answers remain connected to their page, source region, confidence and reviewer status. 

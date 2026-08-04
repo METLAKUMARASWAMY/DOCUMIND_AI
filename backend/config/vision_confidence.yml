@@ -1,0 +1,29 @@
+field_confidence_weights:
+  ocr_confidence: 0.18
+  layoutlmv3_probability: 0.18
+  layout_agreement: 0.12
+  donut_agreement: 0.10
+  visual_parser_agreement: 0.08
+  field_format_validity: 0.10
+  arithmetic_consistency: 0.10
+  cross_document_consistency: 0.08
+  retrieval_evidence_quality: 0.06
+
+review_thresholds:
+  auto_approval_min_confidence: 0.90
+  medium_review_min_confidence: 0.70
+  mandatory_review_below_confidence: 0.70
+
+document_type_overrides: {}
+organisation_overrides: {}
+
+calibration:
+  calibrated: false
+  artifact_path: null
+  fitted_dataset_version: null
+  required_methods:
+    - temperature_scaling
+    - isotonic_regression
+    - expected_calibration_error
+    - risk_coverage_curve
+    - aurc

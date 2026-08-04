@@ -1,0 +1,5 @@
+From: payments@machineiqservices.example
+To: accounts.payable@apexroboticsltd.example
+Subject: Payment instructions for INV-7199
+Please process payment for invoice INV-7199 against purchase order PO-7199.
+Please use the bank account already registered in the vendor master record.

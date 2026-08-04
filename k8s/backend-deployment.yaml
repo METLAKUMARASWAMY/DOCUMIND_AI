@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: documind-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: documind-backend
+  template:
+    metadata:
+      labels:
+        app: documind-backend
+    spec:
+      containers:
+        - name: api
+          image: documind/backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: documind-config
+            - secretRef:
+                name: documind-secrets
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 8
+            periodSeconds: 10
+          volumeMounts:
+            - name: dataset
+              mountPath: /data/documind_ai_synthetic_dataset
+              readOnly: true
+      volumes:
+        - name: dataset
+          hostPath:
+            path: /opt/documind/dataset/documind_ai_synthetic_dataset
+            type: DirectoryOrCreate

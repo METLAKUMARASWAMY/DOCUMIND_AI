@@ -1,0 +1,7 @@
+Purchase Order PO-8840
+Buyer: AnchorLife Insurance
+Vendor: ClaimAssist Technologies
+Related Contract: MSA-8840
+Approved Amount: USD 48,800.00
+Payment Terms: Net 30
+Approval Status: Approved by Procurement.

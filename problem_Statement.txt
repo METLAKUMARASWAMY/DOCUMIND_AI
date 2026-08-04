@@ -1,0 +1,360 @@
+Problem Statement
+
+Enterprise document review is often slow, repetitive, error-prone and difficult to audit because important information is distributed across invoices, purchase orders, contracts, receipts, banking documents, forms and reports. Existing document-processing systems mainly perform OCR, basic field extraction or keyword search, but they often fail to understand complex layouts, tables, signatures, stamps, clauses and relationships between multiple documents. They also provide limited support for detecting duplicate documents, bank-account mismatches, amount inconsistencies, unusual transaction patterns and other suspicious indicators.
+
+Text-only document chatbots may lose important visual and spatial information, while generative models can produce unsupported answers when the required evidence is missing. In addition, many current solutions do not preserve page numbers, bounding boxes, confidence scores or source evidence for their predictions, making the results difficult to verify. Automatically generated risk decisions without human validation can also lead to false accusations and unreliable enterprise decisions.
+
+Therefore, there is a need for an intelligent, multimodal and auditable enterprise document analysis platform that can process document images and PDFs, extract structured information using OCR and layout-aware models, understand tables and visual elements, connect related documents, perform evidence-grounded question answering, detect explainable risk indicators and route uncertain or high-risk cases to human reviewers.
+
+The proposed DocuMind Vision AI system addresses this problem by combining OCR, LayoutLMv3-based document understanding, visual object detection, contract intelligence, business-rule validation, duplicate detection, anomaly analysis, vector-based RAG and GraphRAG. The system generates structured outputs, confidence scores, visual evidence, cross-document relationships and review recommendations while maintaining a complete audit trail. It does not automatically confirm fraud; instead, it identifies suspicious evidence and assists authorised reviewers in making informed and traceable decisions.
+
+One-paragraph academic version
+
+Enterprise document review is inefficient and difficult to audit because critical information is distributed across visually complex and interrelated documents such as invoices, purchase orders, contracts, receipts and banking records. Existing systems primarily support OCR, isolated field extraction or basic semantic search, but provide limited capability for understanding document layouts, preserving visual evidence, reasoning across multiple documents, detecting inconsistencies and generating reliable risk indicators. Furthermore, text-only retrieval systems may lose spatial relationships, while generative models can produce unsupported responses without clear source attribution. Hence, there is a need for a multimodal enterprise document intelligence platform that integrates visual document understanding, structured information extraction, cross-document validation, evidence-grounded question answering, explainable risk screening, confidence-based human review and audit logging. The proposed DocuMind Vision AI platform aims to fulfil this requirement by transforming unstructured enterprise documents into structured, searchable and verifiable information while supporting human-validated decision-making.
+
+what are the challenges and gaps
+
+Challenges and Research Gaps in DocuMind Vision AI
+
+A challenge is a practical or technical difficulty faced while developing the system. A research gap is a capability that existing papers or systems have not adequately solved.
+
+1. Major Challenges
+1. Document quality and OCR errors
+
+Enterprise documents may be blurred, rotated, compressed, photographed under poor lighting or contain low-resolution text. They may also include handwriting, stamps, tables and mixed fonts.
+
+An OCR mistake can affect every later stage:
+
+Incorrect OCR
+     ↓
+Incorrect LayoutLMv3 extraction
+     ↓
+Incorrect validation
+     ↓
+Wrong retrieval evidence
+     ↓
+Incorrect answer or risk indicator
+
+For example:
+
+Original amount: ₹1,18,000
+OCR output:      ₹1,78,000
+
+This error may falsely produce an amount mismatch.
+
+Project response: Use preprocessing, OCR confidence, PP-OCR, model disagreement checks and mandatory review for critical low-confidence fields.
+
+
+
+2. Understanding complex visual layouts
+
+Plain OCR extracts words but does not reliably understand:
+Which value belongs to which label
+Table rows and columns
+Checkbox-label relationships
+Signature and approval regions
+Headers, footers and footnotes
+Clauses distributed across pages
+
+DUDE shows that current systems still perform far below humans on documents containing tables, charts, figures, lists, checkboxes, stamps and other visual elements.
+Project response: Combine OCR, PP-Structure, LayoutLMv3, table models and visual object detection rather than using flattened OCR text alone.
+
+
+
+3. Long and multi-page documents
+
+LayoutLMv3 and similar models have limited input lengths. A long contract may contain tens or hundreds of pages, but the model cannot process all tokens simultaneously.
+Important evidence may be distributed across pages:
+
+Page 2  → Payment terms
+Page 8  → Liability clause
+Page 15 → Termination conditions
+Page 21 → Signatures
+
+Questions may also require arithmetic, comparisons, counting and multi-hop reasoning across pages. DUDE specifically identifies these as difficult categories.
+Project response: Process documents page-wise, construct section-aware chunks and combine page-level outputs using hierarchical retrieval.
+
+4. Preserving layout during extraction and retrieval
+Converting all OCR results into one plain text string can destroy spatial relationships.
+For example:
+
+Vendor Name        ABC Technologies
+Account Number     12345678
+Total Amount       ₹2,50,000
+
+Flattened text may not reliably preserve which value belongs to which label.
+DocCVQA found that rigid database methods could fail catastrophically when the field relationship was not extracted correctly. It also notes that some structured methods require manually translating natural-language questions into SQL and do not generalise well.
+Project response: Store text together with field type, bounding boxes, page, table cell, section and confidence.
+
+5. Multi-document relationship reasoning
+Many enterprise decisions cannot be made using one document alone.
+Example:
+
+Invoice
+   ↓ references
+Purchase Order
+   ↓ governed by
+Contract
+   ↓ belongs to
+Vendor
+   ↓ registered with
+Approved Bank Account
+
+Traditional vector RAG retrieves semantically similar text, but it may not properly follow explicit relationships among vendors, accounts, contracts and purchase orders. GraphRAG was proposed because conventional text retrieval struggles to represent such relational knowledge.
+Project response: Combine MongoDB structured search, vector retrieval and Neo4j graph traversal.
+
+6. Retrieval errors and hallucination
+An LLM may produce a convincing answer even when:
+The correct document was not retrieved.
+The evidence is incomplete.
+The OCR text is incorrect.
+The question is not answerable from the uploaded files.
+RAG reduces hallucination but does not eliminate it. Even learned retrieval systems can retrieve irrelevant or repeated evidence.
+Project response: Require citations, evidence metadata, minimum retrieval thresholds and a supported/not-found answer status.
+
+7. Non-answerable questions
+A reliable enterprise system must recognise when information is absent.
+Example:
+
+Question:
+Who approved this payment?
+Available document:
+No approver name or signature is present.
+The correct response is:
+The available documents do not contain sufficient evidence to identify the approver.
+It should not guess a name. DUDE includes non-answerable questions because current models often make unreliable predictions when the answer is not supported. It also demonstrates major failures in visual, arithmetic and comparison questions.
+
+8. Confidence calibration
+
+A model may be highly confident and still be wrong. Raw softmax probability is not automatically a trustworthy business confidence score.
+DUDE observes that confidence evaluation is rarely reported even though production document systems need it for deciding which results can be automated and which must be reviewed.
+Project response: Combine OCR confidence, extraction confidence, rule consistency and model agreement, then calibrate using ECE, AURC and risk-coverage curves.
+
+9. Limited labelled enterprise data
+
+Training requires labelled examples for:
+Invoice fields
+Contract clauses
+Signatures and stamps
+Tables
+Tampered regions
+Duplicate documents
+Suspicious transactions
+Graph relationships
+Real enterprise data is sensitive and expensive to annotate. Suspicious or fraudulent examples are particularly rare, creating severe class imbalance.
+Project response: Use transfer learning, synthetic data, active learning, reviewer corrections and class-sensitive evaluation such as AUPRC rather than accuracy alone.
+
+10. Fraud cannot be proved from one document
+
+A visually edited invoice may be suspicious, but an image alone usually cannot establish fraud.
+External verification may require:
+
+Vendor master data
+Purchase orders
+Contracts
+Approved bank accounts
+Previous invoices
+Payment history
+Reviewer information
+
+Therefore, the system must distinguish:
+Visual anomaly detected       ≠ Confirmed forgery
+Bank-account mismatch         ≠ Confirmed fraud
+Unusual transaction pattern   ≠ Proven criminal activity
+Project response: Generate explainable risk indicators and leave final confirmation to an authorised reviewer.
+
+11. Graph construction and graph quality
+
+GraphRAG depends on accurate entities and relationships. Incorrect extraction can create incorrect edges:
+Wrong vendor extraction
+       ↓
+Wrong vendor–invoice relationship
+       ↓
+Incorrect graph path
+       ↓
+False risk alert
+
+Entity resolution is also difficult because the same vendor may appear as:
+
+ABC Technologies Pvt. Ltd.
+ABC Technologies
+ABC Tech Pvt Ltd
+A.B.C. Technologies
+
+Project response: Use normalisation, deterministic matching, confidence thresholds and human approval for uncertain graph relationships.
+
+12. Graph scalability and updates
+
+Enterprise graphs change whenever a new invoice, vendor, account or contract is added. Many GraphRAG methods assume static graphs, but real systems require continuous updates. The GraphRAG survey identifies dynamic updates, multimodal graph integration and large-scale retrieval as major unresolved challenges.
+Large graphs also create expensive subgraph retrieval and long contexts for LLM generation.
+
+13. Explainability
+
+A risk score such as 82/100 is insufficient unless the system explains how it was produced.
+A useful explanation should show:
+Risk score: 82
+Evidence:
+• Bank account differs from vendor master.
+• Same account is linked to another vendor.
+• Invoice total does not match subtotal and tax.
+• Signature confidence is low.
+The GNN fraud literature identifies scalability, adaptability and interpretability as major areas requiring further research.
+
+14. Computational cost and latency
+
+The hybrid system contains several expensive components:
+OCR
+Layout analysis
+LayoutLMv3
+Donut
+Visual detection
+Embedding generation
+Reranking
+LLM generation
+Graph traversal
+
+Running every model on every page would be slow and expensive.
+
+Project response: Use selective routing:
+
+Normal page
+    ↓
+OCR + PP-Structure + LayoutLMv3
+
+Low-confidence or complex page
+    ↓
+Advanced parser or Donut fallback
+15. Security and privacy
+
+Documents may contain:
+
+Bank-account numbers
+Tax identifiers
+Personal addresses
+Signatures
+Contractual information
+Confidential business data
+
+The platform must prevent unauthorised access, data leakage and cross-organisation retrieval.
+
+Project response: Implement role-based access, tenant isolation, encryption, masked fields, secure file storage and immutable audit logs.
+
+2. Research Gaps Identified from the Papers
+Gap 1: Existing solutions are fragmented
+
+The papers separately address OCR, layout understanding, document QA, contract extraction, RAG, GraphRAG and fraud analysis.
+
+There is limited research on an integrated system that performs:
+
+Visual understanding
+      +
+Structured extraction
+      +
+Cross-document validation
+      +
+Grounded QA
+      +
+Risk screening
+      +
+Human review
+      +
+Audit logging
+
+Our project fills this gap through an end-to-end enterprise workflow.
+
+Gap 2: Limited comparison between OCR-dependent and OCR-free models
+
+LayoutLMv3 depends on OCR, while Donut performs OCR-free extraction. Existing work does not fully establish which approach is most reliable for varied enterprise documents under identical conditions.
+
+Our contribution: Compare LayoutLMv3 and Donut using:
+
+Field-level F1
+OCR robustness
+Latency
+Memory usage
+Low-quality scan performance
+Visual traceability
+Gap 3: Visual evidence is often lost after extraction
+
+Many systems produce structured text or answers but do not preserve:
+
+Page number
+Bounding box
+Source region
+Extraction model
+Confidence
+Review status
+
+Our contribution: Every important output remains connected to its exact visual source.
+
+Gap 4: Single-document understanding dominates existing work
+
+DocVQA mainly focuses on individual document images, while real business decisions involve collections of invoices, contracts, purchase orders and banking records.
+
+Our contribution: Extend document intelligence from single-page extraction to collection-level comparison and reasoning.
+
+Gap 5: Weak integration of structured, semantic and graph retrieval
+
+Structured databases are accurate for exact fields but rigid. Vector retrieval is flexible but may overlook relationships. Graph retrieval supports relationships but is more complex.
+
+Our contribution: Develop a query router that chooses among:
+
+MongoDB structured lookup
+Vector RAG
+GraphRAG
+Deterministic calculations
+Visual evidence retrieval
+Gap 6: Limited multimodal GraphRAG
+
+Most knowledge graphs mainly contain textual entities and relationships. Integrating page images, bounding boxes, tables, signatures and visual-risk regions remains challenging. The GraphRAG survey identifies multimodal integration as an unresolved issue because it increases graph size and complexity.
+
+Our contribution: Connect graph entities to document pages and visual evidence regions.
+
+Gap 7: Lack of unified GraphRAG benchmarks
+
+GraphRAG is still a developing research area and lacks standardised benchmarks for comparing different methods.
+
+Our contribution: Create project-specific evaluation cases for:
+
+Vendor-account mismatch
+Invoice–PO comparison
+Contract–invoice conflict
+Duplicate documents
+Multi-hop document questions
+Gap 8: Insufficient confidence-based human review
+
+Most academic work concentrates on model accuracy but does not fully implement operational review workflows.
+
+Our contribution: Route low-confidence and critical mismatches to reviewers and measure:
+
+Reviewer acceptance rate
+Correction rate
+Review time
+Escalation rate
+Critical-error escape rate
+Gap 9: Risk detection usually ignores document visuals
+
+Financial fraud models often analyse transactions and graph relationships, while document models analyse text and layout. Few systems combine:
+
+Visual tampering signals
+Extracted financial fields
+Business-rule failures
+Duplicate similarity
+Historical anomalies
+Graph relationships
+
+Our contribution: Use a layered, explainable risk engine combining all these evidence types.
+
+Gap 10: Limited domain and language generalisation
+
+Enterprise documents vary across industries, countries and languages. DUDE acknowledges that its benchmark is limited to English and still represents only a small portion of real-world document diversity.
+
+Our contribution: Use modular models and configurable schemas while clearly evaluating only the document types and languages represented in the project dataset.
+
+3. Concise Research-Gap Statement
+
+Existing research has achieved significant progress in OCR, multimodal document understanding, visual question answering, contract clause extraction, retrieval-augmented generation and graph-based anomaly analysis. However, these capabilities are generally developed and evaluated independently. There remains a lack of an integrated enterprise document-intelligence system that preserves visual evidence, processes multi-page and multi-document collections, combines structured, semantic and graph-based retrieval, performs cross-document consistency checks, generates explainable risk indicators, calibrates confidence and supports human-validated decisions with complete auditability. DocuMind Vision AI addresses this gap by combining these components within a unified and traceable workflow.
+
+4. Main Challenge of the Project in One Sentence
+
+The main challenge is not simply extracting text, but reliably transforming visually complex and interconnected documents into accurate, evidence-grounded and explainable decisions without allowing model errors or hallucinations to cause unsafe automatic conclusions.

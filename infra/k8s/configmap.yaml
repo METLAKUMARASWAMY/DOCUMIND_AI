@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: documind-config
+  namespace: documind
+data:
+  APP_ENV: production
+  CHROMA_HOST: chroma
+  NEO4J_URI: bolt://neo4j:7687
+

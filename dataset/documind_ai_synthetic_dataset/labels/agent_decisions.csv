@@ -1,0 +1,85 @@
+case_id,agent_name,decision,confidence,next_action
+case-df5ea07cd6,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-df5ea07cd6,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-df5ea07cd6,Legal Agent,legal clause review completed,0.84,none
+case-df5ea07cd6,Financial Agent,payment review completed,0.82,hold_payment
+case-df5ea07cd6,Compliance Agent,compliance review completed,0.8,hold_payment
+case-df5ea07cd6,Risk Agent,risk workflow recommendation produced,0.83,hold_payment
+case-df5ea07cd6,Summary Agent,executive summary generated,0.87,none
+case-0002,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0002,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0002,Legal Agent,legal clause review completed,0.9,none
+case-0002,Financial Agent,payment review completed,0.82,escalate_to_finance
+case-0002,Compliance Agent,compliance review completed,0.92,escalate_to_finance
+case-0002,Risk Agent,risk workflow recommendation produced,0.91,escalate_to_finance
+case-0002,Summary Agent,executive summary generated,0.87,none
+case-0003,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0003,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0003,Legal Agent,legal clause review completed,0.9,none
+case-0003,Financial Agent,payment review completed,0.91,request_changes
+case-0003,Compliance Agent,compliance review completed,0.8,request_changes
+case-0003,Risk Agent,risk workflow recommendation produced,0.91,request_changes
+case-0003,Summary Agent,executive summary generated,0.87,none
+case-0004,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0004,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0004,Legal Agent,legal clause review completed,0.9,none
+case-0004,Financial Agent,payment review completed,0.91,approve
+case-0004,Compliance Agent,compliance review completed,0.92,approve
+case-0004,Risk Agent,risk workflow recommendation produced,0.91,approve
+case-0004,Summary Agent,executive summary generated,0.87,none
+case-0005,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0005,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0005,Legal Agent,legal clause review completed,0.9,none
+case-0005,Financial Agent,payment review completed,0.82,hold_payment
+case-0005,Compliance Agent,compliance review completed,0.92,hold_payment
+case-0005,Risk Agent,risk workflow recommendation produced,0.83,hold_payment
+case-0005,Summary Agent,executive summary generated,0.87,none
+case-0006,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0006,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0006,Legal Agent,legal clause review completed,0.84,none
+case-0006,Financial Agent,payment review completed,0.91,request_changes
+case-0006,Compliance Agent,compliance review completed,0.8,request_changes
+case-0006,Risk Agent,risk workflow recommendation produced,0.91,request_changes
+case-0006,Summary Agent,executive summary generated,0.87,none
+case-0007,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0007,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0007,Legal Agent,legal clause review completed,0.9,none
+case-0007,Financial Agent,payment review completed,0.82,escalate_to_finance
+case-0007,Compliance Agent,compliance review completed,0.92,escalate_to_finance
+case-0007,Risk Agent,risk workflow recommendation produced,0.91,escalate_to_finance
+case-0007,Summary Agent,executive summary generated,0.87,none
+case-0008,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0008,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0008,Legal Agent,legal clause review completed,0.9,none
+case-0008,Financial Agent,payment review completed,0.82,approve
+case-0008,Compliance Agent,compliance review completed,0.92,approve
+case-0008,Risk Agent,risk workflow recommendation produced,0.91,approve
+case-0008,Summary Agent,executive summary generated,0.87,none
+case-0009,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0009,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0009,Legal Agent,legal clause review completed,0.84,none
+case-0009,Financial Agent,payment review completed,0.91,request_changes
+case-0009,Compliance Agent,compliance review completed,0.8,request_changes
+case-0009,Risk Agent,risk workflow recommendation produced,0.91,request_changes
+case-0009,Summary Agent,executive summary generated,0.87,none
+case-0010,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0010,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0010,Legal Agent,legal clause review completed,0.9,none
+case-0010,Financial Agent,payment review completed,0.82,request_changes
+case-0010,Compliance Agent,compliance review completed,0.8,request_changes
+case-0010,Risk Agent,risk workflow recommendation produced,0.83,request_changes
+case-0010,Summary Agent,executive summary generated,0.87,none
+case-0011,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0011,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0011,Legal Agent,legal clause review completed,0.9,none
+case-0011,Financial Agent,payment review completed,0.91,approve
+case-0011,Compliance Agent,compliance review completed,0.92,approve
+case-0011,Risk Agent,risk workflow recommendation produced,0.91,approve
+case-0011,Summary Agent,executive summary generated,0.87,none
+case-0012,Document Understanding Agent,classified and extracted document entities,0.88,none
+case-0012,Retrieval Agent,indexed evidence for citation-based question answering,0.86,none
+case-0012,Legal Agent,legal clause review completed,0.9,none
+case-0012,Financial Agent,payment review completed,0.91,approve
+case-0012,Compliance Agent,compliance review completed,0.92,approve
+case-0012,Risk Agent,risk workflow recommendation produced,0.91,approve
+case-0012,Summary Agent,executive summary generated,0.87,none

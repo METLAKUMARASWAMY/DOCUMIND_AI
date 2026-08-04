@@ -1,0 +1,13 @@
+Master Services Agreement MSA-3917
+Customer: NorthStar Clinics
+Vendor: CareOps Analytics
+Effective Date: 2026-01-15
+Payment Terms: Net 30
+Governing Law: Massachusetts
+Services: vendor will provide document processing, analytics, and enterprise support.
+Termination: either party may terminate for uncured material breach after thirty days written notice.
+Confidentiality: both parties shall protect confidential information using reasonable safeguards.
+Indemnity: vendor shall indemnify customer against third-party claims arising from vendor negligence.
+Audit Rights: customer may audit vendor controls with reasonable notice once per year.
+Data Handling: vendor will follow general privacy practices for operational data.
+Manual overrides require written approval from customer finance and compliance teams.

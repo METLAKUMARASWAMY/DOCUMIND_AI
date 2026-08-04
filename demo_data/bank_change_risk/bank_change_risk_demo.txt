@@ -1,0 +1,11 @@
+Vendor Bank Update Request
+Vendor: ABC Suppliers Pvt Ltd
+Old Bank Account: 123456789012
+New Bank Account: 987654321098
+Bank Name: HDFC Bank
+IFSC: HDFC0002045
+Request Date: May 15, 2026
+Requester: collections@abcsuppliers-payments.co
+Please update the account urgently for same day wire release.
+Do not call the old finance contact because they are unavailable.
+Payment should be released to the new bank account after this update.

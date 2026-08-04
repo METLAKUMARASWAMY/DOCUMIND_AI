@@ -1,0 +1,109 @@
+case_id,entity_type,entity_value,source_document_id,confidence
+case-df5ea07cd6,company,Titan Commercial Bank,doc-case-df5ea07cd6-contract,0.92
+case-df5ea07cd6,vendor,Aster Analytics Inc,doc-case-df5ea07cd6-contract,0.92
+case-df5ea07cd6,purchase_order_number,PO-4409,doc-case-df5ea07cd6-invoice,0.92
+case-df5ea07cd6,invoice_number,INV-4409,doc-case-df5ea07cd6-invoice,0.92
+case-df5ea07cd6,contract_number,MSA-4409,doc-case-df5ea07cd6-contract,0.92
+case-df5ea07cd6,po_amount,"USD 42,500.00",doc-case-df5ea07cd6-invoice,0.92
+case-df5ea07cd6,invoice_amount,"USD 42,500.00",doc-case-df5ea07cd6-invoice,0.92
+case-df5ea07cd6,payment_terms,Net 30,doc-case-df5ea07cd6-contract,0.92
+case-df5ea07cd6,governing_law,New York,doc-case-df5ea07cd6-contract,0.92
+case-0002,company,NovaShield Insurance,doc-case-0002-contract,0.92
+case-0002,vendor,NorthBridge Supplies LLC,doc-case-0002-contract,0.92
+case-0002,purchase_order_number,PO-1182,doc-case-0002-invoice,0.92
+case-0002,invoice_number,INV-1182,doc-case-0002-invoice,0.92
+case-0002,contract_number,MSA-1182,doc-case-0002-contract,0.92
+case-0002,po_amount,"USD 18,750.00",doc-case-0002-invoice,0.92
+case-0002,invoice_amount,"USD 19,750.00",doc-case-0002-invoice,0.92
+case-0002,payment_terms,Net 45,doc-case-0002-contract,0.92
+case-0002,governing_law,California,doc-case-0002-contract,0.92
+case-0003,company,Medora Health Network,doc-case-0003-contract,0.92
+case-0003,vendor,MedSecure Systems,doc-case-0003-contract,0.92
+case-0003,purchase_order_number,PO-2260,doc-case-0003-invoice,0.92
+case-0003,invoice_number,INV-2260,doc-case-0003-invoice,0.92
+case-0003,contract_number,MSA-2260,doc-case-0003-contract,0.92
+case-0003,po_amount,"USD 64,000.00",doc-case-0003-invoice,0.92
+case-0003,invoice_amount,"USD 64,000.00",doc-case-0003-invoice,0.92
+case-0003,payment_terms,Net 30,doc-case-0003-contract,0.92
+case-0003,governing_law,Texas,doc-case-0003-contract,0.92
+case-0004,company,VoltEdge Manufacturing,doc-case-0004-contract,0.92
+case-0004,vendor,PrimeParts Global,doc-case-0004-contract,0.92
+case-0004,purchase_order_number,PO-7710,doc-case-0004-invoice,0.92
+case-0004,invoice_number,INV-7710,doc-case-0004-invoice,0.92
+case-0004,contract_number,MSA-7710,doc-case-0004-contract,0.92
+case-0004,po_amount,"USD 91,200.00",doc-case-0004-invoice,0.92
+case-0004,invoice_amount,"USD 91,200.00",doc-case-0004-invoice,0.92
+case-0004,payment_terms,Net 60,doc-case-0004-contract,0.92
+case-0004,governing_law,Illinois,doc-case-0004-contract,0.92
+case-0005,company,FinTrust Capital,doc-case-0005-contract,0.92
+case-0005,vendor,LedgerPoint Data Labs,doc-case-0005-contract,0.92
+case-0005,purchase_order_number,PO-9031,doc-case-0005-invoice,0.92
+case-0005,invoice_number,INV-9031,doc-case-0005-invoice,0.92
+case-0005,contract_number,MSA-9031,doc-case-0005-contract,0.92
+case-0005,po_amount,"USD 155,000.00",doc-case-0005-invoice,0.92
+case-0005,invoice_amount,"USD 155,000.00",doc-case-0005-invoice,0.92
+case-0005,payment_terms,Net 30,doc-case-0005-contract,0.92
+case-0005,governing_law,Delaware,doc-case-0005-contract,0.92
+case-0006,company,Harbor Legal Group,doc-case-0006-contract,0.92
+case-0006,vendor,LexData Review Services,doc-case-0006-contract,0.92
+case-0006,purchase_order_number,PO-5421,doc-case-0006-invoice,0.92
+case-0006,invoice_number,INV-5421,doc-case-0006-invoice,0.92
+case-0006,contract_number,MSA-5421,doc-case-0006-contract,0.92
+case-0006,po_amount,"USD 38,400.00",doc-case-0006-invoice,0.92
+case-0006,invoice_amount,"USD 38,400.00",doc-case-0006-invoice,0.92
+case-0006,payment_terms,Net 15,doc-case-0006-contract,0.92
+case-0006,governing_law,New York,doc-case-0006-contract,0.92
+case-0007,company,Metro Public Works,doc-case-0007-contract,0.92
+case-0007,vendor,CivicCloud Solutions,doc-case-0007-contract,0.92
+case-0007,purchase_order_number,PO-6724,doc-case-0007-invoice,0.92
+case-0007,invoice_number,INV-6724,doc-case-0007-invoice,0.92
+case-0007,contract_number,MSA-6724,doc-case-0007-contract,0.92
+case-0007,po_amount,"USD 73,500.00",doc-case-0007-invoice,0.92
+case-0007,invoice_amount,"USD 74,900.00",doc-case-0007-invoice,0.92
+case-0007,payment_terms,Net 30,doc-case-0007-contract,0.92
+case-0007,governing_law,Virginia,doc-case-0007-contract,0.92
+case-0008,company,UnionTrust Bank,doc-case-0008-contract,0.92
+case-0008,vendor,SecureLedger AI,doc-case-0008-contract,0.92
+case-0008,purchase_order_number,PO-3108,doc-case-0008-invoice,0.92
+case-0008,invoice_number,INV-3108,doc-case-0008-invoice,0.92
+case-0008,contract_number,MSA-3108,doc-case-0008-contract,0.92
+case-0008,po_amount,"USD 25,000.00",doc-case-0008-invoice,0.92
+case-0008,invoice_amount,"USD 25,000.00",doc-case-0008-invoice,0.92
+case-0008,payment_terms,Net 30,doc-case-0008-contract,0.92
+case-0008,governing_law,Florida,doc-case-0008-contract,0.92
+case-0009,company,AnchorLife Insurance,doc-case-0009-contract,0.92
+case-0009,vendor,ClaimAssist Technologies,doc-case-0009-contract,0.92
+case-0009,purchase_order_number,PO-8840,doc-case-0009-invoice,0.92
+case-0009,invoice_number,INV-8840,doc-case-0009-invoice,0.92
+case-0009,contract_number,MSA-8840,doc-case-0009-contract,0.92
+case-0009,po_amount,"USD 48,800.00",doc-case-0009-invoice,0.92
+case-0009,invoice_amount,"USD 48,800.00",doc-case-0009-invoice,0.92
+case-0009,payment_terms,Net 30,doc-case-0009-contract,0.92
+case-0009,governing_law,Ohio,doc-case-0009-contract,0.92
+case-0010,company,NorthStar Clinics,doc-case-0010-contract,0.92
+case-0010,vendor,CareOps Analytics,doc-case-0010-contract,0.92
+case-0010,purchase_order_number,PO-3917,doc-case-0010-invoice,0.92
+case-0010,invoice_number,INV-3917,doc-case-0010-invoice,0.92
+case-0010,contract_number,MSA-3917,doc-case-0010-contract,0.92
+case-0010,po_amount,"USD 80,500.00",doc-case-0010-invoice,0.92
+case-0010,invoice_amount,"USD 82,000.00",doc-case-0010-invoice,0.92
+case-0010,payment_terms,Net 30,doc-case-0010-contract,0.92
+case-0010,governing_law,Massachusetts,doc-case-0010-contract,0.92
+case-0011,company,Apex Robotics Ltd,doc-case-0011-contract,0.92
+case-0011,vendor,MachineIQ Services,doc-case-0011-contract,0.92
+case-0011,purchase_order_number,PO-7199,doc-case-0011-invoice,0.92
+case-0011,invoice_number,INV-7199,doc-case-0011-invoice,0.92
+case-0011,contract_number,MSA-7199,doc-case-0011-contract,0.92
+case-0011,po_amount,"USD 120,000.00",doc-case-0011-invoice,0.92
+case-0011,invoice_amount,"USD 120,000.00",doc-case-0011-invoice,0.92
+case-0011,payment_terms,Net 45,doc-case-0011-contract,0.92
+case-0011,governing_law,Michigan,doc-case-0011-contract,0.92
+case-0012,company,Summit Payments Corp,doc-case-0012-contract,0.92
+case-0012,vendor,PayGrid Infrastructure,doc-case-0012-contract,0.92
+case-0012,purchase_order_number,PO-5502,doc-case-0012-invoice,0.92
+case-0012,invoice_number,INV-5502,doc-case-0012-invoice,0.92
+case-0012,contract_number,MSA-5502,doc-case-0012-contract,0.92
+case-0012,po_amount,"USD 53,000.00",doc-case-0012-invoice,0.92
+case-0012,invoice_amount,"USD 53,000.00",doc-case-0012-invoice,0.92
+case-0012,payment_terms,Net 30,doc-case-0012-contract,0.92
+case-0012,governing_law,Delaware,doc-case-0012-contract,0.92

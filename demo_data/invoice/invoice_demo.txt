@@ -1,0 +1,17 @@
+Tax Invoice
+Vendor: ABC Suppliers Pvt Ltd
+Buyer: Northwind Bank Finance Operations
+Invoice Number: INV-2045
+Invoice Date: May 12, 2026
+Due Date: June 11, 2026
+PO Number: PO-1045
+Item: GPU support renewal | Qty: 5 | Unit Price: INR 49,000 | Amount: INR 2,45,000
+Subtotal: INR 2,25,000
+Tax: INR 20,000
+Total Amount: INR 2,45,000
+Currency: INR
+Payment Terms: Net 30 after invoice approval
+Bank Name: Axis Bank
+Account Number: 123456789012
+IFSC: UTIB0001045
+Note: bank details are newly printed on this invoice and should be checked before payment release.

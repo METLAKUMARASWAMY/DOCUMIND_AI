@@ -1,0 +1,6 @@
+From: payments@asteranalyticsinc.example
+To: accounts.payable@titancommercialbank.example
+Subject: Payment instructions for INV-4409
+Please process payment for invoice INV-4409 against purchase order PO-4409.
+We recently changed our bank account. Please use the new account details for this payment.
+This is urgent. Please wire funds today to avoid service interruption.

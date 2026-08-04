@@ -1,0 +1,13 @@
+case_id,question,ground_truth_answer,expected_evidence_ids
+case-df5ea07cd6,What exceptions require review?,"Review required for: compliance clause exception, payment or vendor fraud signal.",ev-case-df5ea07cd6-contract-001;ev-case-df5ea07cd6-email-001;ev-case-df5ea07cd6-email-001;ev-case-df5ea07cd6-invoice-001
+case-0002,What exceptions require review?,Review required for: invoice amount mismatch.,ev-case-0002-invoice-001
+case-0003,What exceptions require review?,Review required for: compliance clause exception.,ev-case-0003-contract-001;ev-case-0003-contract-001
+case-0004,What exceptions require review?,No review exception found.,ev-case-0004-policy-001
+case-0005,What exceptions require review?,Review required for: payment or vendor fraud signal.,ev-case-0005-invoice-001;ev-case-0005-invoice-001
+case-0006,What exceptions require review?,Review required for: compliance clause exception.,ev-case-0006-contract-001
+case-0007,What exceptions require review?,"Review required for: invoice amount mismatch, payment or vendor fraud signal.",ev-case-0007-invoice-001;ev-case-0007-invoice-001
+case-0008,What exceptions require review?,Review required for: payment or vendor fraud signal.,ev-case-0008-email-001
+case-0009,What exceptions require review?,Review required for: compliance clause exception.,ev-case-0009-contract-001;ev-case-0009-contract-001
+case-0010,What exceptions require review?,"Review required for: invoice amount mismatch, compliance clause exception, payment or vendor fraud signal.",ev-case-0010-contract-001;ev-case-0010-invoice-001;ev-case-0010-email-001
+case-0011,What exceptions require review?,Review required for: payment or vendor fraud signal.,ev-case-0011-invoice-001
+case-0012,What exceptions require review?,No review exception found.,ev-case-0012-policy-001

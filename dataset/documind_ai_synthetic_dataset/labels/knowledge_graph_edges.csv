@@ -1,0 +1,85 @@
+case_id,source,relationship,target
+case-df5ea07cd6,tenant-local,OWNS,case-df5ea07cd6
+case-df5ea07cd6,case-df5ea07cd6,CONTAINS,doc-case-df5ea07cd6-contract
+case-df5ea07cd6,case-df5ea07cd6,CONTAINS,doc-case-df5ea07cd6-invoice
+case-df5ea07cd6,doc-case-df5ea07cd6-invoice,ISSUED_BY,vendor:aster analytics inc
+case-df5ea07cd6,doc-case-df5ea07cd6-invoice,REFERENCES,purchase_order:po-4409
+case-df5ea07cd6,doc-case-df5ea07cd6-contract,MENTIONS,governing_law:new york
+case-df5ea07cd6,doc-case-df5ea07cd6-invoice,MENTIONS,"amount:usd 42,500.00"
+case-0002,tenant-local,OWNS,case-0002
+case-0002,case-0002,CONTAINS,doc-case-0002-contract
+case-0002,case-0002,CONTAINS,doc-case-0002-invoice
+case-0002,doc-case-0002-invoice,ISSUED_BY,vendor:northbridge supplies llc
+case-0002,doc-case-0002-invoice,REFERENCES,purchase_order:po-1182
+case-0002,doc-case-0002-contract,MENTIONS,governing_law:california
+case-0002,doc-case-0002-invoice,MENTIONS,"amount:usd 19,750.00"
+case-0003,tenant-local,OWNS,case-0003
+case-0003,case-0003,CONTAINS,doc-case-0003-contract
+case-0003,case-0003,CONTAINS,doc-case-0003-invoice
+case-0003,doc-case-0003-invoice,ISSUED_BY,vendor:medsecure systems
+case-0003,doc-case-0003-invoice,REFERENCES,purchase_order:po-2260
+case-0003,doc-case-0003-contract,MENTIONS,governing_law:texas
+case-0003,doc-case-0003-invoice,MENTIONS,"amount:usd 64,000.00"
+case-0004,tenant-local,OWNS,case-0004
+case-0004,case-0004,CONTAINS,doc-case-0004-contract
+case-0004,case-0004,CONTAINS,doc-case-0004-invoice
+case-0004,doc-case-0004-invoice,ISSUED_BY,vendor:primeparts global
+case-0004,doc-case-0004-invoice,REFERENCES,purchase_order:po-7710
+case-0004,doc-case-0004-contract,MENTIONS,governing_law:illinois
+case-0004,doc-case-0004-invoice,MENTIONS,"amount:usd 91,200.00"
+case-0005,tenant-local,OWNS,case-0005
+case-0005,case-0005,CONTAINS,doc-case-0005-contract
+case-0005,case-0005,CONTAINS,doc-case-0005-invoice
+case-0005,doc-case-0005-invoice,ISSUED_BY,vendor:ledgerpoint data labs
+case-0005,doc-case-0005-invoice,REFERENCES,purchase_order:po-9031
+case-0005,doc-case-0005-contract,MENTIONS,governing_law:delaware
+case-0005,doc-case-0005-invoice,MENTIONS,"amount:usd 155,000.00"
+case-0006,tenant-local,OWNS,case-0006
+case-0006,case-0006,CONTAINS,doc-case-0006-contract
+case-0006,case-0006,CONTAINS,doc-case-0006-invoice
+case-0006,doc-case-0006-invoice,ISSUED_BY,vendor:lexdata review services
+case-0006,doc-case-0006-invoice,REFERENCES,purchase_order:po-5421
+case-0006,doc-case-0006-contract,MENTIONS,governing_law:new york
+case-0006,doc-case-0006-invoice,MENTIONS,"amount:usd 38,400.00"
+case-0007,tenant-local,OWNS,case-0007
+case-0007,case-0007,CONTAINS,doc-case-0007-contract
+case-0007,case-0007,CONTAINS,doc-case-0007-invoice
+case-0007,doc-case-0007-invoice,ISSUED_BY,vendor:civiccloud solutions
+case-0007,doc-case-0007-invoice,REFERENCES,purchase_order:po-6724
+case-0007,doc-case-0007-contract,MENTIONS,governing_law:virginia
+case-0007,doc-case-0007-invoice,MENTIONS,"amount:usd 74,900.00"
+case-0008,tenant-local,OWNS,case-0008
+case-0008,case-0008,CONTAINS,doc-case-0008-contract
+case-0008,case-0008,CONTAINS,doc-case-0008-invoice
+case-0008,doc-case-0008-invoice,ISSUED_BY,vendor:secureledger ai
+case-0008,doc-case-0008-invoice,REFERENCES,purchase_order:po-3108
+case-0008,doc-case-0008-contract,MENTIONS,governing_law:florida
+case-0008,doc-case-0008-invoice,MENTIONS,"amount:usd 25,000.00"
+case-0009,tenant-local,OWNS,case-0009
+case-0009,case-0009,CONTAINS,doc-case-0009-contract
+case-0009,case-0009,CONTAINS,doc-case-0009-invoice
+case-0009,doc-case-0009-invoice,ISSUED_BY,vendor:claimassist technologies
+case-0009,doc-case-0009-invoice,REFERENCES,purchase_order:po-8840
+case-0009,doc-case-0009-contract,MENTIONS,governing_law:ohio
+case-0009,doc-case-0009-invoice,MENTIONS,"amount:usd 48,800.00"
+case-0010,tenant-local,OWNS,case-0010
+case-0010,case-0010,CONTAINS,doc-case-0010-contract
+case-0010,case-0010,CONTAINS,doc-case-0010-invoice
+case-0010,doc-case-0010-invoice,ISSUED_BY,vendor:careops analytics
+case-0010,doc-case-0010-invoice,REFERENCES,purchase_order:po-3917
+case-0010,doc-case-0010-contract,MENTIONS,governing_law:massachusetts
+case-0010,doc-case-0010-invoice,MENTIONS,"amount:usd 82,000.00"
+case-0011,tenant-local,OWNS,case-0011
+case-0011,case-0011,CONTAINS,doc-case-0011-contract
+case-0011,case-0011,CONTAINS,doc-case-0011-invoice
+case-0011,doc-case-0011-invoice,ISSUED_BY,vendor:machineiq services
+case-0011,doc-case-0011-invoice,REFERENCES,purchase_order:po-7199
+case-0011,doc-case-0011-contract,MENTIONS,governing_law:michigan
+case-0011,doc-case-0011-invoice,MENTIONS,"amount:usd 120,000.00"
+case-0012,tenant-local,OWNS,case-0012
+case-0012,case-0012,CONTAINS,doc-case-0012-contract
+case-0012,case-0012,CONTAINS,doc-case-0012-invoice
+case-0012,doc-case-0012-invoice,ISSUED_BY,vendor:paygrid infrastructure
+case-0012,doc-case-0012-invoice,REFERENCES,purchase_order:po-5502
+case-0012,doc-case-0012-contract,MENTIONS,governing_law:delaware
+case-0012,doc-case-0012-invoice,MENTIONS,"amount:usd 53,000.00"

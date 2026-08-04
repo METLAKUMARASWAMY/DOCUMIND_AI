@@ -1,0 +1,5 @@
+From: payments@primepartsglobal.example
+To: accounts.payable@voltedgemanufacturing.example
+Subject: Payment instructions for INV-7710
+Please process payment for invoice INV-7710 against purchase order PO-7710.
+Please use the bank account already registered in the vendor master record.

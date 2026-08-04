@@ -1,0 +1,15 @@
+{
+  "case_id": "contract-demo",
+  "document_type": "contract",
+  "fields": {
+    "parties": ["Northwind Bank Finance Operations", "ABC Suppliers Pvt Ltd"],
+    "contract_start_date": "April 1, 2026",
+    "contract_end_date": "March 31, 2027",
+    "payment_terms": "Net 30 after receipt of valid invoice and matching purchase order.",
+    "renewal_clause": "Renewal Clause: Automatic renewal for one year unless either party gives 60 days written notice",
+    "termination_clause": "Termination Clause: Either party may terminate for material breach after 30 days cure period",
+    "penalty_clause": "Penalty Clause: Late service credits apply, but no explicit liability cap is stated",
+    "missing_clauses": ["indemnity"],
+    "risky_clauses": ["uncapped_penalty_language", "automatic_renewal", "missing_indemnity"]
+  }
+}

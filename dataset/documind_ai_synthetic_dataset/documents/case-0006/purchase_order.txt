@@ -1,0 +1,7 @@
+Purchase Order PO-5421
+Buyer: Harbor Legal Group
+Vendor: LexData Review Services
+Related Contract: MSA-5421
+Approved Amount: USD 38,400.00
+Payment Terms: Net 15
+Approval Status: Approved by Procurement.

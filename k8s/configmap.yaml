@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: documind-config
+data:
+  APP_ENV: production
+  DOCUMIND_DATASET_PATH: /data/documind_ai_synthetic_dataset
+  RVL_CDIP_PATH: ""
+  API_HOST: 0.0.0.0
+  API_PORT: "8000"
+  FRONTEND_PORT: "5174"
+  ENABLE_CHROMA: "false"
+  ENABLE_NEO4J: "false"
+  CHROMA_HOST: chroma
+  NEO4J_URI: bolt://neo4j:7687

@@ -1,0 +1,44 @@
+profiles:
+  lite:
+    description: CPU/Mac development profile.
+    ocr_model: PP-OCRv5_mobile
+    layout_model: PP-StructureV3
+    extraction_model: LayoutLMv3-base
+    visual_detector: YOLO26n
+    fallback_models_enabled: false
+    local_llm: disabled
+  standard:
+    description: Single-GPU training and inference profile.
+    ocr_model: PP-OCRv5_server
+    layout_model: PP-StructureV3
+    extraction_model: LayoutLMv3-large
+    visual_detector: YOLO26s
+    embeddings: BAAI/bge-m3
+    reranker: BAAI/bge-reranker-v2-m3
+    local_llm: Qwen3.5-9B-quantized
+  full:
+    description: Research profile with fallback ensemble and anomaly experiments.
+    inherits: standard
+    advanced_parser: PaddleOCR-VL-1.6
+    ocr_free_baseline: Donut
+    tamper_model: SegFormer-B2-or-Swin-document-forensics
+    graph_anomaly: GraphSAGE-or-GAT-after-labelled-graph-data
+
+training_defaults:
+  seed: 42
+  split:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+  split_unit: complete_document
+  mixed_precision: true
+  early_stopping_patience: 5
+  checkpoint_metric: validation_macro_f1
+  log_to_mlflow: true
+
+evaluation_policy:
+  no_fake_metrics: true
+  require_labelled_validation_or_test_set: true
+  store_confusion_matrices: true
+  store_error_examples: true
+  store_model_card_update: true

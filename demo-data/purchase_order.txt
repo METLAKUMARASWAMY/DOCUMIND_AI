@@ -1,0 +1,7 @@
+Purchase Order PO-4409
+Vendor: Aster Analytics Inc
+Ordered By: Northwind Bank Operations
+Amount USD 42,500.00
+Payment terms Net 30
+
+Approved purchase order for analytics services under the master services agreement.

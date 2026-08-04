@@ -1,0 +1,7 @@
+Purchase Order PO-7199
+Buyer: Apex Robotics Ltd
+Vendor: MachineIQ Services
+Related Contract: MSA-7199
+Approved Amount: USD 120,000.00
+Payment Terms: Net 45
+Approval Status: Approved by Procurement.

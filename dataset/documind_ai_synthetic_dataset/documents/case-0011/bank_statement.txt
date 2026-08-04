@@ -1,0 +1,4 @@
+Bank Activity Review for Apex Robotics Ltd
+Vendor: MachineIQ Services
+Invoice: INV-7199
+Scheduled payment created for USD 120,000.00 to MachineIQ Services.

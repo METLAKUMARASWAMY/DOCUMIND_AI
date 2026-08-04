@@ -1,0 +1,10 @@
+Invoice INV-4409
+Vendor: Aster Analytics Inc
+Bill To: Northwind Bank Operations
+PO Reference: PO-4409
+Amount Due USD 42,500.00
+Payment terms Net 30
+Due Date 2026-07-15
+
+Manual override was applied without approval for expedited payment processing.
+Please process against the new bank account instructions received by email.

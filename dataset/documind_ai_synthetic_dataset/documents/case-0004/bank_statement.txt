@@ -1,0 +1,4 @@
+Bank Activity Review for VoltEdge Manufacturing
+Vendor: PrimeParts Global
+Invoice: INV-7710
+Scheduled payment created for USD 91,200.00 to PrimeParts Global.

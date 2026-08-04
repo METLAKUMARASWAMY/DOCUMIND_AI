@@ -1,0 +1,7 @@
+Purchase Order PO-4409
+Buyer: Titan Commercial Bank
+Vendor: Aster Analytics Inc
+Related Contract: MSA-4409
+Approved Amount: USD 42,500.00
+Payment Terms: Net 30
+Approval Status: Approved by Procurement.

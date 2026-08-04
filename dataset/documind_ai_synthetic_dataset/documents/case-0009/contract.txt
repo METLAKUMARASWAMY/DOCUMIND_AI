@@ -1,0 +1,10 @@
+Master Services Agreement MSA-8840
+Customer: AnchorLife Insurance
+Vendor: ClaimAssist Technologies
+Effective Date: 2026-01-15
+Payment Terms: Net 30
+Governing Law: Ohio
+Services: vendor will provide document processing, analytics, and enterprise support.
+Termination: either party may terminate for uncured material breach after thirty days written notice.
+Audit Rights: customer may audit vendor controls with reasonable notice once per year.
+Manual overrides require written approval from customer finance and compliance teams.

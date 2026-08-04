@@ -1,0 +1,13 @@
+finding_id,case_id,severity,finding,recommendation,evidence_id
+frd-case-df5ea07cd6-bank_change,case-df5ea07cd6,high,Vendor bank account change request,Verify vendor bank details through independent channel.,ev-case-df5ea07cd6-email-001
+frd-case-df5ea07cd6-urgent_wire,case-df5ea07cd6,medium,Urgent wire request language detected,Escalate to finance controls before wire payment.,ev-case-df5ea07cd6-email-001
+frd-case-df5ea07cd6-manual_override,case-df5ea07cd6,high,Manual override without approval,Require finance operations approval before processing.,ev-case-df5ea07cd6-invoice-001
+frd-case-0002-amount_mismatch,case-0002,high,Invoice amount does not match purchase order,Hold payment and request corrected invoice or finance exception.,ev-case-0002-invoice-001
+frd-case-0005-duplicate_invoice,case-0005,critical,Possible duplicate invoice,Block payment until duplicate review is complete.,ev-case-0005-invoice-001
+frd-case-0005-vendor_anomaly,case-0005,medium,Vendor anomaly requires review,Review vendor master data and transaction history.,ev-case-0005-invoice-001
+frd-case-0007-amount_mismatch,case-0007,high,Invoice amount does not match purchase order,Hold payment and request corrected invoice or finance exception.,ev-case-0007-invoice-001
+frd-case-0007-manual_override,case-0007,high,Manual override without approval,Require finance operations approval before processing.,ev-case-0007-invoice-001
+frd-case-0008-bank_change,case-0008,high,Vendor bank account change request,Verify vendor bank details through independent channel.,ev-case-0008-email-001
+frd-case-0010-amount_mismatch,case-0010,high,Invoice amount does not match purchase order,Hold payment and request corrected invoice or finance exception.,ev-case-0010-invoice-001
+frd-case-0010-urgent_wire,case-0010,medium,Urgent wire request language detected,Escalate to finance controls before wire payment.,ev-case-0010-email-001
+frd-case-0011-vendor_anomaly,case-0011,medium,Vendor anomaly requires review,Review vendor master data and transaction history.,ev-case-0011-invoice-001
