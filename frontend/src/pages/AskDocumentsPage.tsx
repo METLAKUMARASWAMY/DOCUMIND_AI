@@ -31,29 +31,38 @@ export function AskDocumentsPage() {
 
   return (
     <Box className="page-stack ask-page">
-      <PageHeader title="Ask documents" subtitle="Structured, semantic, arithmetic, visual, comparison, and relationship queries." />
+      <PageHeader title="Ask documents" />
       <Box className="ask-layout">
         <Box className="surface conversation-panel">
           {!turns.length ? (
             <Box className="ask-empty">
-              <Typography variant="h3">Ask from available evidence</Typography>
-              <Typography color="text.secondary">Answers abstain when source evidence is insufficient.</Typography>
+              <Typography variant="h3">Ask a document question</Typography>
               <Box className="prompt-suggestions">
-                {["What is the total amount?", "Which documents require review?", "Is this document signed?", "Compare invoice totals by vendor"].map((prompt) => <Button key={prompt} variant="outlined" onClick={() => setQuestion(prompt)}>{prompt}</Button>)}
+                {["Hi", "What is the fax number?", "Is this signed?", "Is this safe?"].map((prompt) => <Button key={prompt} variant="outlined" onClick={() => setQuestion(prompt)}>{prompt}</Button>)}
               </Box>
             </Box>
           ) : turns.map((turn, index) => (
             <Box className="conversation-turn" key={`${turn.response.question_id}-${index}`}>
               <Box className="user-message"><Typography>{turn.question}</Typography></Box>
               <Box className="answer-message">
-                <Box className="answer-meta"><StatusChip value={turn.response.answer_status} /><Typography variant="caption">{turn.response.query_type.replaceAll("_", " ")} | {Math.round(turn.response.confidence * 100)}%</Typography></Box>
+                <Box className="answer-meta">
+                  <StatusChip value={turn.response.answer_status} />
+                  <Typography variant="caption">
+                    {turn.response.query_type.replaceAll("_", " ")}
+                    {turn.response.citations.length ? ` | ${Math.round(turn.response.confidence * 100)}%` : ""}
+                    {turn.response.retriever !== "not_used" ? ` | ${turn.response.retriever}` : ""}
+                  </Typography>
+                </Box>
                 <Typography>{turn.response.answer}</Typography>
                 <Typography variant="body2" color="text.secondary">{turn.response.reasoning_summary}</Typography>
                 {turn.response.requires_review ? <Alert severity="warning">This answer requires human review.</Alert> : null}
                 <Box className="citation-list">
                   {turn.response.citations.map((citation, citationIndex) => (
                     <button className="citation-row" type="button" key={citation.evidence_id || citationIndex} onClick={() => openCitation(citation)}>
-                      <Box><Typography variant="caption" fontWeight={700}>[{citationIndex + 1}] Page {citation.page_number}</Typography><Typography variant="body2">{citation.source_text}</Typography></Box>
+                      <Box>
+                        <Typography variant="caption" fontWeight={700}>[{citationIndex + 1}] {citation.filename || "Document"}, page {citation.page_number}</Typography>
+                        <Typography variant="body2">{citation.source_text}</Typography>
+                      </Box>
                       <ExternalLink size={15} />
                     </button>
                   ))}

@@ -406,7 +406,33 @@ class VerifiedFinanceNarrativeService:
         return None
 
     def _render_currency_totals(self, totals: dict[str, Decimal]) -> str:
-        return ", ".join(f"{currency} {value:.2f}" for currency, value in sorted(totals.items()))
+        return ", ".join(
+            self._format_currency(currency, value)
+            for currency, value in sorted(totals.items())
+        )
+
+    def _format_currency(self, currency: str, value: Decimal) -> str:
+        symbols = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥"}
+        fixed = f"{abs(value):.2f}"
+        integer, decimals = fixed.split(".", 1)
+        if currency == "INR" and len(integer) > 3:
+            tail = integer[-3:]
+            head = integer[:-3]
+            groups = []
+            while head:
+                groups.append(head[-2:])
+                head = head[:-2]
+            integer = f"{','.join(reversed(groups))},{tail}"
+        else:
+            integer = f"{int(integer):,}"
+        sign = "-" if value < 0 else ""
+        symbol = symbols.get(currency)
+        readable = (
+            f"{sign}{symbol}{integer}.{decimals}"
+            if symbol
+            else f"{sign}{integer}.{decimals} {currency}"
+        )
+        return f"{readable} ({currency} {value:.2f})"
 
     def _normalise(self, value: str) -> str:
         return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()

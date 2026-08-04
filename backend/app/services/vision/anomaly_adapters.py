@@ -12,6 +12,7 @@ import numpy as np
 from app.core.config import settings
 from app.models.vision import AnomalyAnalysisResult, VisionDocumentRecord
 from app.services.vision.adapters import AdapterStatus, VisionAdapter
+from app.services.vision.checkpoint_validation import validate_project_file_checkpoint
 
 FEATURE_NAMES = (
     "amount_z_score_by_vendor",
@@ -279,7 +280,11 @@ class XGBoostRiskAdapter(VisionAdapter):
             if settings.xgboost_risk_checkpoint
             else None
         )
-        ready = bool(checkpoint and checkpoint.is_file())
+        checkpoint_validation = validate_project_file_checkpoint(
+            checkpoint,
+            expected_tasks={"supervised_risk", "xgboost_risk"},
+        )
+        ready = checkpoint_validation.ready
         enabled = settings.enable_heavy_models and bool(checkpoint)
         active = enabled and installed and ready
         return AdapterStatus(
@@ -289,11 +294,15 @@ class XGBoostRiskAdapter(VisionAdapter):
             reason=(
                 "Trained XGBoost checkpoint is ready."
                 if active
-                else "Provide XGBOOST_RISK_CHECKPOINT after training on labelled risk data."
+                else checkpoint_validation.reason
             ),
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
+            metadata={
+                "checkpoint": str(checkpoint) if checkpoint else None,
+                "checkpoint_validation": checkpoint_validation.metadata,
+            },
         )
 
     def analyze(self, features: dict[str, float | None]) -> AnomalyAnalysisResult:

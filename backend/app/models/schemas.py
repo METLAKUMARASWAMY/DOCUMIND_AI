@@ -340,6 +340,17 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
+class ReauthenticationRequest(BaseModel):
+    password: str
+
+
+class ReauthenticationResponse(BaseModel):
+    reauthentication_token: str
+    token_type: str = "reauthentication"
+    expires_in: int
+    authenticated_at: int
+
+
 class ForgotPasswordRequest(BaseModel):
     email: str
 

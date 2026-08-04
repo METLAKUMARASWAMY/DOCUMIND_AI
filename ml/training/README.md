@@ -1,6 +1,6 @@
 # Vision AI Training
 
-This directory holds training entry points for future model-backed adapters.
+This directory holds runnable training entry points for checkpoint-backed adapters. Runtime activation rules and current blockers are documented in `docs/MODEL_RUNTIME_VERIFICATION.md`.
 
 Rules:
 
@@ -11,7 +11,7 @@ Rules:
 - Do not report metrics unless computed from labelled validation or test data.
 - Keep original test documents untouched.
 
-Planned submodules:
+Training submodules:
 
 - `layoutlmv3/`: document classification and token classification heads.
 - `donut/`: OCR-free image-to-JSON baseline and disagreement verifier.

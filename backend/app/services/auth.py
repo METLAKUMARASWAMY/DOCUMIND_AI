@@ -19,15 +19,6 @@ from fastapi import Depends, Header, HTTPException, status
 from app.core.config import settings
 from app.models.schemas import AuthUser, LoginRequest, SignupRequest, UserRole
 
-LOCAL_DEMO_USERS = (
-    ("admin@documind.ai", "Admin@123", UserRole.admin, "Admin Reviewer"),
-    ("compliance@documind.ai", "Compliance@123", UserRole.reviewer, "Compliance Reviewer"),
-    ("finance@documind.ai", "Finance@123", UserRole.reviewer, "Finance Reviewer"),
-    ("legal@documind.ai", "Legal@123", UserRole.reviewer, "Legal Reviewer"),
-    ("risk@documind.ai", "Risk@123", UserRole.reviewer, "Risk Reviewer"),
-    ("auditor@documind.ai", "Auditor@123", UserRole.auditor, "Audit Reviewer"),
-)
-
 
 @dataclass
 class StoredUser:
@@ -54,7 +45,6 @@ class AuthService:
         self._secret = secret or settings.auth_secret or secrets.token_urlsafe(48)
         self._state_dir.mkdir(parents=True, exist_ok=True)
         self._load_state()
-        self._seed_local_demo_users()
 
     def signup(self, request: SignupRequest, *, allow_privileged_role: bool = False) -> AuthUser:
         email = self._normalize_email(request.email)
@@ -119,6 +109,48 @@ class AuthService:
         ):
             raise ValueError("Invalid email or password")
         return (*self._issue_token_pair(stored.user), stored.user)
+
+    def reauthenticate(self, user: AuthUser, password: str) -> tuple[str, int, int]:
+        stored = self._user_by_id(user.user_id)
+        if (
+            not stored
+            or not stored.user.active
+            or stored.user.tenant_id != user.tenant_id
+            or not self._verify_password(password, stored.password_hash)
+        ):
+            raise ValueError("Reauthentication failed")
+        now = int(time.time())
+        expires_in = settings.review_reauthentication_ttl_seconds
+        payload = {
+            "sub": stored.user.user_id,
+            "email": stored.user.email,
+            "role": stored.user.role.value,
+            "tenant_id": stored.user.tenant_id,
+            "iss": "documind-vision-ai",
+            "aud": "documind-api",
+            "iat": now,
+            "auth_time": now,
+            "jti": uuid4().hex,
+            "type": "reauth",
+            "purpose": "sensitive_review_decision",
+            "exp": now + expires_in,
+        }
+        return jwt.encode(payload, self._secret, algorithm="HS256"), expires_in, now
+
+    def verify_reauthentication(
+        self,
+        token: str,
+        user: AuthUser,
+    ) -> dict[str, Any]:
+        payload = self._decode_token(token, expected_type="reauth")
+        if (
+            payload.get("sub") != user.user_id
+            or payload.get("tenant_id") != user.tenant_id
+            or payload.get("email") != user.email
+            or payload.get("purpose") != "sensitive_review_decision"
+        ):
+            raise ValueError("Reauthentication token does not match the current user")
+        return payload
 
     def refresh(self, refresh_token: str) -> tuple[str, str, int, int, AuthUser]:
         payload = self._decode_token(refresh_token, expected_type="refresh")
@@ -283,32 +315,6 @@ class AuthService:
         sessions = self._read_json(self._sessions_file, {})
         if isinstance(sessions, dict):
             self._refresh_sessions = sessions
-
-    def _seed_local_demo_users(self) -> None:
-        if settings.app_env.lower() in {"production", "prod"}:
-            return
-        changed = False
-        with self._lock:
-            for email, password, role, name in LOCAL_DEMO_USERS:
-                normalized_email = self._normalize_email(email)
-                if normalized_email in self._users and self._verify_password(
-                    password,
-                    self._users[normalized_email].password_hash,
-                ):
-                    continue
-                self._users[normalized_email] = StoredUser(
-                    user=AuthUser(
-                        user_id=f"demo-{role.value.lower()}-{hashlib.sha256(normalized_email.encode('utf-8')).hexdigest()[:10]}",
-                        name=name,
-                        email=normalized_email,
-                        role=role,
-                        tenant_id="tenant-documind-demo",
-                    ),
-                    password_hash=self._password_hasher.hash(password),
-                )
-                changed = True
-            if changed:
-                self._persist_users_local()
 
     def _persist_users(self) -> None:
         self._persist_users_local()

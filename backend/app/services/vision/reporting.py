@@ -28,6 +28,19 @@ class VisionReportService:
         actor: str,
     ) -> VisionReportRecord:
         selected = self._select_documents(request, documents)
+        if (
+            request.report_type == VisionReportType.finance_narrative
+            and request.narrative_id
+        ):
+            narrative = next(
+                (item for item in narratives if item.narrative_id == request.narrative_id),
+                None,
+            )
+            if narrative:
+                narrative_documents = set(narrative.document_ids)
+                selected = [
+                    item for item in documents if item.document_id in narrative_documents
+                ]
         content = self._content(request, selected, narratives)
         return VisionReportRecord(
             tenant_id=tenant_id,

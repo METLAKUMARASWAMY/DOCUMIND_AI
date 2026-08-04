@@ -2,9 +2,9 @@ services:
   backend:
     build:
       context: ./backend
-    env_file:
-      - ./backend/.env.example
     environment:
+      DOCUMIND_AUTH_SECRET: ${DOCUMIND_AUTH_SECRET:?Run python scripts/generate_local_env.py}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?Run python scripts/generate_local_env.py}:${POSTGRES_PASSWORD:?Run python scripts/generate_local_env.py}@postgres:5432/${POSTGRES_DB:?Run python scripts/generate_local_env.py}
       DOCUMIND_DATASET_PATH: /data/documind_ai_synthetic_dataset
       ENABLE_CHROMA: "false"
       ENABLE_NEO4J: "false"
@@ -42,9 +42,8 @@ services:
       - -Q
       - vision-processing
       - --pool=solo
-    env_file:
-      - ./backend/.env.example
     environment:
+      DOCUMIND_AUTH_SECRET: ${DOCUMIND_AUTH_SECRET:?Run python scripts/generate_local_env.py}
       DOCUMIND_DATASET_PATH: /data/documind_ai_synthetic_dataset
       ENABLE_CHROMA: "false"
       ENABLE_NEO4J: "false"
@@ -74,14 +73,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-documind}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-documind_dev_password}
-      POSTGRES_DB: ${POSTGRES_DB:-documind}
+      POSTGRES_USER: ${POSTGRES_USER:?Run python scripts/generate_local_env.py}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python scripts/generate_local_env.py}
+      POSTGRES_DB: ${POSTGRES_DB:?Run python scripts/generate_local_env.py}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/docker/postgres-init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+      - ./infra/migrations/002_vision_remediation.sql:/docker-entrypoint-initdb.d/002-vision-remediation.sql:ro
 
   chroma:
     image: chromadb/chroma:0.5.5
@@ -93,7 +93,7 @@ services:
   neo4j:
     image: neo4j:5.22-community
     environment:
-      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/documind_dev_password}
+      NEO4J_AUTH: ${NEO4J_AUTH:?Run python scripts/generate_local_env.py}
       NEO4J_PLUGINS: '["apoc"]'
     ports:
       - "7474:7474"
@@ -127,8 +127,8 @@ services:
     image: minio/minio:RELEASE.2024-07-16T23-46-41Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-documind}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-documind_dev_password}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Run python scripts/generate_local_env.py}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Run python scripts/generate_local_env.py}
     ports:
       - "9000:9000"
       - "9001:9001"

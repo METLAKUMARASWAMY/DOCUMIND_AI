@@ -16,6 +16,7 @@ from app.models.vision import (
     VisionEvidence,
 )
 from app.services.vision.adapters import AdapterStatus, ExtractionAdapter, OCRFreeAdapter
+from app.services.vision.checkpoint_validation import validate_transformer_checkpoint
 
 
 class LayoutLMv3ExtractionAdapter(ExtractionAdapter):
@@ -36,11 +37,12 @@ class LayoutLMv3ExtractionAdapter(ExtractionAdapter):
             if settings.layoutlmv3_checkpoint
             else None
         )
-        checkpoint_ready = bool(
-            checkpoint
-            and checkpoint.is_dir()
-            and (checkpoint / "config.json").is_file()
+        checkpoint_validation = validate_transformer_checkpoint(
+            checkpoint,
+            expected_tasks={"token_classification", "layoutlmv3_token_classification"},
+            require_domain_labels=True,
         )
+        checkpoint_ready = checkpoint_validation.ready
         enabled = settings.enable_heavy_models and settings.enable_layoutlmv3
         active = enabled and installed and checkpoint_ready
         return AdapterStatus(
@@ -50,12 +52,15 @@ class LayoutLMv3ExtractionAdapter(ExtractionAdapter):
             reason=(
                 "Fine-tuned LayoutLMv3 token-classification checkpoint is ready."
                 if active
-                else "Provide a fine-tuned LAYOUTLMV3_CHECKPOINT and install torch/transformers."
+                else checkpoint_validation.reason
             ),
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
-            metadata={"checkpoint": str(checkpoint) if checkpoint else None},
+            metadata={
+                "checkpoint": str(checkpoint) if checkpoint else None,
+                "checkpoint_validation": checkpoint_validation.metadata,
+            },
         )
 
     def extract_fields(self, document: VisionDocumentRecord) -> list[ExtractedVisionField]:
@@ -230,7 +235,12 @@ class LayoutLMv3ClassificationAdapter:
             if settings.layoutlmv3_classification_checkpoint
             else None
         )
-        ready = bool(checkpoint and checkpoint.is_dir() and (checkpoint / "config.json").is_file())
+        checkpoint_validation = validate_transformer_checkpoint(
+            checkpoint,
+            expected_tasks={"document_classification", "layoutlmv3_document_classification"},
+            require_domain_labels=True,
+        )
+        ready = checkpoint_validation.ready
         enabled = settings.enable_heavy_models and settings.enable_layoutlmv3
         return AdapterStatus(
             adapter_id=self.adapter_id,
@@ -241,11 +251,15 @@ class LayoutLMv3ClassificationAdapter:
             reason=(
                 "Fine-tuned LayoutLMv3 classification checkpoint is ready."
                 if enabled and installed and ready
-                else "Provide LAYOUTLMV3_CLASSIFICATION_CHECKPOINT for learned classification."
+                else checkpoint_validation.reason
             ),
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
+            metadata={
+                "checkpoint": str(checkpoint) if checkpoint else None,
+                "checkpoint_validation": checkpoint_validation.metadata,
+            },
         )
 
     def classify(self, document: VisionDocumentRecord) -> tuple[VisionDocumentType, float]:
@@ -297,7 +311,11 @@ class DonutExtractionAdapter(OCRFreeAdapter):
             for package in ("transformers", "torch")
         )
         checkpoint = Path(settings.donut_checkpoint).expanduser() if settings.donut_checkpoint else None
-        ready = bool(checkpoint and checkpoint.is_dir() and (checkpoint / "config.json").is_file())
+        checkpoint_validation = validate_transformer_checkpoint(
+            checkpoint,
+            expected_tasks={"donut", "donut_extraction", "ocr_free_extraction"},
+        )
+        ready = checkpoint_validation.ready
         enabled = settings.enable_heavy_models and settings.enable_donut
         return AdapterStatus(
             adapter_id=self.adapter_id,
@@ -308,11 +326,15 @@ class DonutExtractionAdapter(OCRFreeAdapter):
             reason=(
                 "Fine-tuned Donut checkpoint is ready."
                 if enabled and installed and ready
-                else "Provide DONUT_CHECKPOINT and enable Donut for selective comparison."
+                else checkpoint_validation.reason
             ),
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
+            metadata={
+                "checkpoint": str(checkpoint) if checkpoint else None,
+                "checkpoint_validation": checkpoint_validation.metadata,
+            },
         )
 
     def extract_json(self, document: VisionDocumentRecord) -> dict[str, Any]:

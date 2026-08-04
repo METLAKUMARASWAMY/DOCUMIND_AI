@@ -91,7 +91,8 @@ class BGEM3EmbeddingAdapter(VisionAdapter):
         enabled = settings.enable_heavy_models and settings.enable_bge_m3
         checkpoint = Path(settings.bge_m3_checkpoint).expanduser()
         local_checkpoint = checkpoint.exists()
-        active = enabled and installed
+        assets_available = local_checkpoint or settings.bge_allow_download
+        active = enabled and installed and assets_available
         return AdapterStatus(
             adapter_id=self.adapter_id,
             stage=self.stage,
@@ -99,12 +100,16 @@ class BGEM3EmbeddingAdapter(VisionAdapter):
             reason=(
                 "FlagEmbedding BGE-M3 adapter is enabled."
                 if active
-                else "Install FlagEmbedding and enable BGE-M3; use a local checkpoint for offline startup."
+                else "Install FlagEmbedding and provide a local checkpoint, or explicitly allow download."
             ),
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
-            metadata={"checkpoint": str(checkpoint), "local_checkpoint": local_checkpoint},
+            metadata={
+                "checkpoint": str(checkpoint),
+                "local_checkpoint": local_checkpoint,
+                "allow_download": settings.bge_allow_download,
+            },
         )
 
     def embed(self, text: str) -> HybridVector:
@@ -145,7 +150,9 @@ class BGERerankerAdapter(VisionAdapter):
     def status(self) -> AdapterStatus:
         installed = importlib.util.find_spec("FlagEmbedding") is not None
         enabled = settings.enable_heavy_models and settings.enable_bge_m3
-        active = enabled and installed
+        checkpoint = Path(settings.bge_reranker_checkpoint).expanduser()
+        local_checkpoint = checkpoint.exists()
+        active = enabled and installed and (local_checkpoint or settings.bge_allow_download)
         return AdapterStatus(
             adapter_id=self.adapter_id,
             stage=self.stage,
@@ -153,11 +160,16 @@ class BGERerankerAdapter(VisionAdapter):
             reason=(
                 "BGE reranker adapter is enabled."
                 if active
-                else "Install FlagEmbedding and enable BGE-M3 to activate reranking."
+                else "Install FlagEmbedding and provide a local reranker checkpoint, or explicitly allow download."
             ),
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
+            metadata={
+                "checkpoint": str(checkpoint),
+                "local_checkpoint": local_checkpoint,
+                "allow_download": settings.bge_allow_download,
+            },
         )
 
     def rerank(self, query: str, passages: list[str]) -> list[float]:
@@ -183,10 +195,15 @@ class BGERerankerAdapter(VisionAdapter):
 
 
 class LocalHybridRetrievalIndex:
-    def __init__(self) -> None:
+    def __init__(self, *, force_local: bool = False) -> None:
         bge = BGEM3EmbeddingAdapter()
-        self.embedding = bge if bge.status().status == "active" else LocalHashingEmbeddingAdapter()
+        self.embedding = (
+            bge
+            if not force_local and bge.status().status == "active"
+            else LocalHashingEmbeddingAdapter()
+        )
         self.reranker = BGERerankerAdapter()
+        self.force_local = force_local
         self._chunks: dict[str, VisionEvidenceChunk] = {}
         self._vectors: dict[str, HybridVector] = {}
         self._document_chunks: dict[str, set[str]] = {}
@@ -203,7 +220,7 @@ class LocalHybridRetrievalIndex:
             self._vectors[chunk.chunk_id] = self.embedding.embed(chunk.text)
             ids.add(chunk.chunk_id)
         self._document_chunks[document_id] = ids
-        if chunks and self.qdrant.status().status == "active":
+        if chunks and not self.force_local and self.qdrant.status().status == "active":
             try:
                 self.qdrant.upsert(chunks, [self._vectors[chunk.chunk_id] for chunk in chunks])
                 self._external_error = None
@@ -228,7 +245,11 @@ class LocalHybridRetrievalIndex:
         query_vector = self.embedding.embed(query)
         candidates: list[RetrievalHit] = []
         external_scores: dict[str, float] = {}
-        if self.qdrant.status().status == "active" and self._external_error is None:
+        if (
+            not self.force_local
+            and self.qdrant.status().status == "active"
+            and self._external_error is None
+        ):
             try:
                 external_scores = self.qdrant.candidate_scores(
                     query_vector.dense,
@@ -277,7 +298,11 @@ class LocalHybridRetrievalIndex:
         candidates.sort(key=lambda item: item.score, reverse=True)
         first_stage = candidates[:30]
         rerank_candidates = first_stage[:15]
-        if rerank_candidates and self.reranker.status().status == "active":
+        if (
+            rerank_candidates
+            and not self.force_local
+            and self.reranker.status().status == "active"
+        ):
             scores = self.reranker.rerank(
                 query,
                 [item.chunk.text for item in rerank_candidates],

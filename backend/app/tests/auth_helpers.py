@@ -20,6 +20,10 @@ def auth_headers(client: TestClient, role: UserRole = UserRole.reviewer) -> dict
     return {"Authorization": f"Bearer {token}"}
 
 
+def auth_credentials(role: UserRole = UserRole.reviewer) -> tuple[str, str]:
+    return _ensure_user(role)
+
+
 def _ensure_user(role: UserRole) -> tuple[str, str]:
     existing = _USERS.get(role)
     if existing:

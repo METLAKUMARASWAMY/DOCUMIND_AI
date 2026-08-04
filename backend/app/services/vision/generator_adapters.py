@@ -14,6 +14,52 @@ class GroundedGeneratorError(RuntimeError):
     pass
 
 
+class GroundedTemplateGeneratorAdapter(VisionAdapter):
+    adapter_id = "grounded-template-generator"
+    stage = "generator"
+    model_version = "grounded-template-generator-v1"
+
+    def status(self) -> AdapterStatus:
+        return AdapterStatus(
+            adapter_id=self.adapter_id,
+            stage=self.stage,
+            status="active",
+            reason="Deterministic evidence-only response composition is available.",
+            enabled=True,
+            installed=True,
+            model_version=self.model_version,
+            metadata={"generative_model": False, "evidence_required": True},
+        )
+
+    def generate(self, question: str, evidence: list[dict[str, Any]]) -> dict[str, Any]:
+        del question
+        usable = [
+            item
+            for item in evidence
+            if str(item.get("id", "")).strip() and str(item.get("text", "")).strip()
+        ]
+        if not usable:
+            return {
+                "answer": "The available documents do not contain sufficient evidence to answer this question.",
+                "answer_status": "not_found",
+                "citation_ids": [],
+                "reasoning_summary": "No source evidence was available.",
+                "requires_review": False,
+            }
+        selected = usable[:3]
+        return {
+            "answer": " ".join(str(item["text"]).strip() for item in selected)[:1200],
+            "answer_status": "supported",
+            "citation_ids": [str(item["id"]) for item in selected],
+            "reasoning_summary": "Composed directly from the selected evidence blocks.",
+            "requires_review": any(
+                str(item.get("review_status", "unverified"))
+                not in {"accepted", "edited"}
+                for item in selected
+            ),
+        }
+
+
 class QwenGroundedGeneratorAdapter(VisionAdapter):
     adapter_id = "qwen-grounded-generator"
     stage = "generator"

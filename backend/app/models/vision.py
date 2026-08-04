@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 
 class VisionProcessingStatus(str, Enum):
@@ -49,6 +49,13 @@ class VisionRiskSeverity(str, Enum):
     medium = "medium"
     high = "high"
     critical = "critical"
+
+
+class VisionIndicatorCategory(str, Enum):
+    processing_warning = "processing_warning"
+    data_quality = "data_quality"
+    business_risk = "business_risk"
+    visual_risk = "visual_risk"
 
 
 class VisionReportType(str, Enum):
@@ -117,6 +124,9 @@ class VisionPageArtifact(BaseModel):
     page_number: int = Field(default=1, ge=1)
     original_image_path: str
     processed_image_path: str
+    enhanced_image_path: str | None = None
+    grayscale_image_path: str | None = None
+    binary_image_path: str | None = None
     width: int = Field(ge=1)
     height: int = Field(ge=1)
     dpi: int = Field(ge=1)
@@ -212,30 +222,128 @@ class TamperAnalysisResult(BaseModel):
 class ExtractedVisionField(BaseModel):
     field_id: str = Field(default_factory=lambda: f"field-{uuid4().hex[:10]}")
     name: str
+    schema_field: str | None = None
+    display_name: str = ""
     value: str
     normalized_value: str | None = None
-    confidence: float = Field(default=0.0, ge=0, le=1)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    ocr_confidence: float | None = Field(default=None, ge=0, le=1)
+    extraction_confidence: float | None = Field(default=None, ge=0, le=1)
+    validation_confidence: float | None = Field(default=None, ge=0, le=1)
+    agreement_confidence: float | None = Field(default=None, ge=0, le=1)
+    calibrated_confidence: float | None = Field(default=None, ge=0, le=1)
+    combined_confidence: float | None = Field(default=None, ge=0, le=1)
     evidence: VisionEvidence
     model_name: str = "local-schema-extraction-adapter"
     model_version: str = "v1"
     target_model: str | None = None
-    confidence_components: dict[str, float] = Field(default_factory=dict)
+    confidence_components: dict[str, float | None] = Field(default_factory=dict)
     calibrated: bool = False
+    extractor: str = "deterministic-fallback"
+    verification_status: str = "unverified"
+    required: bool = False
     reviewer_status: ReviewerStatus = ReviewerStatus.unverified
     reviewed_value: str | None = None
+
+    @model_validator(mode="after")
+    def sync_field_contract(self):
+        self.schema_field = self.schema_field or self.name
+        if not self.display_name:
+            self.display_name = self.name.replace("_", " ").title()
+        if self.combined_confidence is None:
+            self.combined_confidence = self.confidence
+        if self.confidence is None:
+            self.confidence = self.combined_confidence
+        if self.ocr_confidence is None:
+            self.ocr_confidence = self.confidence_components.get("ocr_confidence")
+        if self.extraction_confidence is None:
+            self.extraction_confidence = self.confidence_components.get(
+                "extraction_confidence"
+            )
+        if self.calibrated_confidence is None and self.calibrated:
+            self.calibrated_confidence = self.confidence
+        self.verification_status = self.reviewer_status.value
+        return self
 
 
 class VisionRiskIndicator(BaseModel):
     risk_id: str = Field(default_factory=lambda: f"vis-risk-{uuid4().hex[:10]}")
+    indicator_id: str | None = None
     title: str
     severity: VisionRiskSeverity = VisionRiskSeverity.medium
     category: str
     description: str
     recommended_action: str
+    rule_id: str = "local-rule"
     evidence: list[VisionEvidence] = Field(default_factory=list)
+    affected_fields: list[str] = Field(default_factory=list)
+    page_numbers: list[int] = Field(default_factory=list)
+    bounding_boxes: list[VisionBoundingBox] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    review_status: str = "pending"
     reviewer_status: ReviewerStatus = ReviewerStatus.unverified
     model_name: str = "local-risk-rule-engine"
     model_version: str = "v1"
+    model_or_rule: str = ""
+
+    @model_validator(mode="after")
+    def sync_indicator_contract(self):
+        self.indicator_id = self.indicator_id or self.risk_id
+        if not self.page_numbers:
+            self.page_numbers = sorted({item.page_number for item in self.evidence})
+        if not self.bounding_boxes:
+            self.bounding_boxes = [
+                item.bounding_box for item in self.evidence if item.bounding_box is not None
+            ]
+        if self.confidence is None and self.evidence:
+            values = [
+                item.model_confidence
+                for item in self.evidence
+                if item.model_confidence is not None
+            ]
+            self.confidence = max(values) if values else None
+        self.review_status = self.reviewer_status.value
+        self.model_or_rule = self.model_or_rule or self.rule_id or self.model_name
+        return self
+
+
+class VisionConfidenceSummary(BaseModel):
+    mean_ocr_confidence: float | None = Field(default=None, ge=0, le=1)
+    mean_extraction_confidence: float | None = Field(default=None, ge=0, le=1)
+    mean_field_confidence: float | None = Field(default=None, ge=0, le=1)
+    mean_calibrated_confidence: float | None = Field(default=None, ge=0, le=1)
+    approved_field_confidence: float | None = Field(default=None, ge=0, le=1)
+    ocr_word_count: int = Field(default=0, ge=0)
+    field_count: int = Field(default=0, ge=0)
+    approved_field_count: int = Field(default=0, ge=0)
+    confidence_available: bool = False
+    calculation_version: str = "vision-confidence-v2"
+
+
+class VisionFieldCompleteness(BaseModel):
+    schema_available: bool = False
+    document_type: VisionDocumentType = VisionDocumentType.unknown
+    required_fields: list[str] = Field(default_factory=list)
+    optional_fields: list[str] = Field(default_factory=list)
+    extracted_fields: list[str] = Field(default_factory=list)
+    missing_required_fields: list[str] = Field(default_factory=list)
+    invalid_fields: list[str] = Field(default_factory=list)
+    disputed_fields: list[str] = Field(default_factory=list)
+    manually_resolved_fields: list[str] = Field(default_factory=list)
+    expected_required_count: int | None = Field(default=None, ge=0)
+    extracted_count: int = Field(default=0, ge=0)
+    unresolved_required_count: int | None = Field(default=None, ge=0)
+
+
+class VisionLanguageAnalysis(BaseModel):
+    detected_languages: list[dict[str, Any]] = Field(default_factory=list)
+    valid_character_count: int = Field(default=0, ge=0)
+    secondary_language_ratio: float = Field(default=0.0, ge=0, le=1)
+    secondary_language_characters: int = Field(default=0, ge=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    sample_text: str = ""
+    mixed_language_routing: bool = False
+    decision_reason: str = "insufficient_clean_text"
 
 
 class DuplicateCandidate(BaseModel):
@@ -272,6 +380,12 @@ class ModelRunRecord(BaseModel):
     started_at: str
     completed_at: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
+    checkpoint: str | None = None
+    package_version: str | None = None
+    device: str = "cpu"
+    processing_duration_ms: float | None = Field(default=None, ge=0)
+    source_document: str | None = None
+    source_pages: list[int] = Field(default_factory=list)
     routing_reason: str | None = None
     notes: list[str] = Field(default_factory=list)
 
@@ -307,6 +421,9 @@ class VisionGraphProjection(BaseModel):
     nodes: list[dict[str, Any]] = Field(default_factory=list)
     edges: list[dict[str, Any]] = Field(default_factory=list)
     evidence_policy: str = "Edges are deterministic or proposed and require evidence."
+    schema_version: str = "documind-evidence-graph-v2"
+    preferred_backend: str = "neo4j"
+    active_backend: str = "local_evidence_graph"
 
 
 class VisionReviewTask(BaseModel):
@@ -315,11 +432,46 @@ class VisionReviewTask(BaseModel):
     status: VisionProcessingStatus = VisionProcessingStatus.review_required
     priority: VisionRiskSeverity = VisionRiskSeverity.medium
     reasons: list[str] = Field(default_factory=list)
+    reason_labels: list[str] = Field(default_factory=list)
     assigned_role: str = "REVIEWER"
+    assigned_reviewer: str | None = None
+    thumbnail_url: str | None = None
+    filename: str | None = None
+    document_type: VisionDocumentType | None = None
+    page_count: int | None = Field(default=None, ge=0)
+    confidence_status: str = "not_available"
+    confidence_value: float | None = Field(default=None, ge=0, le=1)
+    expected_required_fields: int | None = Field(default=None, ge=0)
+    unresolved_required_fields: int | None = Field(default=None, ge=0)
     reviewer_comments: str = ""
     created_at: str
     updated_at: str
     history: list[VisionAuditEvent] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def enrich_queue_contract(self):
+        reason_map = {
+            "ocr_mean_confidence_below_threshold": "Low OCR confidence",
+            "mixed_languages_detected": "Multiple-language uncertainty",
+            "reading_order_confidence_below_threshold": "Uncertain reading order",
+            "complex_table_or_chart_detected": "Complex table or chart",
+            "model_outputs_conflict": "Model output disagreement",
+            "manual_advanced_requested": "Advanced parsing requested",
+            "field_confidence_requires_review": "Field confidence requires review",
+        }
+        if not self.reason_labels:
+            self.reason_labels = [
+                (
+                    f"Missing required field: {reason.split(':', 1)[1].replace('_', ' ')}"
+                    if reason.startswith("missing_required_field:")
+                    else reason_map.get(reason, reason.replace("_", " ").capitalize())
+                )
+                for reason in self.reasons
+            ]
+        self.thumbnail_url = self.thumbnail_url or (
+            f"/documents/{self.document_id}/pages/1/image?variant=original"
+        )
+        return self
 
 
 class VisionDocumentRecord(BaseModel):
@@ -344,6 +496,16 @@ class VisionDocumentRecord(BaseModel):
     visual_detections: list[VisualDetection] = Field(default_factory=list)
     tamper_analysis: list[TamperAnalysisResult] = Field(default_factory=list)
     extracted_fields: list[ExtractedVisionField] = Field(default_factory=list)
+    confidence_summary: VisionConfidenceSummary = Field(
+        default_factory=VisionConfidenceSummary
+    )
+    field_completeness: VisionFieldCompleteness = Field(
+        default_factory=VisionFieldCompleteness
+    )
+    language_analysis: VisionLanguageAnalysis = Field(
+        default_factory=VisionLanguageAnalysis
+    )
+    processing_warnings: list[VisionRiskIndicator] = Field(default_factory=list)
     risk_indicators: list[VisionRiskIndicator] = Field(default_factory=list)
     duplicate_candidates: list[DuplicateCandidate] = Field(default_factory=list)
     anomaly_analysis: list[AnomalyAnalysisResult] = Field(default_factory=list)
@@ -355,6 +517,8 @@ class VisionDocumentRecord(BaseModel):
     audit_events: list[VisionAuditEvent] = Field(default_factory=list)
     created_at: str
     updated_at: str
+    data_version: int = Field(default=1, ge=1)
+    analytics_cache_version: int = Field(default=1, ge=1)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -372,9 +536,44 @@ class VisionFieldReviewRequest(BaseModel):
     comment: str = ""
 
 
+class VisionModelRequestedStateRequest(BaseModel):
+    requested: bool
+    profile: str | None = Field(default=None, pattern="^(?i:lite|standard|full)$")
+    notes: str = Field(default="", max_length=1000)
+
+
+class VisionModelLegacyPatchRequest(BaseModel):
+    enabled: bool | None = None
+    requested: bool | None = None
+    profile: str | None = Field(default=None, pattern="^(?i:lite|standard|full)$")
+    notes: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def require_requested_value(self):
+        if self.enabled is None and self.requested is None:
+            raise ValueError("enabled or requested is required")
+        return self
+
+
+class VisionRuleOverrideRequest(BaseModel):
+    enabled: bool | None = None
+    threshold: float | None = None
+    notes: str = Field(default="", max_length=1000)
+
+
 class VisionReviewDecisionRequest(BaseModel):
     decision: VisionProcessingStatus
     comment: str = ""
+    approval_reason: str = ""
+    manual_verification_completed: bool = False
+    confirmed_fields: dict[str, str] = Field(default_factory=dict)
+    confirmation_acknowledged: bool = False
+    evidence_ids: list[str] = Field(default_factory=list)
+    decision_rationale: str = ""
+    automated_indicators_acknowledged: bool = False
+    reauthentication_token: str | None = None
+    second_reviewer_email: str | None = None
+    second_reviewer_approved: bool = False
 
 
 class VisionAskRequest(BaseModel):
@@ -385,6 +584,7 @@ class VisionAskRequest(BaseModel):
 
 class VisionAskCitation(BaseModel):
     document_id: str
+    filename: str | None = None
     page_number: int
     source_text: str
     bounding_boxes: list[VisionBoundingBox] = Field(default_factory=list)
@@ -398,6 +598,11 @@ class VisionAskCitation(BaseModel):
     processing_timestamp: str | None = None
     reviewer_status: ReviewerStatus = ReviewerStatus.unverified
 
+    @computed_field
+    @property
+    def page(self) -> int:
+        return self.page_number
+
 
 class VisionAskResponse(BaseModel):
     question_id: str | None = None
@@ -410,6 +615,12 @@ class VisionAskResponse(BaseModel):
     requires_review: bool = False
     generator_name: str = "grounded-evidence-composer"
     generator_version: str = "v1"
+    retriever: str = "local-hybrid"
+
+    @computed_field
+    @property
+    def generator(self) -> str:
+        return f"{self.generator_name}:{self.generator_version}"
 
 
 class VisionCalculationTrace(BaseModel):
@@ -430,6 +641,7 @@ class VisionFinanceNarrativeRequest(BaseModel):
     date_from: str | None = None
     date_to: str | None = None
     document_ids: list[str] = Field(default_factory=list)
+    generate_new_version: bool = False
 
 
 class VisionFinanceNarrative(BaseModel):
@@ -444,6 +656,12 @@ class VisionFinanceNarrative(BaseModel):
     answer_status: str = "supported"
     created_at: str
     generated_by: str
+    identity_hash: str = ""
+    version: int = Field(default=1, ge=1)
+    source_data_version: str = ""
+    supersedes: str | None = None
+    status: str = "active"
+    request_scope: dict[str, Any] = Field(default_factory=dict)
 
 
 class VisionReportRequest(BaseModel):
@@ -453,6 +671,7 @@ class VisionReportRequest(BaseModel):
     vendor_name: str | None = None
     narrative_id: str | None = None
     evaluation: dict[str, Any] | None = None
+    generate_new_version: bool = False
 
 
 class VisionReportRecord(BaseModel):
@@ -465,3 +684,10 @@ class VisionReportRecord(BaseModel):
     generated_by: str
     created_at: str
     object_uri: str | None = None
+    identity_hash: str = ""
+    version: int = Field(default=1, ge=1)
+    source_data_version: str = ""
+    supersedes: str | None = None
+    status: str = "active"
+    template_version: str = "vision-report-v2"
+    request_scope: dict[str, Any] = Field(default_factory=dict)

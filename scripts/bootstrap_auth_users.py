@@ -7,7 +7,6 @@ import secrets
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = REPO_ROOT / "backend"
 os.chdir(BACKEND_ROOT)
@@ -15,7 +14,6 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.models.schemas import SignupRequest, UserRole  # noqa: E402
 from app.services.auth import auth_service  # noqa: E402
-
 
 DEMO_USERS = [
     ("admin@documind.local", UserRole.admin, "Local Admin"),
@@ -31,20 +29,20 @@ def main() -> None:
     parser.add_argument("--name", default="Local Admin")
     parser.add_argument("--role", default="ADMIN", choices=[role.value for role in UserRole])
     parser.add_argument("--organisation", default="DocuMind Local")
-    parser.add_argument("--password", default=os.environ.get("DOCUMIND_BOOTSTRAP_PASSWORD"))
     parser.add_argument(
         "--all-demo-roles",
         action="store_true",
-        help="Create admin, reviewer, auditor, and processor users with the same password.",
+        help="Create admin, reviewer, auditor, and processor users with generated passwords.",
     )
     args = parser.parse_args()
 
-    password = args.password or _generated_password()
     users = DEMO_USERS if args.all_demo_roles else [(args.email, UserRole(args.role), args.name)]
-    created: list[str] = []
+    configured_password = os.environ.get("DOCUMIND_BOOTSTRAP_PASSWORD")
+    created: list[tuple[str, str]] = []
     existing: list[str] = []
 
     for email, role, name in users:
+        password = configured_password or _generated_password()
         request = SignupRequest(
             name=name,
             email=email,
@@ -54,7 +52,7 @@ def main() -> None:
         )
         try:
             auth_service.create_bootstrap_user(request)
-            created.append(f"{email} ({role.value})")
+            created.append((f"{email} ({role.value})", password))
         except ValueError as exc:
             if "already exists" not in str(exc).lower():
                 raise
@@ -64,9 +62,9 @@ def main() -> None:
     print(f"State directory: {auth_service._state_dir}")
     if created:
         print("Created:")
-        for item in created:
+        for item, password in created:
             print(f"- {item}")
-        print(f"Password: {password}")
+            print(f"  Password: {password}")
     if existing:
         print("Already existed:")
         for item in existing:

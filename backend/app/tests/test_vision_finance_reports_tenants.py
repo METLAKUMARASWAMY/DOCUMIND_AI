@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -14,14 +15,16 @@ client = TestClient(create_app())
 
 def test_verified_finance_narrative_and_typed_report_flow():
     headers = auth_headers(client, UserRole.reviewer)
+    unique = uuid4().hex[:10]
+    vendor_name = f"Narrative Industries {unique}"
     created = client.post(
         "/api/v1/vision/documents/analyze",
         headers=headers,
         json={
-            "filename": "verified-finance-invoice.txt",
+            "filename": f"verified-finance-invoice-{unique}.txt",
             "text": (
-                "Invoice INV-NARRATIVE-1\n"
-                "Vendor: Narrative Industries\n"
+                f"Invoice INV-NARRATIVE-{unique}\n"
+                f"Vendor: {vendor_name}\n"
                 "Invoice Date: 2026-07-05\n"
                 "Subtotal: USD 100.00\n"
                 "Tax: USD 18.00\n"
@@ -39,16 +42,24 @@ def test_verified_finance_narrative_and_typed_report_flow():
     approved = client.post(
         f"/api/v1/reviews/{review_id}/approve",
         headers=headers,
-        json={"decision": "APPROVED", "comment": "Verified against the source."},
+        json={
+            "decision": "APPROVED",
+            "comment": "Verified all mandatory evidence against the source.",
+            "evidence_ids": [
+                field["evidence"]["evidence_id"]
+                for field in document["extracted_fields"]
+                if field["required"]
+            ],
+        },
     )
-    assert approved.status_code == 200
+    assert approved.status_code == 200, approved.text
 
     narrative_response = client.post(
         "/api/v1/finance-narratives",
         headers=headers,
         json={
             "narrative_type": "monthly_invoice_summary",
-            "vendor_name": "Narrative Industries",
+            "vendor_name": vendor_name,
             "date_from": "2026-07-01",
             "date_to": "2026-07-31",
             "document_ids": [document["document_id"]],
@@ -58,8 +69,40 @@ def test_verified_finance_narrative_and_typed_report_flow():
     narrative = narrative_response.json()["data"]
     assert "USD 118.00" in narrative["narrative"]
     assert narrative["all_values_verified"] is True
+    assert narrative["identity_hash"]
+    assert narrative["source_data_version"]
+    assert narrative["version"] == 1
     assert all(item["source_document_ids"] for item in narrative["calculations"])
     assert any(item["calculation_function"].startswith("sum(Decimal") for item in narrative["calculations"])
+
+    repeated_narrative = client.post(
+        "/api/v1/finance-narratives",
+        headers=headers,
+        json={
+            "narrative_type": "monthly_invoice_summary",
+            "vendor_name": vendor_name,
+            "date_from": "2026-07-01",
+            "date_to": "2026-07-31",
+            "document_ids": [document["document_id"]],
+        },
+    ).json()["data"]
+    assert repeated_narrative["narrative_id"] == narrative["narrative_id"]
+
+    versioned_narrative = client.post(
+        "/api/v1/finance-narratives",
+        headers=headers,
+        json={
+            "narrative_type": "monthly_invoice_summary",
+            "vendor_name": vendor_name,
+            "date_from": "2026-07-01",
+            "date_to": "2026-07-31",
+            "document_ids": [document["document_id"]],
+            "generate_new_version": True,
+        },
+    ).json()["data"]
+    assert versioned_narrative["version"] == 2
+    assert versioned_narrative["supersedes"] == narrative["narrative_id"]
+    assert versioned_narrative["identity_hash"] == narrative["identity_hash"]
 
     report_response = client.post(
         "/api/v1/reports/generate",
@@ -73,6 +116,49 @@ def test_verified_finance_narrative_and_typed_report_flow():
     report = report_response.json()["data"]
     assert report["report_id"].startswith("report-")
     assert report["content"]["narrative_id"] == narrative["narrative_id"]
+    assert report["version"] == 1
+    assert report["identity_hash"]
+    assert report["source_data_version"]
+
+    repeated_report = client.post(
+        "/api/v1/reports/generate",
+        headers=headers,
+        json={
+            "report_type": "finance_narrative_report",
+            "narrative_id": narrative["narrative_id"],
+        },
+    ).json()["data"]
+    assert repeated_report["report_id"] == report["report_id"]
+
+    versioned_report = client.post(
+        "/api/v1/reports/generate",
+        headers=headers,
+        json={
+            "report_type": "finance_narrative_report",
+            "narrative_id": narrative["narrative_id"],
+            "generate_new_version": True,
+        },
+    ).json()["data"]
+    assert versioned_report["version"] == 2
+    assert versioned_report["supersedes"] == report["report_id"]
+
+    concurrent_payload = {
+        "report_type": "risk_screening_report",
+        "document_id": document["document_id"],
+    }
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        responses = list(
+            executor.map(
+                lambda _: client.post(
+                    "/api/v1/reports/generate",
+                    headers=headers,
+                    json=concurrent_payload,
+                ),
+                range(4),
+            )
+        )
+    assert all(item.status_code == 200 for item in responses)
+    assert len({item.json()["data"]["report_id"] for item in responses}) == 1
 
     fetched = client.get(f"/api/v1/reports/{report['report_id']}", headers=headers)
     assert fetched.status_code == 200
@@ -84,6 +170,13 @@ def test_verified_finance_narrative_and_typed_report_flow():
     )
     assert downloaded.status_code == 200
     assert downloaded.content.startswith(b"%PDF-1.4")
+
+    archived = client.post(
+        f"/api/v1/reports/{versioned_report['report_id']}/archive",
+        headers=headers,
+    )
+    assert archived.status_code == 200
+    assert archived.json()["data"]["status"] == "archived"
 
 
 def test_document_access_is_isolated_between_tenants():

@@ -51,11 +51,11 @@ scripts/                 Utility scripts
 Backend:
 
 ```bash
+python scripts/generate_local_env.py
 cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export DOCUMIND_DATASET_PATH="/Users/kumar/Downloads/DocuMind AI/dataset/documind_ai_synthetic_dataset"
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -67,27 +67,19 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` or `http://localhost:5174` depending on the Vite port shown in the terminal. Local demo accounts are seeded automatically outside production:
-
-```text
-admin@documind.ai / Admin@123
-compliance@documind.ai / Compliance@123
-finance@documind.ai / Finance@123
-legal@documind.ai / Legal@123
-risk@documind.ai / Risk@123
-auditor@documind.ai / Auditor@123
-```
-
-You can also sign up from the UI to create a local viewer account, or create a custom admin/reviewer account for protected review and admin screens:
+Open `http://localhost:5173` or `http://localhost:5174` depending on the Vite port shown in the terminal. No privileged account has a committed password. Create an admin or reviewer with a generated one-time credential for protected screens:
 
 ```bash
 python scripts/bootstrap_auth_users.py --role ADMIN --email admin@documind.local
 python scripts/bootstrap_auth_users.py --role REVIEWER --email reviewer@documind.local
 ```
 
+The bootstrap script prints a generated password only when it creates an account. Set `DOCUMIND_BOOTSTRAP_PASSWORD` before running it when a password manager supplies the credential. Public UI registration always creates a viewer.
+
 Full stack:
 
 ```bash
+python scripts/generate_local_env.py
 docker compose up --build
 ```
 
@@ -96,6 +88,8 @@ The Compose profile starts `backend`, `worker`, `frontend`, Redis, MongoDB, Qdra
 Seed the Vision AI demo after the backend is running:
 
 ```bash
+export DOCUMIND_DEMO_EMAIL=admin@documind.local
+export DOCUMIND_DEMO_PASSWORD='<one-time bootstrap password>'
 python scripts/seed_vision_demo.py
 ```
 
@@ -182,13 +176,17 @@ Report: [NVIDIA Project 6 Report](docs/NVIDIA_Project6_Report.md)
 
 ```bash
 cd backend
-python -m pytest
-ruff check app
+../.venv/bin/pytest -q
+../.venv/bin/ruff check app tests ../scripts
 
 cd ../frontend
+npm test -- --run
 npm run lint
 npm run build
+npm audit
 ```
+
+The complete security, model-smoke, Playwright, performance, migration, screenshot, and acceptance evidence is in the [Final Acceptance Report](docs/FINAL_ACCEPTANCE_REPORT.md).
 
 ## Production AI Upgrade Path
 
@@ -218,6 +216,9 @@ See [DOCUMIND VISION AI Migration Plan](docs/VISION_AI_MIGRATION_PLAN.md) for th
 - [API Design](docs/API_DESIGN.md)
 - [Security Architecture](docs/SECURITY_ARCHITECTURE.md)
 - [MLOps Pipeline](docs/MLOPS_PIPELINE.md)
+- [Final Acceptance Report](docs/FINAL_ACCEPTANCE_REPORT.md)
+- [Remediation Audit](docs/REMEDIATION_AUDIT.md)
+- [Model Runtime Verification](docs/MODEL_RUNTIME_VERIFICATION.md)
 - [DOCUMIND VISION AI Migration Plan](docs/VISION_AI_MIGRATION_PLAN.md)
 - [DOCUMIND VISION AI Completion Audit](docs/VISION_AI_COMPLETION_AUDIT.md)
 - [DOCUMIND VISION AI Dataset Card](docs/dataset_card.md)

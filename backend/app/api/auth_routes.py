@@ -9,6 +9,8 @@ from app.models.schemas import (
     AuthUser,
     ForgotPasswordRequest,
     LoginRequest,
+    ReauthenticationRequest,
+    ReauthenticationResponse,
     RefreshTokenRequest,
     SignupRequest,
 )
@@ -64,6 +66,26 @@ async def refresh(request: RefreshTokenRequest) -> dict[str, Any]:
 @router.get("/me")
 async def me(user: AuthUser = Depends(require_user)) -> dict[str, Any]:
     return _envelope(user.model_dump(mode="json"))
+
+
+@router.post("/reauthenticate")
+async def reauthenticate(
+    request: ReauthenticationRequest,
+    user: AuthUser = Depends(require_user),
+) -> dict[str, Any]:
+    try:
+        token, expires_in, authenticated_at = auth_service.reauthenticate(
+            user,
+            request.password,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    response = ReauthenticationResponse(
+        reauthentication_token=token,
+        expires_in=expires_in,
+        authenticated_at=authenticated_at,
+    )
+    return _envelope(response.model_dump(mode="json"))
 
 
 @router.post("/logout")

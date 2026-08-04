@@ -4,10 +4,9 @@ import os
 import urllib.error
 import urllib.request
 
-
 API_BASE = "http://127.0.0.1:8000/api/v1"
-DEMO_EMAIL = os.environ.get("DOCUMIND_DEMO_EMAIL", "vision.demo@documind.local")
-DEMO_PASSWORD = os.environ.get("DOCUMIND_DEMO_PASSWORD", "Vision-Demo-123!")
+DEMO_EMAIL = os.environ.get("DOCUMIND_DEMO_EMAIL", "admin@documind.local")
+DEMO_PASSWORD = os.environ.get("DOCUMIND_DEMO_PASSWORD")
 
 
 DEMO_TEXT = """Invoice INV-1042
@@ -40,6 +39,11 @@ def request(method: str, path: str, payload: dict | None = None, token: str | No
 
 
 def login_or_register() -> str:
+    if not DEMO_PASSWORD:
+        raise SystemExit(
+            "DOCUMIND_DEMO_PASSWORD is required. Create a one-time credential with "
+            "`python scripts/bootstrap_auth_users.py --role ADMIN` first."
+        )
     login_payload = {"email": DEMO_EMAIL, "password": DEMO_PASSWORD}
     try:
         login = request("POST", "/auth/login", login_payload)

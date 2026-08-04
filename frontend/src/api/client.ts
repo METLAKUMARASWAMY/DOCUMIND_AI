@@ -1,10 +1,14 @@
 import type {
   ApiEnvelope,
+  ApprovalPolicy,
   AskResponse,
   AuthUser,
   FinanceNarrative,
   GraphProjection,
   ReportRecord,
+  ReviewDecisionPayload,
+  ReviewQueueFilters,
+  ReviewQueueResponse,
   ReviewTask,
   VisionDocument,
 } from "../types/api";
@@ -65,9 +69,11 @@ async function parseResponse<T>(response: Response): Promise<T> {
     ? await response.json()
     : await response.text();
   if (!response.ok) {
-    const message =
-      typeof payload === "object" && payload
-        ? String(payload.detail || payload.message || "Request failed")
+    const detail = typeof payload === "object" && payload ? payload.detail : null;
+    const message = typeof detail === "object" && detail
+      ? String(detail.message || "Request failed")
+      : typeof payload === "object" && payload
+        ? String(detail || payload.message || "Request failed")
         : String(payload || `Request failed with ${response.status}`);
     throw new ApiError(message, response.status, payload);
   }
@@ -207,9 +213,16 @@ export const api = {
 
   job: (id: string) => apiRequest<Record<string, unknown>>(`/vision/jobs/${id}`),
   retryJob: (id: string) => apiRequest(`/vision/jobs/${id}/retry`, { method: "POST" }),
-  reviews: () => apiRequest<{ total: number; reviews: ReviewTask[] }>("/reviews"),
+  reviews: (filters: ReviewQueueFilters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    });
+    const query = params.toString();
+    return apiRequest<ReviewQueueResponse>(`/reviews${query ? `?${query}` : ""}`);
+  },
   review: (id: string) =>
-    apiRequest<{ review: ReviewTask; document: VisionDocument }>(`/reviews/${id}`),
+    apiRequest<{ review: ReviewTask; document: VisionDocument; approval_policy: ApprovalPolicy }>(`/reviews/${id}`),
   patchField: (
     reviewId: string,
     fieldId: string,
@@ -222,7 +235,7 @@ export const api = {
     }),
   acceptHighConfidence: (reviewId: string) =>
     apiRequest(`/reviews/${reviewId}/accept-high-confidence`, { method: "POST" }),
-  decideReview: (reviewId: string, action: string, comment: string) =>
+  decideReview: (reviewId: string, action: string, payload: ReviewDecisionPayload) =>
     apiRequest(`/reviews/${reviewId}/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -234,19 +247,30 @@ export const api = {
           "confirm-error": "CONFIRMED_ERROR",
           "confirm-fraud": "CONFIRMED_FRAUD",
         } as Record<string, string>)[action],
-        comment,
+        ...payload,
       }),
+    }),
+  reauthenticate: (password: string) =>
+    apiRequest<{
+      reauthentication_token: string;
+      token_type: string;
+      expires_in: number;
+      authenticated_at: number;
+    }>("/auth/reauthenticate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
     }),
 
   ask: (question: string, documentId?: string) =>
-    apiRequest<AskResponse>("/ask", {
+    apiRequest<AskResponse>("/ai/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, document_id: documentId || null, top_k: 8 }),
     }),
-  question: (id: string) => apiRequest<Record<string, unknown>>(`/questions/${id}`),
+  question: (id: string) => apiRequest<Record<string, unknown>>(`/ai/responses/${id}`),
   questionFeedback: (id: string, rating: string, comment: string) =>
-    apiRequest(`/questions/${id}/feedback`, {
+    apiRequest(`/ai/responses/${id}/feedback`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rating, comment }),
@@ -260,12 +284,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, document_id: documentId || null }),
     }),
+  verifyGraphRelationship: (id: string, comment: string, evidenceAcknowledged: boolean) =>
+    apiRequest<Record<string, unknown>>(`/graph/relationships/${encodeURIComponent(id)}/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comment, evidence_acknowledged: evidenceAcknowledged }),
+    }),
 
-  analyticsOverview: () => apiRequest<Record<string, unknown>>("/analytics/overview"),
-  analyticsVendors: () => apiRequest<Record<string, unknown>>("/analytics/vendors"),
-  analyticsRisk: () => apiRequest<Record<string, unknown>>("/analytics/risk"),
-  analyticsReview: () => apiRequest<Record<string, unknown>>("/analytics/review"),
-  analyticsModels: () => apiRequest<Record<string, unknown>>("/analytics/models"),
+  analyticsOverview: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/overview${dateRangeQuery(dateFrom, dateTo)}`),
+  analyticsVendors: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/vendors${dateRangeQuery(dateFrom, dateTo)}`),
+  analyticsRisk: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/risk${dateRangeQuery(dateFrom, dateTo)}`),
+  analyticsReview: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/review${dateRangeQuery(dateFrom, dateTo)}`),
+  analyticsModels: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/models${dateRangeQuery(dateFrom, dateTo)}`),
 
   narratives: () =>
     apiRequest<{ total: number; narratives: FinanceNarrative[] }>("/finance-narratives"),
@@ -284,15 +314,20 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   report: (id: string) => apiRequest<ReportRecord>(`/reports/${id}`),
+  archiveReport: (id: string) => apiRequest<ReportRecord>(`/reports/${id}/archive`, { method: "POST" }),
 
   modelComparison: (id: string) =>
     apiRequest<Record<string, unknown>>(`/models/comparison/${id}`),
   models: () => apiRequest<Record<string, unknown>>("/admin/models"),
   patchModel: (id: string, payload: Record<string, unknown>) =>
-    apiRequest(`/admin/models/${encodeURIComponent(id)}`, {
+    apiRequest(`/admin/models/${encodeURIComponent(id)}/requested-state`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+    }),
+  smokeTestModel: (id: string) =>
+    apiRequest<Record<string, unknown>>(`/admin/models/${encodeURIComponent(id)}/smoke-test`, {
+      method: "POST",
     }),
   rules: () => apiRequest<Record<string, unknown>>("/admin/rules"),
   patchRule: (id: string, payload: Record<string, unknown>) =>
@@ -308,6 +343,14 @@ export async function protectedBlob(path: string): Promise<Blob> {
   const response = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
   if (!response.ok) await parseResponse(response);
   return response.blob();
+}
+
+function dateRangeQuery(dateFrom?: string, dateTo?: string): string {
+  const params = new URLSearchParams();
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 export async function downloadReport(report: ReportRecord): Promise<void> {

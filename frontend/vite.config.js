@@ -6,7 +6,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
-    css: true
+    css: true,
+    include: ["src/**/*.test.{ts,tsx}"]
   },
   server: {
     port: Number(process.env.FRONTEND_PORT || 5174),

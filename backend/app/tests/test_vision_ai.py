@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -144,21 +146,23 @@ def test_vision_analyze_idempotency_key_returns_existing_document():
 
 def test_vision_review_ask_report_and_model_comparison_flow():
     headers = _headers()
+    unique = uuid4().hex[:10]
+    unique_amount = int(unique[:5], 16) + 1000
     created = client.post(
         "/api/v1/vision/documents/analyze",
         headers=headers,
         json={
-            "filename": "vision-review-invoice.txt",
+            "filename": f"vision-review-invoice-{unique}.txt",
             "text": (
-                "Invoice INV-2048\n"
-                "Vendor: Contoso Finance\n"
+                f"Invoice INV-{unique}\n"
+                f"Vendor: Contoso {unique}\n"
                 "Invoice Date: 2026-04-01\n"
                 "Due Date: 2026-04-15\n"
                 "Bank Account: ACCT-33334444\n"
-                "Total Amount: USD 1000.00\n"
+                f"Total Amount: USD {unique_amount}.00\n"
                 "Signature: Jane Reviewer"
             ),
-            "metadata": {"approved_bank_identifier": "ACCT-55556666"},
+            "metadata": {},
         },
     )
     assert created.status_code == 200
@@ -194,9 +198,17 @@ def test_vision_review_ask_report_and_model_comparison_flow():
     approved = client.post(
         f"/api/v1/vision/reviews/{review_id}/approve",
         headers=headers,
-        json={"decision": "APPROVED", "comment": "Verified against source document."},
+        json={
+            "decision": "APPROVED",
+            "comment": "Verified all mandatory evidence against the source document.",
+            "evidence_ids": [
+                field["evidence"]["evidence_id"]
+                for field in fields.json()["data"]["fields"]
+                if field["required"]
+            ],
+        },
     )
-    assert approved.status_code == 200
+    assert approved.status_code == 200, approved.text
     assert approved.json()["data"]["status"] == "APPROVED"
 
     answer = client.post(

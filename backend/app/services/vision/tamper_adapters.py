@@ -17,6 +17,7 @@ from app.models.vision import (
     VisionDocumentRecord,
 )
 from app.services.vision.adapters import AdapterStatus, VisionAdapter
+from app.services.vision.checkpoint_validation import validate_transformer_checkpoint
 
 
 class LocalForensicsAdapter(VisionAdapter):
@@ -147,7 +148,12 @@ class SegFormerTamperAdapter(VisionAdapter):
             for package in ("transformers", "torch")
         )
         checkpoint = Path(settings.tamper_checkpoint).expanduser() if settings.tamper_checkpoint else None
-        ready = bool(checkpoint and checkpoint.is_dir() and (checkpoint / "config.json").is_file())
+        checkpoint_validation = validate_transformer_checkpoint(
+            checkpoint,
+            expected_tasks={"tamper_segmentation", "document_forensics_segmentation"},
+            require_domain_labels=True,
+        )
+        ready = checkpoint_validation.ready
         enabled = settings.enable_heavy_models and bool(settings.tamper_checkpoint)
         active = enabled and installed and ready
         return AdapterStatus(
@@ -157,12 +163,15 @@ class SegFormerTamperAdapter(VisionAdapter):
             reason=(
                 "Fine-tuned document-forensics checkpoint is ready."
                 if active
-                else "Provide TAMPER_CHECKPOINT with a fine-tuned SegFormer model."
+                else checkpoint_validation.reason
             ),
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
-            metadata={"checkpoint": str(checkpoint) if checkpoint else None},
+            metadata={
+                "checkpoint": str(checkpoint) if checkpoint else None,
+                "checkpoint_validation": checkpoint_validation.metadata,
+            },
         )
 
     def analyze(self, document: VisionDocumentRecord) -> list[TamperAnalysisResult]:

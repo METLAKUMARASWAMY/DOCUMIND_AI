@@ -32,8 +32,12 @@ from app.models.vision import (
     VisionReportRequest,
     VisionReviewDecisionRequest,
 )
-from app.services.auth import require_user
+from app.services.auth import auth_service, require_user
 from app.services.vision import vision_ai_service
+from app.services.vision.approval_policy import (
+    ApprovalPolicyViolation,
+    ReviewDecisionValidationError,
+)
 from app.services.vision.evaluation import vision_evaluation_service
 from app.services.vision.infrastructure import vision_infrastructure_readiness_service
 from app.workers.vision_tasks import dispatch_vision_job
@@ -164,8 +168,9 @@ async def reprocess_vision_document(
     try:
         with open(document.original_storage_path, "rb") as source:
             content = source.read()
-        response = vision_ai_service.queue_documents(
-            [(document.filename, content, {**document.metadata, "reprocessed_from": document_id})],
+        response = vision_ai_service.queue_reprocess(
+            document_id,
+            content,
             actor=user.email,
             tenant_id=user.tenant_id,
         )
@@ -274,7 +279,19 @@ async def vision_document_pages(
                     ),
                     "processed_image_url": (
                         f"/api/v1/vision/documents/{document_id}/pages/"
-                        f"{item.page_number}/image?variant=processed"
+                        f"{item.page_number}/image?variant=binary"
+                    ),
+                    "enhanced_image_url": (
+                        f"/api/v1/vision/documents/{document_id}/pages/"
+                        f"{item.page_number}/image?variant=enhanced"
+                    ),
+                    "grayscale_image_url": (
+                        f"/api/v1/vision/documents/{document_id}/pages/"
+                        f"{item.page_number}/image?variant=grayscale"
+                    ),
+                    "binary_image_url": (
+                        f"/api/v1/vision/documents/{document_id}/pages/"
+                        f"{item.page_number}/image?variant=binary"
                     ),
                 }
                 for item in document.page_artifacts
@@ -292,7 +309,10 @@ async def vision_document_pages(
 async def vision_document_page_image(
     document_id: str,
     page_number: int,
-    variant: str = Query(default="processed", pattern="^(processed|original)$"),
+    variant: str = Query(
+        default="original",
+        pattern="^(original|enhanced|grayscale|binary|forensic|processed)$",
+    ),
     user: AuthUser = Depends(require_user),
 ) -> FileResponse:
     document = _document_or_404(document_id, user.tenant_id)
@@ -302,17 +322,60 @@ async def vision_document_page_image(
     )
     if not artifact:
         raise HTTPException(status_code=404, detail="page_number not found")
-    path = (
-        artifact.processed_image_path
-        if variant == "processed"
-        else artifact.original_image_path
-    )
-    if not Path(path).is_file():
+    if variant == "forensic":
+        analysis = next(
+            (
+                item
+                for item in document.tamper_analysis
+                if item.page_number == page_number and item.heatmap_path
+            ),
+            None,
+        )
+        path = Path(analysis.heatmap_path) if analysis and analysis.heatmap_path else None
+    else:
+        try:
+            path = vision_ai_service.preprocessor.ensure_variant(artifact, variant)
+        except (FileNotFoundError, ValueError):
+            path = None
+    if path is None or not Path(path).is_file():
         raise HTTPException(status_code=404, detail="Page artifact is not available")
     return FileResponse(
         path,
         media_type="image/png",
         filename=f"{document_id}-page-{page_number}.png",
+    )
+
+
+@router.get("/documents/{document_id}/ocr")
+async def vision_document_ocr(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    document = _document_or_404(document_id, user.tenant_id)
+    return _envelope(
+        {
+            "document_id": document_id,
+            "word_count": len(document.ocr_words),
+            "mean_ocr_confidence": document.confidence_summary.mean_ocr_confidence,
+            "words": [word.model_dump(mode="json") for word in document.ocr_words],
+        },
+        document.case_id,
+    )
+
+
+@router.get("/documents/{document_id}/layout")
+async def vision_document_layout(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    document = _document_or_404(document_id, user.tenant_id)
+    return _envelope(
+        {
+            "document_id": document_id,
+            "region_count": len(document.layout_regions),
+            "regions": [region.model_dump(mode="json") for region in document.layout_regions],
+        },
+        document.case_id,
     )
 
 
@@ -385,6 +448,23 @@ async def vision_document_fields(
         {
             "document_id": document_id,
             "fields": [field.model_dump(mode="json") for field in document.extracted_fields],
+            "confidence": document.confidence_summary.model_dump(mode="json"),
+            "completeness": document.field_completeness.model_dump(mode="json"),
+        },
+        document.case_id,
+    )
+
+
+@router.get("/documents/{document_id}/missing-fields")
+async def vision_document_missing_fields(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    document = _document_or_404(document_id, user.tenant_id)
+    return _envelope(
+        {
+            "document_id": document_id,
+            **document.field_completeness.model_dump(mode="json"),
         },
         document.case_id,
     )
@@ -414,9 +494,47 @@ async def vision_document_risk(
     return _envelope(
         {
             "document_id": document_id,
+            "total": len(document.risk_indicators),
             "risk_indicators": [risk.model_dump(mode="json") for risk in document.risk_indicators],
             "duplicate_candidates": [candidate.model_dump(mode="json") for candidate in document.duplicate_candidates],
             "review_required": document.review_task is not None,
+        },
+        document.case_id,
+    )
+
+
+@router.get("/documents/{document_id}/visual-elements")
+async def vision_document_visual_elements(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    document = _document_or_404(document_id, user.tenant_id)
+    return _envelope(
+        {
+            "document_id": document_id,
+            "total": len(document.visual_detections),
+            "visual_elements": [
+                item.model_dump(mode="json") for item in document.visual_detections
+            ],
+        },
+        document.case_id,
+    )
+
+
+@router.get("/documents/{document_id}/warnings")
+async def vision_document_warnings(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    document = _document_or_404(document_id, user.tenant_id)
+    return _envelope(
+        {
+            "document_id": document_id,
+            "total": len(document.processing_warnings),
+            "warnings": [
+                warning.model_dump(mode="json")
+                for warning in document.processing_warnings
+            ],
         },
         document.case_id,
     )
@@ -441,9 +559,34 @@ async def vision_document_related(
 
 
 @router.get("/reviews")
-async def list_vision_reviews(user: AuthUser = Depends(require_user)) -> dict:
-    reviews = vision_ai_service.list_reviews(user.tenant_id)
-    return _envelope({"total": len(reviews), "reviews": [review.model_dump(mode="json") for review in reviews]})
+async def list_vision_reviews(
+    search: str = Query(default=""),
+    document_type: str = Query(default="all"),
+    priority: str = Query(default="all"),
+    reason: str = Query(default="all"),
+    assignee: str = Query(default="all"),
+    status: str = Query(default="open"),
+    sort_by: str = Query(default="created_at"),
+    sort_direction: str = Query(default="desc"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.review_queue(
+            user.tenant_id,
+            search=search,
+            document_type=document_type,
+            priority=priority,
+            reason=reason,
+            assignee=assignee,
+            status=status,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+            page=page,
+            page_size=page_size,
+        )
+    )
 
 
 @router.get("/reviews/{review_id}")
@@ -457,6 +600,11 @@ async def vision_review_detail(
         {
             "review": review.model_dump(mode="json"),
             "document": document.model_dump(mode="json"),
+            "approval_policy": vision_ai_service.approval_policy_for_review(
+                review_id,
+                actor_role=user.role,
+                tenant_id=user.tenant_id,
+            ).model_dump(mode="json"),
         },
         document.case_id,
     )
@@ -557,7 +705,7 @@ async def confirm_vision_fraud(
     request: VisionReviewDecisionRequest | None = None,
     user: AuthUser = Depends(require_user),
 ) -> dict:
-    _require_reviewer(user)
+    _require_admin(user)
     return _review_decision(review_id, VisionProcessingStatus.confirmed_fraud, request, user, http_request)
 
 
@@ -601,8 +749,18 @@ async def vision_graph_query(
 
 
 @router.get("/analytics/overview")
-async def vision_analytics_overview(user: AuthUser = Depends(require_user)) -> dict:
-    return _envelope(vision_ai_service.analytics_overview(user.tenant_id))
+async def vision_analytics_overview(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.analytics_overview(
+            user.tenant_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
 
 
 @router.get("/infrastructure/readiness")
@@ -694,6 +852,23 @@ async def get_vision_report(
         )
 
 
+@router.post("/reports/{report_id}/archive")
+async def archive_vision_report(
+    report_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    _require_reviewer(user)
+    try:
+        report = vision_ai_service.archive_report(
+            report_id,
+            tenant_id=user.tenant_id,
+            actor=user.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _envelope(report.model_dump(mode="json"))
+
+
 @router.get("/reports/{report_id}/download")
 async def download_vision_report(
     report_id: str,
@@ -706,6 +881,11 @@ async def download_vision_report(
         _document_or_404(report_id, user.tenant_id)
         content = vision_ai_service.render_pdf_bytes(report_id, user.tenant_id)
         filename = f"{report_id}-vision-report.pdf"
+    vision_ai_service.audit_report_download(
+        report_id,
+        tenant_id=user.tenant_id,
+        actor=user.email,
+    )
     return Response(content=content, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
@@ -761,17 +941,42 @@ def _review_decision(
     user: AuthUser,
     http_request: Request,
 ) -> dict:
+    decision_request = request or VisionReviewDecisionRequest(decision=decision)
+    reauthentication_payload = None
+    if decision == VisionProcessingStatus.confirmed_fraud:
+        token = decision_request.reauthentication_token
+        if not token:
+            raise HTTPException(
+                status_code=401,
+                detail="Recent reauthentication is required to confirm fraud",
+            )
+        try:
+            reauthentication_payload = auth_service.verify_reauthentication(token, user)
+        except ValueError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
     try:
         review = vision_ai_service.record_review_decision(
             review_id,
             decision=decision,
-            comment=request.comment if request else "",
+            request=decision_request,
             actor=user.email,
+            actor_role=user.role,
             tenant_id=user.tenant_id,
             request_metadata=_request_metadata(http_request),
+            reauthentication_payload=reauthentication_payload,
         )
+    except ApprovalPolicyViolation as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=exc.evaluation.model_dump(mode="json"),
+        ) from exc
+    except ReviewDecisionValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        status_code = 404 if "not found" in str(exc).lower() else 422
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return _envelope(review.model_dump(mode="json"), review.document_id)
 
 
@@ -810,6 +1015,11 @@ def _json_metadata(raw: str) -> dict[str, Any]:
 def _require_reviewer(user: AuthUser) -> None:
     if user.role not in {UserRole.admin, UserRole.reviewer}:
         raise HTTPException(status_code=403, detail="Reviewer role required")
+
+
+def _require_admin(user: AuthUser) -> None:
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Admin role required")
 
 
 def _dispatch_or_background(

@@ -2,7 +2,7 @@ import { Box, Button, IconButton, InputAdornment, MenuItem, Table, TableBody, Ta
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, Search, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link } from "../router";
+import { Link, useLocation } from "../router";
 
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -12,10 +12,11 @@ import { StatusChip } from "../components/StatusChip";
 
 export function DocumentLibraryPage() {
   const { user } = useAuth();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const documents = useQuery({ queryKey: ["documents"], queryFn: api.documents });
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState(() => new URLSearchParams(location.search).get("status") || "all");
   const remove = useMutation({
     mutationFn: api.deleteDocument,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
@@ -50,13 +51,13 @@ export function DocumentLibraryPage() {
           <Table>
             <TableHead><TableRow><TableCell>File</TableCell><TableCell>Type</TableCell><TableCell>Pages</TableCell><TableCell>Confidence</TableCell><TableCell>Status</TableCell><TableCell>Updated</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead>
             <TableBody>{rows.map((document) => {
-              const confidence = document.extracted_fields.length ? document.extracted_fields.reduce((sum, field) => sum + field.confidence, 0) / document.extracted_fields.length : 0;
+              const confidence = document.confidence_summary.mean_field_confidence;
               return (
                 <TableRow key={document.document_id} hover>
                   <TableCell><Typography fontWeight={650}>{document.filename}</Typography><Typography variant="caption" color="text.secondary">{document.document_id}</Typography></TableCell>
                   <TableCell>{document.document_type.replaceAll("_", " ")}</TableCell>
                   <TableCell>{document.page_count}</TableCell>
-                  <TableCell>{Math.round(confidence * 100)}%</TableCell>
+                  <TableCell>{confidence === null ? "Not available" : `${Math.round(confidence * 100)}% across ${document.confidence_summary.field_count}`}</TableCell>
                   <TableCell><StatusChip value={document.status} /></TableCell>
                   <TableCell>{new Date(document.updated_at).toLocaleString()}</TableCell>
                   <TableCell align="right">

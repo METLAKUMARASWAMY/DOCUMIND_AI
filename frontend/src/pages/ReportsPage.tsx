@@ -1,16 +1,20 @@
-import { Alert, Box, Button, MenuItem, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, IconButton, MenuItem, Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FilePlus2 } from "lucide-react";
-import { useState } from "react";
+import { Archive, Download, FilePlus2, RefreshCw } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { api, downloadReport } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { EmptyState, ErrorState, LoadingRows } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
+import { StatusChip } from "../components/StatusChip";
 import type { ReportRecord } from "../types/api";
 
 const reportTypes = ["document_intelligence_report", "risk_screening_report", "contract_review_report", "vendor_summary", "finance_narrative_report", "model_evaluation_report"];
 
 export function ReportsPage() {
+  const { user } = useAuth();
+  const canManage = user?.role === "ADMIN" || user?.role === "REVIEWER";
   const queryClient = useQueryClient();
   const reports = useQuery({ queryKey: ["reports"], queryFn: api.reports });
   const documents = useQuery({ queryKey: ["documents"], queryFn: api.documents });
@@ -19,33 +23,65 @@ export function ReportsPage() {
   const [documentId, setDocumentId] = useState("");
   const [vendor, setVendor] = useState("");
   const [narrativeId, setNarrativeId] = useState("");
+  const documentNames = useMemo(() => new Map(documents.data?.documents.map((item) => [item.document_id, item.filename]) || []), [documents.data]);
   const generate = useMutation({
-    mutationFn: () => api.generateReport({ report_type: type, document_id: documentId || null, vendor_name: vendor || null, narrative_id: narrativeId || null }),
+    mutationFn: (payload: Record<string, unknown>) => api.generateReport(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reports"] }),
   });
+  const archive = useMutation({
+    mutationFn: api.archiveReport,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reports"] }),
+  });
+  const requestPayload = (newVersion = false) => ({
+    report_type: type,
+    document_id: documentId || null,
+    vendor_name: vendor || null,
+    narrative_id: narrativeId || null,
+    generate_new_version: newVersion,
+  });
+  const regenerate = (report: ReportRecord) => {
+    generate.mutate({ ...report.request_scope, generate_new_version: true });
+  };
 
   return (
     <Box className="page-stack">
-      <PageHeader title="Reports" subtitle="Persisted JSON and downloadable PDF report resources." />
+      <PageHeader title="Reports" />
       <Box className="report-builder surface">
         <TextField select size="small" label="Report type" value={type} onChange={(event) => setType(event.target.value)}>{reportTypes.map((value) => <MenuItem key={value} value={value}>{value.replaceAll("_", " ")}</MenuItem>)}</TextField>
         {type.includes("document") || type.includes("risk") || type.includes("contract") ? <TextField select size="small" label="Document" value={documentId} onChange={(event) => setDocumentId(event.target.value)}><MenuItem value="">Select document</MenuItem>{documents.data?.documents.map((document) => <MenuItem key={document.document_id} value={document.document_id}>{document.filename}</MenuItem>)}</TextField> : null}
         {type === "vendor_summary" ? <TextField size="small" label="Vendor" value={vendor} onChange={(event) => setVendor(event.target.value)} /> : null}
-        {type === "finance_narrative_report" ? <TextField select size="small" label="Narrative" value={narrativeId} onChange={(event) => setNarrativeId(event.target.value)}><MenuItem value="">Select narrative</MenuItem>{narratives.data?.narratives.map((item) => <MenuItem key={item.narrative_id} value={item.narrative_id}>{item.narrative_type} | {new Date(item.created_at).toLocaleDateString()}</MenuItem>)}</TextField> : null}
-        <Button variant="contained" startIcon={<FilePlus2 size={16} />} disabled={generate.isPending || type === "model_evaluation_report"} onClick={() => generate.mutate()}>Generate</Button>
+        {type === "finance_narrative_report" ? <TextField select size="small" label="Narrative" value={narrativeId} onChange={(event) => setNarrativeId(event.target.value)}><MenuItem value="">Select narrative</MenuItem>{narratives.data?.narratives.map((item) => <MenuItem key={item.narrative_id} value={item.narrative_id}>{item.narrative_type} | v{item.version}</MenuItem>)}</TextField> : null}
+        <Button variant="contained" startIcon={<FilePlus2 size={16} />} disabled={generate.isPending || type === "model_evaluation_report"} onClick={() => generate.mutate(requestPayload())}>Generate or reuse</Button>
+        <Button variant="outlined" startIcon={<RefreshCw size={16} />} disabled={generate.isPending || type === "model_evaluation_report"} onClick={() => generate.mutate(requestPayload(true))}>New version</Button>
       </Box>
-      {type === "model_evaluation_report" ? <Alert severity="info">Model evaluation reports are created from labelled evaluation runs and cannot be generated without dataset provenance.</Alert> : null}
+      {type === "model_evaluation_report" ? <Alert severity="info">A labelled evaluation run with dataset provenance is required.</Alert> : null}
+      {generate.data ? <Alert severity="success">{generate.data.title} v{generate.data.version} is ready.</Alert> : null}
       {generate.error ? <Alert severity="error">{generate.error.message}</Alert> : null}
+      {archive.error ? <Alert severity="error">{archive.error.message}</Alert> : null}
       <Box className="surface table-surface">
-        {reports.isLoading ? <LoadingRows /> : reports.error ? <ErrorState error={reports.error} /> : !reports.data?.reports.length ? <EmptyState title="No reports generated" detail="Choose a report type and a valid evidence scope." /> : (
-          <Table><TableHead><TableRow><TableCell>Report</TableCell><TableCell>Type</TableCell><TableCell>Documents</TableCell><TableCell>Generated by</TableCell><TableCell>Created</TableCell><TableCell align="right">Download</TableCell></TableRow></TableHead><TableBody>{reports.data.reports.map((report) => <ReportRow key={report.report_id} report={report} />)}</TableBody></Table>
+        {reports.isLoading ? <LoadingRows /> : reports.error ? <ErrorState error={reports.error} /> : !reports.data?.reports.length ? <EmptyState title="No reports generated" detail="Choose a report type and evidence scope." /> : (
+          <Table><TableHead><TableRow><TableCell>Report</TableCell><TableCell>Type</TableCell><TableCell>Documents</TableCell><TableCell>Version</TableCell><TableCell>Source snapshot</TableCell><TableCell>Created</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead><TableBody>{reports.data.reports.map((report) => <ReportRow key={report.report_id} report={report} documentNames={documentNames} canManage={canManage} onRegenerate={regenerate} onArchive={(item) => { if (window.confirm(`Archive ${item.title} v${item.version}?`)) archive.mutate(item.report_id); }} />)}</TableBody></Table>
         )}
       </Box>
     </Box>
   );
 }
 
-function ReportRow({ report }: { report: ReportRecord }) {
+function ReportRow({ report, documentNames, canManage, onRegenerate, onArchive }: { report: ReportRecord; documentNames: Map<string, string>; canManage: boolean; onRegenerate: (report: ReportRecord) => void; onArchive: (report: ReportRecord) => void }) {
   const [busy, setBusy] = useState(false);
-  return <TableRow><TableCell><Typography fontWeight={700}>{report.title}</Typography><Typography variant="caption">{report.report_id}</Typography></TableCell><TableCell>{report.report_type.replaceAll("_", " ")}</TableCell><TableCell>{report.document_ids.length}</TableCell><TableCell>{report.generated_by}</TableCell><TableCell>{new Date(report.created_at).toLocaleString()}</TableCell><TableCell align="right"><Button startIcon={<Download size={16} />} disabled={busy} onClick={() => { setBusy(true); void downloadReport(report).finally(() => setBusy(false)); }}>PDF</Button></TableCell></TableRow>;
+  return (
+    <TableRow>
+      <TableCell><Typography fontWeight={700}>{report.title}</Typography><Typography variant="caption" color="text.secondary">{report.report_id}</Typography></TableCell>
+      <TableCell>{report.report_type.replaceAll("_", " ")}</TableCell>
+      <TableCell><Box className="report-document-list">{report.document_ids.length ? report.document_ids.map((id) => <Typography variant="body2" key={id}>{documentNames.get(id) || id}</Typography>) : <Typography variant="body2">No document scope</Typography>}</Box></TableCell>
+      <TableCell><Typography fontWeight={700}>v{report.version}</Typography><StatusChip value={report.status} /></TableCell>
+      <TableCell><Tooltip title={report.source_data_version}><code>{report.source_data_version.slice(0, 12)}</code></Tooltip></TableCell>
+      <TableCell>{new Date(report.created_at).toLocaleString()}<Typography variant="caption" display="block" color="text.secondary">{report.generated_by}</Typography></TableCell>
+      <TableCell align="right">
+        <Tooltip title="Download PDF"><span><IconButton disabled={busy} onClick={() => { setBusy(true); void downloadReport(report).finally(() => setBusy(false)); }}><Download size={17} /></IconButton></span></Tooltip>
+        {canManage ? <Tooltip title="Generate new version"><IconButton onClick={() => onRegenerate(report)}><RefreshCw size={17} /></IconButton></Tooltip> : null}
+        {canManage && report.status !== "archived" ? <Tooltip title="Archive report"><IconButton color="warning" onClick={() => onArchive(report)}><Archive size={17} /></IconButton></Tooltip> : null}
+      </TableCell>
+    </TableRow>
+  );
 }

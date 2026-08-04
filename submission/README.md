@@ -36,7 +36,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export DOCUMIND_DATASET_PATH="/Users/kumar/Downloads/DocuMind AI/dataset/documind_ai_synthetic_dataset"
-export DOCUMIND_AUTH_SECRET="change-me-local-demo-secret"
+export DOCUMIND_AUTH_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -47,18 +47,7 @@ npm run dev
 ```
 
 ## Local Login
-Local demo accounts are seeded automatically outside production:
-
-```text
-admin@documind.ai / Admin@123
-compliance@documind.ai / Compliance@123
-finance@documind.ai / Finance@123
-legal@documind.ai / Legal@123
-risk@documind.ai / Risk@123
-auditor@documind.ai / Auditor@123
-```
-
-You can also create users through the signup page. For custom protected reviewer/admin screens, bootstrap a local role account:
+No privileged account has a committed password. Create users through the signup page, or bootstrap a protected reviewer/admin account with a generated one-time credential:
 
 ```bash
 python scripts/bootstrap_auth_users.py --role ADMIN --email admin@documind.local

@@ -28,8 +28,13 @@ from app.api.vision_routes import (
     upload_vision_documents,
     vision_document_artifact,
     vision_document_events,
+    vision_document_layout,
+    vision_document_missing_fields,
+    vision_document_ocr,
     vision_document_page_image,
     vision_document_source,
+    vision_document_visual_elements,
+    vision_document_warnings,
     vision_model_comparison,
 )
 from app.models.schemas import AuthUser, UserRole
@@ -37,12 +42,19 @@ from app.models.vision import (
     VisionAskRequest,
     VisionFieldReviewRequest,
     VisionFinanceNarrativeRequest,
+    VisionModelLegacyPatchRequest,
+    VisionModelRequestedStateRequest,
     VisionProcessingStatus,
     VisionReportRequest,
     VisionReviewDecisionRequest,
+    VisionRuleOverrideRequest,
 )
-from app.services.auth import require_user
+from app.services.auth import auth_service, require_user
 from app.services.vision import vision_ai_service
+from app.services.vision.approval_policy import (
+    ApprovalPolicyViolation,
+    ReviewDecisionValidationError,
+)
 from app.workers.vision_tasks import dispatch_vision_job
 
 router = APIRouter(tags=["documind-vision-ai-aliases"])
@@ -114,8 +126,9 @@ async def alias_reprocess_vision_document(
     try:
         with open(document.original_storage_path, "rb") as source:
             content = source.read()
-        response = vision_ai_service.queue_documents(
-            [(document.filename, content, {**document.metadata, "reprocessed_from": document_id})],
+        response = vision_ai_service.queue_reprocess(
+            document_id,
+            content,
             actor=user.email,
             tenant_id=user.tenant_id,
         )
@@ -180,10 +193,29 @@ async def alias_vision_document_pages(
 async def alias_vision_document_page_image(
     document_id: str,
     page_number: int,
-    variant: str = Query(default="processed", pattern="^(processed|original)$"),
+    variant: str = Query(
+        default="original",
+        pattern="^(original|enhanced|grayscale|binary|forensic|processed)$",
+    ),
     user: AuthUser = Depends(require_user),
 ) -> FileResponse:
     return await vision_document_page_image(document_id, page_number, variant, user)
+
+
+@router.get("/documents/{document_id}/ocr")
+async def alias_vision_document_ocr(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return await vision_document_ocr(document_id, user)
+
+
+@router.get("/documents/{document_id}/layout")
+async def alias_vision_document_layout(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return await vision_document_layout(document_id, user)
 
 
 @router.get("/documents/{document_id}/source")
@@ -215,7 +247,23 @@ async def alias_vision_document_fields(
     user: AuthUser = Depends(require_user),
 ) -> dict:
     document = _document_or_404(document_id, user.tenant_id)
-    return _envelope({"document_id": document_id, "fields": [item.model_dump(mode="json") for item in document.extracted_fields]}, document.case_id)
+    return _envelope(
+        {
+            "document_id": document_id,
+            "fields": [item.model_dump(mode="json") for item in document.extracted_fields],
+            "confidence": document.confidence_summary.model_dump(mode="json"),
+            "completeness": document.field_completeness.model_dump(mode="json"),
+        },
+        document.case_id,
+    )
+
+
+@router.get("/documents/{document_id}/missing-fields")
+async def alias_vision_document_missing_fields(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return await vision_document_missing_fields(document_id, user)
 
 
 @router.get("/documents/{document_id}/tables")
@@ -236,12 +284,29 @@ async def alias_vision_document_risk(
     return _envelope(
         {
             "document_id": document_id,
+            "total": len(document.risk_indicators),
             "risk_indicators": [item.model_dump(mode="json") for item in document.risk_indicators],
             "duplicate_candidates": [item.model_dump(mode="json") for item in document.duplicate_candidates],
             "review_required": document.review_task is not None,
         },
         document.case_id,
     )
+
+
+@router.get("/documents/{document_id}/visual-elements")
+async def alias_vision_document_visual_elements(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return await vision_document_visual_elements(document_id, user)
+
+
+@router.get("/documents/{document_id}/warnings")
+async def alias_vision_document_warnings(
+    document_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return await vision_document_warnings(document_id, user)
 
 
 @router.get("/documents/{document_id}/related")
@@ -263,9 +328,34 @@ async def alias_vision_document_related(
 
 
 @router.get("/reviews")
-async def alias_list_vision_reviews(user: AuthUser = Depends(require_user)) -> dict:
-    reviews = vision_ai_service.list_reviews(user.tenant_id)
-    return _envelope({"total": len(reviews), "reviews": [item.model_dump(mode="json") for item in reviews]})
+async def alias_list_vision_reviews(
+    search: str = Query(default=""),
+    document_type: str = Query(default="all"),
+    priority: str = Query(default="all"),
+    reason: str = Query(default="all"),
+    assignee: str = Query(default="all"),
+    status: str = Query(default="open"),
+    sort_by: str = Query(default="created_at"),
+    sort_direction: str = Query(default="desc"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.review_queue(
+            user.tenant_id,
+            search=search,
+            document_type=document_type,
+            priority=priority,
+            reason=reason,
+            assignee=assignee,
+            status=status,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+            page=page,
+            page_size=page_size,
+        )
+    )
 
 
 @router.get("/reviews/{review_id}")
@@ -275,7 +365,18 @@ async def alias_vision_review_detail(
 ) -> dict:
     review = _review_or_404(review_id, user.tenant_id)
     document = _document_or_404(review.document_id, user.tenant_id)
-    return _envelope({"review": review.model_dump(mode="json"), "document": document.model_dump(mode="json")}, document.case_id)
+    return _envelope(
+        {
+            "review": review.model_dump(mode="json"),
+            "document": document.model_dump(mode="json"),
+            "approval_policy": vision_ai_service.approval_policy_for_review(
+                review_id,
+                actor_role=user.role,
+                tenant_id=user.tenant_id,
+            ).model_dump(mode="json"),
+        },
+        document.case_id,
+    )
 
 
 @router.patch("/reviews/{review_id}/fields/{field_id}")
@@ -363,11 +464,12 @@ async def alias_confirm_vision_fraud(
     request: VisionReviewDecisionRequest | None = None,
     user: AuthUser = Depends(require_user),
 ) -> dict:
-    _require_reviewer(user)
+    _require_admin(user)
     return _review_decision(review_id, VisionProcessingStatus.confirmed_fraud, request, user, http_request)
 
 
 @router.post("/ask")
+@router.post("/ai/ask")
 async def alias_ask_vision_documents(
     request: VisionAskRequest,
     user: AuthUser = Depends(require_user),
@@ -390,7 +492,29 @@ async def alias_vision_question_detail(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.get("/ai/responses/{question_id}")
+async def alias_vision_response_detail(
+    question_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    try:
+        record = vision_ai_service.get_question(question_id, user.tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    answer = dict(record["answer"])
+    answer.update(
+        {
+            "question": record["question"],
+            "document_ids": record["document_ids"],
+            "feedback": record.get("feedback", []),
+            "created_at": record["created_at"],
+        }
+    )
+    return _envelope(answer)
+
+
 @router.post("/questions/{question_id}/feedback")
+@router.post("/ai/responses/{question_id}/feedback")
 async def alias_vision_question_feedback(
     question_id: str,
     payload: dict[str, Any],
@@ -466,29 +590,145 @@ async def alias_vision_graph_query(
     return _envelope({"query_type": "vision_graph_or_evidence_search", "answer": answer.model_dump(mode="json")})
 
 
+@router.post("/graph/relationships/{relationship_id}/verify")
+async def alias_verify_vision_graph_relationship(
+    relationship_id: str,
+    payload: dict[str, Any],
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    _require_reviewer(user)
+    try:
+        relationship = vision_ai_service.verify_graph_relationship(
+            relationship_id,
+            tenant_id=user.tenant_id,
+            actor=user.email,
+            comment=str(payload.get("comment", "")),
+            evidence_acknowledged=bool(payload.get("evidence_acknowledged", False)),
+        )
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 422
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return _envelope(relationship)
+
+
 @router.get("/analytics/overview")
-async def alias_vision_analytics_overview(user: AuthUser = Depends(require_user)) -> dict:
-    return _envelope(vision_ai_service.analytics_overview(user.tenant_id))
+async def alias_vision_analytics_overview(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.analytics_overview(
+            user.tenant_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
 
 
 @router.get("/analytics/vendors")
-async def alias_vision_analytics_vendors(user: AuthUser = Depends(require_user)) -> dict:
-    return _envelope(vision_ai_service.analytics_vendors(user.tenant_id))
+async def alias_vision_analytics_vendors(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.analytics_vendors(
+            user.tenant_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
+
+
+@router.get("/analytics/documents")
+async def alias_vision_analytics_documents(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.analytics_documents(
+            user.tenant_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
 
 
 @router.get("/analytics/risk")
-async def alias_vision_analytics_risk(user: AuthUser = Depends(require_user)) -> dict:
-    return _envelope(vision_ai_service.analytics_risk(user.tenant_id))
+async def alias_vision_analytics_risk(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.analytics_risk(
+            user.tenant_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
 
 
 @router.get("/analytics/review")
-async def alias_vision_analytics_review(user: AuthUser = Depends(require_user)) -> dict:
-    return _envelope(vision_ai_service.analytics_review(user.tenant_id))
+async def alias_vision_analytics_review(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.analytics_review(
+            user.tenant_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
+
+
+@router.get("/analytics/reviews")
+async def alias_vision_analytics_reviews(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.analytics_review(
+            user.tenant_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
 
 
 @router.get("/analytics/models")
-async def alias_vision_analytics_models(user: AuthUser = Depends(require_user)) -> dict:
-    return _envelope(vision_ai_service.analytics_models(user.tenant_id))
+async def alias_vision_analytics_models(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.analytics_models(
+            user.tenant_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
+
+
+@router.get("/analytics/rag")
+async def alias_vision_analytics_rag(
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return _envelope(
+        vision_ai_service.analytics_rag(
+            user.tenant_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    )
 
 
 @router.get("/models/comparison/{document_id}")
@@ -520,6 +760,27 @@ async def alias_get_finance_narrative(
     return await get_finance_narrative(narrative_id, user)
 
 
+@router.post("/narratives/generate")
+async def alias_generate_narrative(
+    request: VisionFinanceNarrativeRequest,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return await generate_finance_narrative(request, user)
+
+
+@router.get("/narratives")
+async def alias_list_narratives(user: AuthUser = Depends(require_user)) -> dict:
+    return await list_finance_narratives(user)
+
+
+@router.get("/narratives/{narrative_id}")
+async def alias_get_narrative(
+    narrative_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    return await get_finance_narrative(narrative_id, user)
+
+
 @router.post("/reports/generate")
 async def alias_generate_vision_report(
     request: VisionReportRequest,
@@ -542,6 +803,23 @@ async def alias_get_vision_report(
     return await get_vision_report(report_id, format, user)
 
 
+@router.post("/reports/{report_id}/archive")
+async def alias_archive_vision_report(
+    report_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    _require_reviewer(user)
+    try:
+        report = vision_ai_service.archive_report(
+            report_id,
+            tenant_id=user.tenant_id,
+            actor=user.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _envelope(report.model_dump(mode="json"))
+
+
 @router.get("/reports/{report_id}/download")
 async def alias_download_vision_report(
     report_id: str,
@@ -556,14 +834,72 @@ async def alias_vision_admin_models(user: AuthUser = Depends(require_user)) -> d
     return _envelope(vision_ai_service.admin_models())
 
 
-@router.patch("/admin/models/{model_id}")
-async def alias_vision_admin_model_patch(
+@router.post("/admin/models/{model_id:path}/smoke-test")
+async def alias_vision_admin_model_smoke_test(
     model_id: str,
-    payload: dict[str, Any],
     user: AuthUser = Depends(require_user),
 ) -> dict:
     _require_admin(user)
-    return _envelope(vision_ai_service.patch_admin_model(model_id, payload, actor=user.email))
+    try:
+        result = vision_ai_service.smoke_test_admin_model(
+            model_id,
+            actor=user.email,
+            tenant_id=user.tenant_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _envelope(result)
+
+
+@router.get("/admin/models/{model_id:path}/health")
+async def alias_vision_admin_model_health(
+    model_id: str,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    _require_admin(user)
+    try:
+        result = vision_ai_service.admin_model_health(model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _envelope(result)
+
+
+@router.patch("/admin/models/{model_id:path}/requested-state")
+async def alias_vision_admin_model_requested_state(
+    model_id: str,
+    payload: VisionModelRequestedStateRequest,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    _require_admin(user)
+    try:
+        result = vision_ai_service.patch_admin_model(
+            model_id,
+            payload.model_dump(mode="json", exclude_none=True),
+            actor=user.email,
+            tenant_id=user.tenant_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _envelope(result)
+
+
+@router.patch("/admin/models/{model_id:path}")
+async def alias_vision_admin_model_patch(
+    model_id: str,
+    payload: VisionModelLegacyPatchRequest,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    _require_admin(user)
+    try:
+        result = vision_ai_service.patch_admin_model(
+            model_id,
+            payload.model_dump(mode="json", exclude_none=True),
+            actor=user.email,
+            tenant_id=user.tenant_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _envelope(result)
 
 
 @router.get("/admin/rules")
@@ -575,11 +911,18 @@ async def alias_vision_admin_rules(user: AuthUser = Depends(require_user)) -> di
 @router.patch("/admin/rules/{rule_id}")
 async def alias_vision_admin_rule_patch(
     rule_id: str,
-    payload: dict[str, Any],
+    payload: VisionRuleOverrideRequest,
     user: AuthUser = Depends(require_user),
 ) -> dict:
     _require_admin(user)
-    return _envelope(vision_ai_service.patch_admin_rule(rule_id, payload, actor=user.email))
+    return _envelope(
+        vision_ai_service.patch_admin_rule(
+            rule_id,
+            payload.model_dump(mode="json", exclude_none=True),
+            actor=user.email,
+            tenant_id=user.tenant_id,
+        )
+    )
 
 
 @router.get("/admin/audit")
@@ -595,17 +938,42 @@ def _review_decision(
     user: AuthUser,
     http_request: Request,
 ) -> dict:
+    decision_request = request or VisionReviewDecisionRequest(decision=decision)
+    reauthentication_payload = None
+    if decision == VisionProcessingStatus.confirmed_fraud:
+        token = decision_request.reauthentication_token
+        if not token:
+            raise HTTPException(
+                status_code=401,
+                detail="Recent reauthentication is required to confirm fraud",
+            )
+        try:
+            reauthentication_payload = auth_service.verify_reauthentication(token, user)
+        except ValueError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
     try:
         review = vision_ai_service.record_review_decision(
             review_id,
             decision=decision,
-            comment=request.comment if request else "",
+            request=decision_request,
             actor=user.email,
+            actor_role=user.role,
             tenant_id=user.tenant_id,
             request_metadata=_request_metadata(http_request),
+            reauthentication_payload=reauthentication_payload,
         )
+    except ApprovalPolicyViolation as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=exc.evaluation.model_dump(mode="json"),
+        ) from exc
+    except ReviewDecisionValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        status_code = 404 if "not found" in str(exc).lower() else 422
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return _envelope(review.model_dump(mode="json"), review.document_id)
 
 

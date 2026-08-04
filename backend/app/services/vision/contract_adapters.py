@@ -15,6 +15,7 @@ from app.models.vision import (
     VisionEvidence,
 )
 from app.services.vision.adapters import AdapterStatus, ExtractionAdapter
+from app.services.vision.checkpoint_validation import validate_transformer_checkpoint
 
 
 class DebertaContractClauseAdapter(ExtractionAdapter):
@@ -36,7 +37,12 @@ class DebertaContractClauseAdapter(ExtractionAdapter):
             if settings.contract_checkpoint
             else None
         )
-        ready = bool(checkpoint and checkpoint.is_dir() and (checkpoint / "config.json").is_file())
+        checkpoint_validation = validate_transformer_checkpoint(
+            checkpoint,
+            expected_tasks={"contract_clause_extraction", "contract_classification"},
+            require_domain_labels=True,
+        )
+        ready = checkpoint_validation.ready
         enabled = settings.enable_heavy_models and bool(checkpoint)
         active = enabled and installed and ready
         return AdapterStatus(
@@ -46,12 +52,15 @@ class DebertaContractClauseAdapter(ExtractionAdapter):
             reason=(
                 "Fine-tuned CUAD-style DeBERTa checkpoint is ready."
                 if active
-                else "Provide CONTRACT_CHECKPOINT with a fine-tuned clause classifier."
+                else checkpoint_validation.reason
             ),
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
-            metadata={"checkpoint": str(checkpoint) if checkpoint else None},
+            metadata={
+                "checkpoint": str(checkpoint) if checkpoint else None,
+                "checkpoint_validation": checkpoint_validation.metadata,
+            },
         )
 
     def extract_fields(self, document: VisionDocumentRecord) -> list[ExtractedVisionField]:

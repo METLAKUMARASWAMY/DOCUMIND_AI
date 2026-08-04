@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
+from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps, ImageSequence
 
 from app.core.config import settings
 from app.models.vision import PageQualityReport, VisionBoundingBox, VisionPageArtifact
@@ -42,9 +42,13 @@ class DocumentPreprocessor:
         extension = Path(filename).suffix.lower()
         document_root = self.artifact_root / document_id
         original_root = document_root / "pages" / "original"
-        processed_root = document_root / "pages" / "processed"
+        enhanced_root = document_root / "pages" / "enhanced"
+        grayscale_root = document_root / "pages" / "grayscale"
+        binary_root = document_root / "pages" / "binary"
         original_root.mkdir(parents=True, exist_ok=True)
-        processed_root.mkdir(parents=True, exist_ok=True)
+        enhanced_root.mkdir(parents=True, exist_ok=True)
+        grayscale_root.mkdir(parents=True, exist_ok=True)
+        binary_root.mkdir(parents=True, exist_ok=True)
 
         if extension == ".pdf":
             pages = self._render_pdf(content)
@@ -57,25 +61,32 @@ class DocumentPreprocessor:
         for index, page in enumerate(pages, start=1):
             image = ImageOps.exif_transpose(page["image"]).convert("RGB")
             original_path = original_root / f"page-{index:04d}.png"
-            processed_path = processed_root / f"page-{index:04d}.png"
+            enhanced_path = enhanced_root / f"page-{index:04d}.png"
+            grayscale_path = grayscale_root / f"page-{index:04d}.png"
+            binary_path = binary_root / f"page-{index:04d}.png"
             image.save(original_path, format="PNG")
 
-            processed, report, crop_box = self._preprocess_page(
+            enhanced, grayscale, binary, report, crop_box = self._preprocess_page(
                 image,
                 page_number=index,
                 dpi=int(page.get("dpi") or settings.pdf_render_dpi),
-                preserve_geometry=bool(page.get("native_words")),
+                preserve_geometry=True,
             )
-            processed.save(processed_path, format="PNG")
-            report.processed_image_path = str(processed_path)
+            enhanced.save(enhanced_path, format="PNG")
+            grayscale.save(grayscale_path, format="PNG")
+            binary.save(binary_path, format="PNG")
+            report.processed_image_path = str(binary_path)
             result.quality.append(report)
             result.artifacts.append(
                 VisionPageArtifact(
                     page_number=index,
                     original_image_path=str(original_path),
-                    processed_image_path=str(processed_path),
-                    width=processed.width,
-                    height=processed.height,
+                    processed_image_path=str(binary_path),
+                    enhanced_image_path=str(enhanced_path),
+                    grayscale_image_path=str(grayscale_path),
+                    binary_image_path=str(binary_path),
+                    width=binary.width,
+                    height=binary.height,
                     dpi=int(page.get("dpi") or settings.pdf_render_dpi),
                     source_kind=str(page.get("source_kind", "image")),
                     native_text_available=bool(page.get("native_words")),
@@ -85,6 +96,48 @@ class DocumentPreprocessor:
             result.native_words.extend(page.get("native_words", []))
             result.page_text[index] = str(page.get("text", ""))
         return result
+
+    def ensure_variant(
+        self,
+        artifact: VisionPageArtifact,
+        variant: str,
+    ) -> Path:
+        configured = {
+            "original": artifact.original_image_path,
+            "enhanced": artifact.enhanced_image_path,
+            "grayscale": artifact.grayscale_image_path,
+            "binary": artifact.binary_image_path or artifact.processed_image_path,
+            "processed": artifact.processed_image_path,
+        }.get(variant)
+        if configured and Path(configured).is_file():
+            return Path(configured)
+        if variant not in {"enhanced", "grayscale", "binary"}:
+            raise ValueError("Unsupported page-image variant")
+        source_path = Path(artifact.original_image_path)
+        if not source_path.is_file():
+            raise FileNotFoundError("Original page image is not available")
+        target = source_path.parent.parent / variant / source_path.name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source = Image.open(source_path).convert("RGB")
+        if variant == "enhanced":
+            image = ImageOps.autocontrast(source)
+            image = ImageEnhance.Contrast(image).enhance(1.08)
+            image = ImageEnhance.Sharpness(image).enhance(1.12)
+        elif variant == "grayscale":
+            image = ImageOps.grayscale(source).convert("RGB")
+        else:
+            gray = np.asarray(ImageOps.grayscale(source))
+            thresholded = cv2.adaptiveThreshold(
+                gray,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY,
+                31,
+                11,
+            )
+            image = Image.fromarray(thresholded).convert("RGB")
+        image.save(target, format="PNG")
+        return target
 
     def _render_pdf(self, content: bytes) -> list[dict[str, Any]]:
         import pymupdf
@@ -203,7 +256,13 @@ class DocumentPreprocessor:
         page_number: int,
         dpi: int,
         preserve_geometry: bool,
-    ) -> tuple[Image.Image, PageQualityReport, VisionBoundingBox | None]:
+    ) -> tuple[
+        Image.Image,
+        Image.Image,
+        Image.Image,
+        PageQualityReport,
+        VisionBoundingBox | None,
+    ]:
         rgb = np.asarray(image.convert("RGB"))
         gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
         blur_variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
@@ -234,6 +293,12 @@ class DocumentPreprocessor:
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         contrast_enhanced = clahe.apply(shadow_removed)
         steps.append("contrast_enhanced")
+        lab = cv2.cvtColor(denoised, cv2.COLOR_RGB2LAB)
+        lightness, channel_a, channel_b = cv2.split(lab)
+        enhanced_color = cv2.cvtColor(
+            cv2.merge((clahe.apply(lightness), channel_a, channel_b)),
+            cv2.COLOR_LAB2RGB,
+        )
         thresholded = cv2.adaptiveThreshold(
             contrast_enhanced,
             255,
@@ -243,21 +308,13 @@ class DocumentPreprocessor:
             11,
         )
         steps.append("adaptive_thresholded")
-        processed = Image.fromarray(cv2.cvtColor(thresholded, cv2.COLOR_GRAY2RGB))
+        enhanced = Image.fromarray(enhanced_color)
+        grayscale = Image.fromarray(cv2.cvtColor(contrast_enhanced, cv2.COLOR_GRAY2RGB))
+        binary = Image.fromarray(cv2.cvtColor(thresholded, cv2.COLOR_GRAY2RGB))
 
         if crop_box:
             steps.append("page_crop_detected")
-            if preserve_geometry:
-                notes.append("Crop recorded but not applied to preserve native PDF coordinates.")
-            else:
-                margin = 12
-                left = max(0, int(crop_box.x1) - margin)
-                top = max(0, int(crop_box.y1) - margin)
-                right = min(processed.width, int(crop_box.x2) + margin)
-                bottom = min(processed.height, int(crop_box.y2) + margin)
-                if right - left > processed.width * 0.65 and bottom - top > processed.height * 0.65:
-                    processed = processed.crop((left, top, right, bottom))
-                    steps.append("page_cropped")
+            notes.append("Crop recorded but not applied so every viewer mode shares coordinates.")
 
         sharpness = min(1.0, math.log1p(blur_variance) / math.log1p(1000.0))
         contrast_score = min(1.0, contrast_std / 64.0)
@@ -268,8 +325,8 @@ class DocumentPreprocessor:
         )
         report = PageQualityReport(
             page_number=page_number,
-            width=processed.width,
-            height=processed.height,
+            width=binary.width,
+            height=binary.height,
             dpi_estimate=dpi,
             rotation_degrees=round(rotation),
             blur_score=round(1 - sharpness, 4),
@@ -279,7 +336,7 @@ class DocumentPreprocessor:
             preprocessing_steps=steps,
             notes=notes,
         )
-        return processed, report, crop_box
+        return enhanced, grayscale, binary, report, crop_box
 
     def _estimate_rotation(self, gray: np.ndarray) -> float:
         inverted = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]

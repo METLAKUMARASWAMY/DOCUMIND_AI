@@ -12,9 +12,9 @@ import { StatusChip } from "../components/StatusChip";
 export function DashboardPage() {
   const queryClient = useQueryClient();
   const documents = useQuery({ queryKey: ["documents"], queryFn: api.documents });
-  const overview = useQuery({ queryKey: ["analytics", "overview"], queryFn: api.analyticsOverview });
-  const risk = useQuery({ queryKey: ["analytics", "risk"], queryFn: api.analyticsRisk });
-  const review = useQuery({ queryKey: ["analytics", "review"], queryFn: api.analyticsReview });
+  const overview = useQuery({ queryKey: ["analytics", "overview"], queryFn: () => api.analyticsOverview() });
+  const risk = useQuery({ queryKey: ["analytics", "risk"], queryFn: () => api.analyticsRisk() });
+  const review = useQuery({ queryKey: ["analytics", "review"], queryFn: () => api.analyticsReview() });
   const seedDemo = useMutation({
     mutationFn: api.seedDemo,
     onSuccess: () => {
@@ -61,7 +61,8 @@ export function DashboardPage() {
         <Metric label="Risk indicators" value={number(riskData.total_indicators)} icon={<AlertTriangle size={19} />} tone="error" />
         <Metric
           label="Mean field confidence"
-          value={`${Math.round(number(metrics.average_field_confidence) * 100)}%`}
+          value={percent(metrics.mean_field_confidence)}
+          detail={confidenceDetail(metrics)}
           icon={<Gauge size={19} />}
           tone="secondary"
         />
@@ -110,13 +111,14 @@ export function DashboardPage() {
   );
 }
 
-function Metric({ label, value, icon, tone = "primary" }: { label: string; value: string | number; icon: React.ReactNode; tone?: string }) {
+function Metric({ label, value, icon, detail, tone = "primary" }: { label: string; value: string | number; icon: React.ReactNode; detail?: string; tone?: string }) {
   return (
     <Card className={`metric-card metric-${tone}`}>
       <CardContent>
         <Box className="metric-icon">{icon}</Box>
         <Typography color="text.secondary">{label}</Typography>
         <Typography className="metric-value">{value}</Typography>
+        {detail ? <Typography variant="caption" color="text.secondary">{detail}</Typography> : null}
       </CardContent>
     </Card>
   );
@@ -124,4 +126,19 @@ function Metric({ label, value, icon, tone = "primary" }: { label: string; value
 
 function number(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function percent(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${Math.round(value * 100)}%`
+    : "Not available";
+}
+
+function confidenceDetail(metrics: Record<string, unknown>): string {
+  const fields = number(metrics.field_count);
+  const documents = number(metrics.documents_with_fields);
+  const withoutFields = number(metrics.documents_without_fields);
+  return fields
+    ? `Across ${fields} fields from ${documents} documents; ${withoutFields} without fields`
+    : `${withoutFields} documents without fields`;
 }

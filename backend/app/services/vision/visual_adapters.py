@@ -15,6 +15,7 @@ from app.models.vision import (
     VisualDetection,
 )
 from app.services.vision.adapters import AdapterStatus, VisualDetectionAdapter
+from app.services.vision.checkpoint_validation import validate_project_file_checkpoint
 
 ALLOWED_VISUAL_CLASSES = {
     "signature",
@@ -290,11 +291,17 @@ class Yolo26VisualDetectionAdapter(VisualDetectionAdapter):
     def status(self) -> AdapterStatus:
         installed = importlib.util.find_spec("ultralytics") is not None
         checkpoint = Path(settings.yolo26_checkpoint).expanduser() if settings.yolo26_checkpoint else None
-        checkpoint_ready = bool(checkpoint and checkpoint.is_file())
+        checkpoint_validation = validate_project_file_checkpoint(
+            checkpoint,
+            expected_tasks={"visual_detection", "yolo26_visual_detection"},
+        )
+        checkpoint_ready = checkpoint_validation.ready
         enabled = settings.enable_heavy_models and settings.enable_yolo26
         active = enabled and installed and checkpoint_ready
-        reason = "YOLO26 checkpoint is ready." if active else (
-            "Set YOLO26_CHECKPOINT to a trained project checkpoint and enable the adapter."
+        reason = (
+            "YOLO26 trained project checkpoint is ready for smoke verification."
+            if active
+            else checkpoint_validation.reason
         )
         return AdapterStatus(
             adapter_id=self.adapter_id,
@@ -304,7 +311,10 @@ class Yolo26VisualDetectionAdapter(VisualDetectionAdapter):
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
-            metadata={"checkpoint": str(checkpoint) if checkpoint else None},
+            metadata={
+                "checkpoint": str(checkpoint) if checkpoint else None,
+                "checkpoint_validation": checkpoint_validation.metadata,
+            },
         )
 
     def detect(self, document: VisionDocumentRecord) -> list[VisualDetection]:

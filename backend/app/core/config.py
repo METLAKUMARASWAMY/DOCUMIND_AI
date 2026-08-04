@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     enable_qdrant: bool = Field(default=False, alias="ENABLE_QDRANT")
     enable_qwen_local: bool = Field(default=False, alias="ENABLE_QWEN_LOCAL")
     qwen_allow_download: bool = Field(default=False, alias="QWEN_ALLOW_DOWNLOAD")
+    bge_allow_download: bool = Field(default=False, alias="BGE_ALLOW_DOWNLOAD")
     enable_external_llm: bool = Field(default=False, alias="ENABLE_EXTERNAL_LLM")
     enable_demo_api: bool = Field(default=False, alias="ENABLE_DEMO_API")
     external_llm_base_url: str | None = Field(default=None, alias="EXTERNAL_LLM_BASE_URL")
@@ -70,6 +71,30 @@ class Settings(BaseSettings):
     reading_order_low_confidence_threshold: float = Field(
         default=0.75,
         alias="READING_ORDER_LOW_CONFIDENCE_THRESHOLD",
+    )
+    language_min_valid_characters: int = Field(
+        default=40,
+        alias="LANGUAGE_MIN_VALID_CHARACTERS",
+    )
+    language_secondary_ratio: float = Field(
+        default=0.20,
+        alias="LANGUAGE_SECONDARY_RATIO",
+    )
+    language_secondary_min_characters: int = Field(
+        default=20,
+        alias="LANGUAGE_SECONDARY_MIN_CHARACTERS",
+    )
+    language_confidence_threshold: float = Field(
+        default=0.80,
+        alias="LANGUAGE_CONFIDENCE_THRESHOLD",
+    )
+    review_reauthentication_ttl_seconds: int = Field(
+        default=5 * 60,
+        alias="REVIEW_REAUTHENTICATION_TTL_SECONDS",
+    )
+    fraud_second_reviewer_required: bool = Field(
+        default=False,
+        alias="FRAUD_SECOND_REVIEWER_REQUIRED",
     )
     tamper_screening_review_threshold: float = Field(
         default=0.92,
@@ -123,6 +148,10 @@ class Settings(BaseSettings):
 
     pdf_render_dpi: int = Field(default=200, alias="PDF_RENDER_DPI")
     vision_artifact_dir: str = Field(default="var/vision_artifacts", alias="VISION_ARTIFACT_DIR")
+    model_smoke_state_dir: str = Field(
+        default="var/vision_state/model_smoke",
+        alias="MODEL_SMOKE_STATE_DIR",
+    )
     tesseract_command: str = Field(default="tesseract", alias="TESSERACT_COMMAND")
     tesseract_languages: str = Field(default="eng", alias="TESSERACT_LANGUAGES")
     paddleocr_device: str = Field(default="cpu", alias="PADDLEOCR_DEVICE")

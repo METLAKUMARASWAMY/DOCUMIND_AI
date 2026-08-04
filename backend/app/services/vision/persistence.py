@@ -20,6 +20,51 @@ from app.models.vision import (
     VisionReviewTask,
 )
 
+GRAPH_NODE_LABELS = frozenset(
+    {
+        "Organisation",
+        "Document",
+        "Page",
+        "Vendor",
+        "Customer",
+        "Person",
+        "Invoice",
+        "PurchaseOrder",
+        "Contract",
+        "BankAccount",
+        "TaxIdentifier",
+        "Address",
+        "ContactMethod",
+        "Payment",
+        "Signature",
+        "RiskIndicator",
+        "ExtractedField",
+    }
+)
+GRAPH_RELATIONSHIP_TYPES = frozenset(
+    {
+        "OWNS",
+        "CONTAINS",
+        "SUBMITTED",
+        "ISSUED_BY",
+        "ISSUED_TO",
+        "REFERENCES",
+        "PAID_TO",
+        "APPROVED_BY",
+        "GOVERNED_BY",
+        "REGISTERED_WITH",
+        "LOCATED_AT",
+        "HAS_CONTACT",
+        "HAS_FIELD",
+        "HAS_RISK",
+        "SIGNED_BY",
+        "DUPLICATE_OF",
+        "MATCHES",
+        "CONFLICTS_WITH",
+        "AMENDS",
+    }
+)
+
 
 class VisionPersistenceCoordinator:
     def __init__(self) -> None:
@@ -106,6 +151,27 @@ class VisionPersistenceCoordinator:
                     document,
                     payload.get("risk_indicators", []),
                     "risk_id",
+                )
+                self._replace_many(
+                    database.processing_warnings,
+                    document,
+                    payload.get("processing_warnings", []),
+                    "risk_id",
+                )
+                database.document_completeness.replace_one(
+                    {
+                        "tenant_id": document.tenant_id,
+                        "document_id": document.document_id,
+                    },
+                    self._protect(
+                        {
+                            "tenant_id": document.tenant_id,
+                            "document_id": document.document_id,
+                            **payload.get("field_completeness", {}),
+                            "updated_at": document.updated_at,
+                        }
+                    ),
+                    upsert=True,
                 )
                 self._replace_many(database.model_runs, document, payload.get("model_runs", []), "run_id")
                 self._insert_audits(database, document)
@@ -259,7 +325,12 @@ class VisionPersistenceCoordinator:
             try:
                 self._redis_client().hset(
                     f"vision:jobs:{job.get('tenant_id')}:{job['job_id']}",
-                    mapping={key: json.dumps(value) if isinstance(value, (dict, list)) else str(value) for key, value in job.items()},
+                    mapping={
+                        key: json.dumps(value)
+                        if isinstance(value, dict | list)
+                        else str(value)
+                        for key, value in job.items()
+                    },
                 )
                 self._errors.pop("redis", None)
             except Exception as exc:
@@ -449,15 +520,39 @@ class VisionPersistenceCoordinator:
             self._mongo_client.admin.command("ping")
             database.documents.create_index([("tenant_id", 1), ("document_id", 1)], unique=True)
             database.documents.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+            database.documents.create_index([("tenant_id", 1), ("filename", 1)])
+            database.documents.create_index([("tenant_id", 1), ("document_type", 1)])
+            database.documents.create_index([("tenant_id", 1), ("updated_at", -1)])
             database.extracted_fields.create_index([("tenant_id", 1), ("document_id", 1), ("name", 1)])
             database.extracted_fields.create_index([("tenant_id", 1), ("name", 1), ("value_hash", 1)])
             database.review_tasks.create_index([("tenant_id", 1), ("priority", -1), ("status", 1)])
+            database.review_tasks.create_index([("tenant_id", 1), ("filename", 1)])
+            database.risk_indicators.create_index(
+                [("tenant_id", 1), ("document_id", 1), ("category", 1), ("severity", 1)]
+            )
+            database.processing_warnings.create_index(
+                [("tenant_id", 1), ("document_id", 1), ("severity", 1)]
+            )
+            database.document_completeness.create_index(
+                [("tenant_id", 1), ("document_id", 1)],
+                unique=True,
+            )
             database.audit_events.create_index([("tenant_id", 1), ("event_id", 1)], unique=True)
             database.questions.create_index([("tenant_id", 1), ("question_id", 1)], unique=True)
             database.reports.create_index([("tenant_id", 1), ("report_id", 1)], unique=True)
+            database.reports.create_index(
+                [("tenant_id", 1), ("identity_hash", 1), ("version", 1)],
+                unique=True,
+                partialFilterExpression={"identity_hash": {"$type": "string", "$ne": ""}},
+            )
             database.finance_narratives.create_index(
                 [("tenant_id", 1), ("narrative_id", 1)],
                 unique=True,
+            )
+            database.finance_narratives.create_index(
+                [("tenant_id", 1), ("identity_hash", 1), ("version", 1)],
+                unique=True,
+                partialFilterExpression={"identity_hash": {"$type": "string", "$ne": ""}},
             )
             database.vision_jobs.create_index([("tenant_id", 1), ("job_id", 1)], unique=True)
             database.users.create_index([("tenant_id", 1), ("user_id", 1)], unique=True)
@@ -728,27 +823,64 @@ class VisionPersistenceCoordinator:
             """
             MERGE (d:VisionDocument {tenant_id: $tenant_id, document_id: $document_id})
             SET d.updated_at = datetime()
-            WITH d
-            UNWIND $nodes AS node
-            MERGE (n:VisionEntity {tenant_id: $tenant_id, entity_id: node.id})
-            SET n += node, n.tenant_id = $tenant_id, n.entity_id = node.id
-            MERGE (d)-[:CONTAINS_ENTITY]->(n)
             """,
             tenant_id=tenant_id,
             document_id=document_id,
-            nodes=graph.get("nodes", []),
         ).consume()
+
+        edge_ids = [str(edge.get("id", "")) for edge in graph.get("edges", [])]
         tx.run(
             """
-            UNWIND $edges AS edge
-            MATCH (source:VisionEntity {tenant_id: $tenant_id, entity_id: edge.source})
-            MATCH (target:VisionEntity {tenant_id: $tenant_id, entity_id: edge.target})
-            MERGE (source)-[r:VISION_RELATIONSHIP {tenant_id: $tenant_id, edge_id: edge.id}]->(target)
-            SET r += edge, r.tenant_id = $tenant_id, r.relationship_type = edge.type
+            MATCH ()-[r]->()
+            WHERE r.tenant_id = $tenant_id
+              AND r.document_id = $document_id
+              AND r.edge_id IS NOT NULL
+              AND NOT r.edge_id IN $edge_ids
+            DELETE r
             """,
             tenant_id=tenant_id,
-            edges=graph.get("edges", []),
+            document_id=document_id,
+            edge_ids=edge_ids,
         ).consume()
+
+        for node in graph.get("nodes", []):
+            node_label = str(node.get("type", ""))
+            if node_label not in GRAPH_NODE_LABELS:
+                continue
+            properties = _neo4j_properties(node)
+            tx.run(
+                f"""
+                MATCH (d:VisionDocument {{tenant_id: $tenant_id, document_id: $document_id}})
+                MERGE (n:VisionEntity:{node_label} {{tenant_id: $tenant_id, entity_id: $entity_id}})
+                SET n += $properties, n.tenant_id = $tenant_id, n.entity_id = $entity_id
+                MERGE (d)-[:PROJECTS]->(n)
+                """,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                entity_id=str(node["id"]),
+                properties=properties,
+            ).consume()
+
+        for edge in graph.get("edges", []):
+            relationship_type = str(edge.get("type", ""))
+            if relationship_type not in GRAPH_RELATIONSHIP_TYPES:
+                continue
+            properties = _neo4j_properties(edge)
+            tx.run(
+                f"""
+                MATCH (source:VisionEntity {{tenant_id: $tenant_id, entity_id: $source}})
+                MATCH (target:VisionEntity {{tenant_id: $tenant_id, entity_id: $target}})
+                MERGE (source)-[r:{relationship_type} {{tenant_id: $tenant_id, edge_id: $edge_id}}]->(target)
+                SET r += $properties, r.tenant_id = $tenant_id,
+                    r.edge_id = $edge_id, r.relationship_type = $relationship_type
+                """,
+                tenant_id=tenant_id,
+                source=str(edge["source"]),
+                target=str(edge["target"]),
+                edge_id=str(edge["id"]),
+                relationship_type=relationship_type,
+                properties=properties,
+            ).consume()
 
     def _record_error(self, backend: str, exc: Exception) -> None:
         message = re.sub(
@@ -764,6 +896,20 @@ class VisionPersistenceCoordinator:
 
     def _tenant_hash(self, tenant_id: str, value: str) -> str:
         return hashlib.sha256(f"{tenant_id}:{value}".encode()).hexdigest()
+
+def _neo4j_properties(payload: dict[str, Any]) -> dict[str, Any]:
+    properties: dict[str, Any] = {}
+    for key, value in payload.items():
+        if value is None or isinstance(value, str | int | float | bool):
+            properties[key] = value
+        elif isinstance(value, list) and all(
+            item is None or isinstance(item, str | int | float | bool)
+            for item in value
+        ):
+            properties[key] = value
+        else:
+            properties[key] = json.dumps(value, sort_keys=True)
+    return properties
 
 
 vision_persistence = VisionPersistenceCoordinator()

@@ -1,20 +1,41 @@
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.models.schemas import LoginRequest, SignupRequest, UserRole
+from app.services.auth import AuthService
 
 client = TestClient(create_app())
 
 
-def test_local_demo_admin_login_is_seeded():
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@documind.ai", "password": "Admin@123"},
+def test_privileged_users_require_explicit_secure_bootstrap(tmp_path):
+    service = AuthService(
+        state_dir=tmp_path / "auth",
+        secret="test-secret-at-least-thirty-two-bytes",
+    )
+    with pytest.raises(ValueError, match="Invalid email or password"):
+        service.login(
+            LoginRequest(email="admin@documind.ai", password="Admin@123")
+        )
+
+    password = f"Bootstrap-{uuid4().hex}-Aa1!"
+    request = SignupRequest(
+        name="Bootstrap Admin",
+        email="bootstrap-admin@documind.test",
+        password=password,
+        role=UserRole.admin,
+        organisation_name="Bootstrap Test",
     )
 
-    assert response.status_code == 200
-    assert response.json()["data"]["user"]["role"] == "ADMIN"
+    user = service.create_bootstrap_user(request)
+    *_, authenticated = service.login(
+        LoginRequest(email=request.email, password=password)
+    )
+
+    assert user.role == UserRole.admin
+    assert authenticated.user_id == user.user_id
 
 
 def _registration() -> dict[str, str]:

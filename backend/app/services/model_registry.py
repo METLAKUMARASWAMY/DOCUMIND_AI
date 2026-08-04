@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib.metadata
 from datetime import UTC, datetime
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
@@ -35,10 +37,11 @@ class ModelRegistryService:
                 item["model_id"] for item in backends if item["status"] == "active"
             ],
             "backends": backends,
+            "adapter_roles": self._adapter_roles(backends),
             "routing_policy": self.routing_preview().get("policy"),
         }
 
-    def backends(self) -> list[dict[str, Any]]:
+    def backends(self, *, include_runtime_health: bool = True) -> list[dict[str, Any]]:
         from app.services.vision.advanced_adapters import PaddleOCRVLAdapter
         from app.services.vision.anomaly_adapters import (
             IsolationForestRiskAdapter,
@@ -51,30 +54,40 @@ class ModelRegistryService:
             LayoutLMv3ExtractionAdapter,
         )
         from app.services.vision.generator_adapters import (
+            GroundedTemplateGeneratorAdapter,
             OpenAICompatibleGroundedGenerator,
             QwenGroundedGeneratorAdapter,
         )
-        from app.services.vision.layout_adapters import PaddleStructureV3Adapter
+        from app.services.vision.layout_adapters import (
+            GeometryLayoutAdapter,
+            PaddleStructureV3Adapter,
+        )
         from app.services.vision.ocr_adapters import PaddleOCRV5Adapter, TesseractOCRAdapter
         from app.services.vision.retrieval_adapters import (
             BGEM3EmbeddingAdapter,
             BGERerankerAdapter,
+            LocalHashingEmbeddingAdapter,
             QdrantHybridBackend,
         )
         from app.services.vision.tamper_adapters import (
             LocalForensicsAdapter,
             SegFormerTamperAdapter,
         )
-        from app.services.vision.visual_adapters import Yolo26VisualDetectionAdapter
+        from app.services.vision.visual_adapters import (
+            OpenCVVisualDetectionAdapter,
+            Yolo26VisualDetectionAdapter,
+        )
 
         adapter_status = {
             "paddleocr": PaddleOCRV5Adapter().status(),
             "structure": PaddleStructureV3Adapter().status(),
+            "layout_local": GeometryLayoutAdapter().status(),
             "layoutlmv3": LayoutLMv3ExtractionAdapter().status(),
             "paddleocr_vl": PaddleOCRVLAdapter().status(),
             "donut": DonutExtractionAdapter().status(),
             "dinov2": DinoV2DuplicateAdapter().status(),
             "yolo": Yolo26VisualDetectionAdapter().status(),
+            "visual_local": OpenCVVisualDetectionAdapter().status(),
             "tesseract": TesseractOCRAdapter().status(),
             "contract": DebertaContractClauseAdapter().status(),
             "forensics_local": LocalForensicsAdapter().status(),
@@ -83,11 +96,13 @@ class ModelRegistryService:
             "xgboost": XGBoostRiskAdapter().status(),
             "bge_m3": BGEM3EmbeddingAdapter().status(),
             "bge_reranker": BGERerankerAdapter().status(),
+            "hashing": LocalHashingEmbeddingAdapter().status(),
             "qdrant": QdrantHybridBackend().status(),
             "qwen": QwenGroundedGeneratorAdapter().status(),
             "external_generator": OpenAICompatibleGroundedGenerator().status(),
+            "template_generator": GroundedTemplateGeneratorAdapter().status(),
         }
-        return [
+        backends = [
             self._local_backend(
                 stage="ingestion",
                 role="native PDF/DOCX/TXT parser and image fallback",
@@ -109,6 +124,7 @@ class ModelRegistryService:
                 model_id="local-layout-adapter-v1",
                 packages=["cv2"],
                 notes="Builds regions and table structure from measured OCR geometry.",
+                runtime_status=adapter_status["layout_local"],
             ),
             self._target_backend(
                 stage="ocr",
@@ -142,6 +158,13 @@ class ModelRegistryService:
                 enable_hint="Set ENABLE_HEAVY_MODELS=true and ENABLE_LAYOUTLMV3=true.",
                 notes="Target adapter consumes OCR words, normalized 0-1000 boxes, page image, and token mappings.",
                 runtime_status=adapter_status["layoutlmv3"],
+            ),
+            self._local_backend(
+                stage="classification_extraction",
+                role="schema-aware deterministic field extraction fallback",
+                model_id="deterministic-schema-extractor-v2",
+                packages=[],
+                notes="Extracts only source-backed values and reports missing schema fields explicitly.",
             ),
             self._target_backend(
                 stage="advanced_parsing",
@@ -187,6 +210,14 @@ class ModelRegistryService:
                 notes="Detection does not claim signature authenticity.",
                 runtime_status=adapter_status["yolo"],
             ),
+            self._local_backend(
+                stage="visual_detection",
+                role="deterministic visual-cue fallback",
+                model_id="OpenCV-visual-cues-v1",
+                packages=["cv2"],
+                notes=adapter_status["visual_local"].reason,
+                runtime_status=adapter_status["visual_local"],
+            ),
             self._target_backend(
                 stage="contract_intelligence",
                 role="CUAD-style contract clause classification",
@@ -204,6 +235,7 @@ class ModelRegistryService:
                 model_id="ELA-noise-forensics-v1",
                 packages=["cv2", "PIL"],
                 notes=adapter_status["forensics_local"].reason,
+                runtime_status=adapter_status["forensics_local"],
             ),
             self._target_backend(
                 stage="tamper_screening",
@@ -222,6 +254,7 @@ class ModelRegistryService:
                 model_id="IsolationForest",
                 packages=["sklearn"],
                 notes="Runs only after the configured minimum organisation corpus size is reached.",
+                runtime_status=adapter_status["isolation_forest"],
             ),
             self._target_backend(
                 stage="anomaly",
@@ -240,6 +273,7 @@ class ModelRegistryService:
                 model_id="local-hashing-v1",
                 packages=[],
                 notes="Current default embedding path for runnable local retrieval.",
+                runtime_status=adapter_status["hashing"],
             ),
             self._target_backend(
                 stage="retrieval",
@@ -297,6 +331,7 @@ class ModelRegistryService:
                 packages=["neo4j"],
                 enable_hint="Set ENABLE_NEO4J=true and configure NEO4J_URI.",
                 notes="Target backend for verified entities, proposed relationships, and GraphRAG paths.",
+                adapter_implemented=True,
             ),
             self._local_backend(
                 stage="generator",
@@ -304,6 +339,7 @@ class ModelRegistryService:
                 model_id="grounded-template-generator-v1",
                 packages=[],
                 notes="Current default: answers are assembled from retrieved evidence.",
+                runtime_status=adapter_status["template_generator"],
             ),
             self._target_backend(
                 stage="generator",
@@ -328,6 +364,10 @@ class ModelRegistryService:
                 runtime_status=adapter_status["external_generator"],
             ),
         ]
+        enriched = [self._enrich_requirements(item) for item in backends]
+        if not include_runtime_health:
+            return enriched
+        return [self._attach_runtime_health(item) for item in enriched]
 
     def route_document(
         self,
@@ -336,6 +376,8 @@ class ModelRegistryService:
         text: str,
         parse_confidence: float,
         layout_result: dict[str, Any],
+        mixed_languages: bool = False,
+        language_analysis: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         regions = set(layout_result.get("regions", []))
         table_separators = text.count("|") + text.count("\t")
@@ -344,7 +386,7 @@ class ModelRegistryService:
             reading_order_confidence=layout_result.get("evidence", {}).get("confidence", 0.74),
             has_complex_table="table" in regions and table_separators >= 6,
             has_chart="chart" in text.lower(),
-            mixed_languages=any(ord(character) > 127 for character in text),
+            mixed_languages=mixed_languages,
             model_outputs_conflict=False,
             manual_advanced=False,
             model_comparison_mode=False,
@@ -354,6 +396,7 @@ class ModelRegistryService:
             "filename": filename,
             "layout_engine": layout_result.get("engine", "unknown"),
             "detected_regions": sorted(regions),
+            "language_analysis": language_analysis or {},
         }
         return route
 
@@ -369,7 +412,11 @@ class ModelRegistryService:
         requested_fallbacks = []
         if fallback_required:
             requested_fallbacks.append(self._model_state("PaddleOCR-VL-1.6"))
-        if request.model_comparison_mode or request.model_outputs_conflict or request.ocr_mean_confidence < settings.ocr_low_confidence_threshold:
+        if (
+            request.model_comparison_mode
+            or request.model_outputs_conflict
+            or request.ocr_mean_confidence < settings.ocr_low_confidence_threshold
+        ):
             requested_fallbacks.append(self._model_state("Donut"))
 
         return {
@@ -379,10 +426,16 @@ class ModelRegistryService:
             "standard_models": standard_models,
             "fallback_models": requested_fallbacks,
             "unavailable_requested_models": [
-                model for model in [*standard_models, *requested_fallbacks] if model["status"] != "active"
+                model
+                for model in [*standard_models, *requested_fallbacks]
+                if model["status"] != "active"
             ],
             "policy": {
-                "normal_pages": [self._ocr_model_id(), "PP-StructureV3 / PP-DocLayoutV3", self._layoutlmv3_model_id()],
+                "normal_pages": [
+                    self._ocr_model_id(),
+                    "PP-StructureV3 / PP-DocLayoutV3",
+                    self._layoutlmv3_model_id(),
+                ],
                 "fallback_triggers": [
                     "ocr_mean_confidence_below_threshold",
                     "reading_order_confidence_below_threshold",
@@ -446,11 +499,13 @@ class ModelRegistryService:
                 "stage": stage,
                 "role": role,
                 "model_id": model_id,
+                "adapter_id": runtime_status.adapter_id,
                 "provider": "local",
                 "profile": "LITE",
                 "enabled": runtime_status.enabled,
                 "installed": runtime_status.installed,
                 "status": runtime_status.status,
+                "configured_status": runtime_status.status,
                 "reason": runtime_status.reason,
                 "packages": packages,
                 "notes": notes,
@@ -461,12 +516,16 @@ class ModelRegistryService:
             "stage": stage,
             "role": role,
             "model_id": model_id,
+            "adapter_id": model_id,
             "provider": "local",
             "profile": "LITE",
             "enabled": True,
             "installed": not missing,
             "status": "active" if not missing else "degraded",
-            "reason": "Active local runtime path." if not missing else f"Missing optional packages: {', '.join(missing)}.",
+            "configured_status": "active" if not missing else "degraded",
+            "reason": "Active local runtime path."
+            if not missing
+            else f"Missing optional packages: {', '.join(missing)}.",
             "packages": packages,
             "notes": notes,
         }
@@ -490,12 +549,14 @@ class ModelRegistryService:
                 "stage": stage,
                 "role": role,
                 "model_id": model_id,
+                "adapter_id": runtime_status.adapter_id,
                 "provider": provider,
                 "profile": self._profile(),
                 "enabled": runtime_status.enabled,
                 "installed": runtime_status.installed,
                 "adapter_implemented": True,
                 "status": runtime_status.status,
+                "configured_status": runtime_status.status,
                 "reason": runtime_status.reason,
                 "packages": packages,
                 "notes": notes,
@@ -519,16 +580,303 @@ class ModelRegistryService:
             "stage": stage,
             "role": role,
             "model_id": model_id,
+            "adapter_id": model_id,
             "provider": provider,
             "profile": self._profile(),
             "enabled": enabled,
             "installed": not missing,
             "adapter_implemented": adapter_implemented,
             "status": status,
+            "configured_status": status,
             "reason": reason,
             "packages": packages,
             "notes": notes,
         }
+
+    def _attach_runtime_health(self, backend: dict[str, Any]) -> dict[str, Any]:
+        from app.services.vision.runtime_health import (
+            model_configuration_fingerprint,
+            model_smoke_store,
+        )
+
+        item = dict(backend)
+        configured_status = str(item.get("configured_status", item.get("status", "unavailable")))
+        fingerprint = model_configuration_fingerprint(item)
+        smoke = model_smoke_store.latest(str(item["model_id"]))
+        smoke_current = bool(smoke and smoke.get("configuration_fingerprint") == fingerprint)
+        smoke_status = str(smoke.get("status")) if smoke_current and smoke else "not_run"
+
+        health_status = "unknown"
+        last_error = None
+        runtime_status = configured_status
+        if configured_status == "active":
+            if smoke_status == "passed":
+                runtime_status = "active"
+                health_status = "healthy"
+            elif smoke_status == "failed":
+                runtime_status = "error"
+                health_status = "unhealthy"
+                last_error = smoke.get("error") if smoke else None
+            else:
+                runtime_status = "unavailable"
+                item["reason"] = (
+                    "Configuration is present, but this exact runtime has not passed an "
+                    "initialisation and inference smoke test."
+                )
+        elif configured_status == "disabled":
+            runtime_status = "disabled"
+        elif configured_status in {"adapter_pending", "degraded", "misconfigured"}:
+            runtime_status = "unavailable"
+        else:
+            runtime_status = configured_status
+
+        if smoke_current and smoke:
+            last_error = last_error or smoke.get("error")
+        runtime_metadata = dict(item.get("runtime") or {})
+        item.update(
+            {
+                "status": runtime_status,
+                "runtime_status": runtime_status,
+                "health_status": health_status,
+                "requested": bool(item.get("enabled")),
+                "last_smoke_test": smoke.get("completed_at") if smoke_current and smoke else None,
+                "last_error": last_error,
+                "smoke_test_status": smoke_status,
+                "smoke_test": smoke if smoke_current else None,
+                "checkpoint": runtime_metadata.get("checkpoint"),
+                "device": (
+                    smoke.get("device")
+                    if smoke_current and smoke and smoke.get("device")
+                    else runtime_metadata.get("device", "cpu")
+                ),
+                "configuration_fingerprint": fingerprint,
+            }
+        )
+        if smoke and not smoke_current:
+            item["stale_smoke_test"] = {
+                "completed_at": smoke.get("completed_at"),
+                "status": smoke.get("status"),
+            }
+        return item
+
+    def _enrich_requirements(self, backend: dict[str, Any]) -> dict[str, Any]:
+        item = dict(backend)
+        requirements = self._requirements_for(str(item["model_id"]))
+        missing_packages = [
+            package for package in item.get("packages", []) if not self._installed(package)
+        ]
+        runtime = dict(item.get("runtime") or {})
+        checkpoint_value = runtime.get("checkpoint")
+        checkpoint_required = bool(requirements.get("checkpoint_required"))
+        checkpoint_present = self._checkpoint_present(checkpoint_value)
+        missing_checkpoint = checkpoint_required and not checkpoint_present
+        blocker_category = None
+        if not item.get("enabled"):
+            blocker_category = "environment"
+        elif missing_packages:
+            blocker_category = "package"
+        elif missing_checkpoint:
+            blocker_category = "checkpoint"
+        elif str(item.get("configured_status")) != "active":
+            blocker_category = "preparation"
+        item.update(
+            {
+                "package_version": self._package_version(item.get("packages", [])),
+                "requirements": {
+                    **requirements,
+                    "missing_packages": missing_packages,
+                    "missing_checkpoint": missing_checkpoint,
+                    "checkpoint_present": checkpoint_present,
+                },
+                "blocker_category": blocker_category,
+            }
+        )
+        return item
+
+    def _requirements_for(self, model_id: str) -> dict[str, Any]:
+        profile_ocr = "PP-OCRv5_mobile" if self._profile() == "LITE" else "PP-OCRv5_server"
+        profile_layoutlm = "LayoutLMv3-base" if self._profile() == "LITE" else "LayoutLMv3-large"
+        profile_yolo = self._yolo_model_id()
+        values: dict[str, dict[str, Any]] = {
+            profile_ocr: {
+                "environment_variables": ["ENABLE_HEAVY_MODELS", "ENABLE_PADDLEOCR"],
+                "preparation_command": "pip install -r backend/requirements/ai-standard.txt",
+            },
+            "PP-StructureV3 / PP-DocLayoutV3": {
+                "environment_variables": ["ENABLE_HEAVY_MODELS", "ENABLE_PADDLEOCR_STRUCTURE"],
+                "preparation_command": "pip install -r backend/requirements/ai-standard.txt",
+            },
+            profile_layoutlm: {
+                "environment_variables": [
+                    "ENABLE_HEAVY_MODELS",
+                    "ENABLE_LAYOUTLMV3",
+                    "LAYOUTLMV3_CHECKPOINT",
+                ],
+                "checkpoint_required": True,
+                "preparation_command": "python -m ml.training.layoutlmv3.train_token_classification --config ml/configs/layoutlmv3_token.example.yml",
+            },
+            "PaddleOCR-VL-1.6": {
+                "environment_variables": ["ENABLE_HEAVY_MODELS", "ENABLE_PADDLEOCR_VL"],
+                "preparation_command": "pip install -r backend/requirements/ai-full.txt",
+            },
+            "Donut": {
+                "environment_variables": [
+                    "ENABLE_HEAVY_MODELS",
+                    "ENABLE_DONUT",
+                    "DONUT_CHECKPOINT",
+                ],
+                "checkpoint_required": True,
+                "preparation_command": "python -m ml.training.donut.train --config <donut-training-config.yml>",
+            },
+            "DINOv2": {
+                "environment_variables": [
+                    "ENABLE_HEAVY_MODELS",
+                    "ENABLE_DINOV2",
+                    "DINOV2_CHECKPOINT",
+                ],
+                "checkpoint_required": True,
+                "preparation_command": "Place a local DINOv2 checkpoint and set DINOV2_CHECKPOINT.",
+            },
+            profile_yolo: {
+                "environment_variables": [
+                    "ENABLE_HEAVY_MODELS",
+                    "ENABLE_YOLO26",
+                    "YOLO26_CHECKPOINT",
+                ],
+                "checkpoint_required": True,
+                "preparation_command": "python -m ml.training.yolo26.train --config <visual-detection-training-config.yml>",
+            },
+            "DeBERTa-v3-large-CUAD": {
+                "environment_variables": ["ENABLE_HEAVY_MODELS", "CONTRACT_CHECKPOINT"],
+                "checkpoint_required": True,
+                "preparation_command": "python -m ml.training.contract_model.train --config <contract-training-config.yml>",
+            },
+            "SegFormer-B2-document-forensics": {
+                "environment_variables": ["ENABLE_HEAVY_MODELS", "TAMPER_CHECKPOINT"],
+                "checkpoint_required": True,
+                "preparation_command": "python -m ml.training.tamper_model.train --config <tamper-training-config.yml>",
+            },
+            "XGBoost-project-risk-model": {
+                "environment_variables": ["ENABLE_HEAVY_MODELS", "XGBOOST_RISK_CHECKPOINT"],
+                "checkpoint_required": True,
+                "preparation_command": "python -m ml.training.anomaly_models.train_xgboost --config <risk-training-config.yml>",
+            },
+            "BAAI/bge-m3": {
+                "environment_variables": [
+                    "ENABLE_HEAVY_MODELS",
+                    "ENABLE_BGE_M3",
+                    "BGE_M3_CHECKPOINT",
+                ],
+                "checkpoint_required": not settings.bge_allow_download,
+                "preparation_command": "Provide a local BGE_M3_CHECKPOINT or explicitly set BGE_ALLOW_DOWNLOAD=true.",
+            },
+            "BAAI/bge-reranker-v2-m3": {
+                "environment_variables": [
+                    "ENABLE_HEAVY_MODELS",
+                    "ENABLE_BGE_M3",
+                    "BGE_RERANKER_CHECKPOINT",
+                ],
+                "checkpoint_required": not settings.bge_allow_download,
+                "preparation_command": "Provide a local BGE_RERANKER_CHECKPOINT or explicitly set BGE_ALLOW_DOWNLOAD=true.",
+            },
+            "Qdrant": {
+                "environment_variables": ["ENABLE_QDRANT", "QDRANT_URL"],
+                "preparation_command": "docker compose up -d qdrant",
+            },
+            "Neo4j": {
+                "environment_variables": [
+                    "ENABLE_NEO4J",
+                    "NEO4J_URI",
+                    "NEO4J_USER",
+                    "NEO4J_PASSWORD",
+                ],
+                "preparation_command": "docker compose up -d neo4j",
+            },
+            "Qwen3.5-9B": {
+                "environment_variables": [
+                    "ENABLE_HEAVY_MODELS",
+                    "ENABLE_QWEN_LOCAL",
+                    "QWEN_CHECKPOINT",
+                ],
+                "checkpoint_required": not settings.qwen_allow_download,
+                "preparation_command": "Provide a local QWEN_CHECKPOINT or explicitly set QWEN_ALLOW_DOWNLOAD=true.",
+            },
+            settings.external_llm_model or "external-provider-model": {
+                "environment_variables": [
+                    "ENABLE_EXTERNAL_LLM",
+                    "EXTERNAL_LLM_BASE_URL",
+                    "EXTERNAL_LLM_API_KEY",
+                    "EXTERNAL_LLM_MODEL",
+                ],
+                "preparation_command": "Configure the OpenAI-compatible provider variables, then run the model smoke test.",
+            },
+        }
+        return values.get(
+            model_id,
+            {
+                "environment_variables": [],
+                "checkpoint_required": False,
+                "preparation_command": f"python scripts/smoke_test_models.py --model {model_id!r}",
+            },
+        )
+
+    def _adapter_roles(self, backends: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        by_id = {str(item["model_id"]): item for item in backends}
+        pairs = [
+            ("ocr", self._ocr_model_id(), "Tesseract-5"),
+            ("layout", "PP-StructureV3 / PP-DocLayoutV3", "local-layout-adapter-v1"),
+            ("field_extraction", self._layoutlmv3_model_id(), "deterministic-schema-extractor-v2"),
+            ("visual_detection", self._yolo_model_id(), "OpenCV-visual-cues-v1"),
+            ("retrieval", "BAAI/bge-m3", "local-hashing-v1"),
+            ("vector_store", "Qdrant", "local-vector-store-v1"),
+            ("graph", "Neo4j", "local-graph-projection-v1"),
+            ("generator", "Qwen3.5-9B", "grounded-template-generator-v1"),
+        ]
+        output = []
+        for stage, primary_id, fallback_id in pairs:
+            primary = by_id.get(primary_id)
+            fallback = by_id.get(fallback_id)
+            active = primary if primary and primary.get("status") == "active" else fallback
+            if active and active.get("status") != "active":
+                active = None
+            output.append(
+                {
+                    "stage": stage,
+                    "primary": self._role_summary(primary_id, primary),
+                    "fallback": self._role_summary(fallback_id, fallback),
+                    "active_adapter": self._role_summary(str(active["model_id"]), active)
+                    if active
+                    else None,
+                }
+            )
+        return output
+
+    def _role_summary(self, model_id: str, backend: dict[str, Any] | None) -> dict[str, Any]:
+        if backend is None:
+            return {"model_id": model_id, "status": "unavailable", "reason": "Not registered."}
+        return {
+            "model_id": model_id,
+            "adapter_id": backend.get("adapter_id"),
+            "status": backend.get("status"),
+            "health_status": backend.get("health_status"),
+            "reason": backend.get("reason"),
+        }
+
+    def _checkpoint_present(self, value: Any) -> bool:
+        if not value:
+            return False
+        path = Path(str(value)).expanduser()
+        return path.exists()
+
+    def _package_version(self, packages: list[str]) -> str | None:
+        for package in packages:
+            candidates = [package, package.replace("_", "-"), package.lower()]
+            for candidate in candidates:
+                try:
+                    return importlib.metadata.version(candidate)
+                except importlib.metadata.PackageNotFoundError:
+                    continue
+        return None
 
     def _ocr_model_id(self) -> str:
         return "PP-OCRv5_mobile" if self._profile() == "LITE" else "PP-OCRv5_server"

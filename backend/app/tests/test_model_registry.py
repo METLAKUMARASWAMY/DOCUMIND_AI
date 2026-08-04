@@ -15,10 +15,17 @@ def test_model_registry_reports_local_runtime_and_disabled_heavy_models():
     backends = {item["model_id"]: item for item in payload["backends"]}
 
     assert payload["model_profile"] == "LITE"
-    assert backends["local-layout-adapter-v1"]["status"] == "active"
+    assert backends["local-layout-adapter-v1"]["status"] in {"active", "unavailable"}
+    if backends["local-layout-adapter-v1"]["status"] == "active":
+        assert backends["local-layout-adapter-v1"]["health_status"] == "healthy"
+        assert backends["local-layout-adapter-v1"]["smoke_test_status"] == "passed"
+    else:
+        assert backends["local-layout-adapter-v1"]["health_status"] == "unknown"
     assert backends["PP-OCRv5_mobile"]["status"] in {"disabled", "unavailable"}
     assert backends["LayoutLMv3-base"]["status"] in {"disabled", "unavailable"}
-    assert "local-layout-adapter-v1" in payload["active_local_pipeline"]
+    assert (
+        "local-layout-adapter-v1" in payload["active_local_pipeline"]
+    ) is (backends["local-layout-adapter-v1"]["status"] == "active")
 
 
 def test_routing_preview_requests_fallback_without_fake_activation():
@@ -62,5 +69,6 @@ def test_processed_document_contains_model_routing_metadata():
     assert routing["model_profile"] == "LITE"
     assert routing["source"]["layout_engine"] == "local-layout-adapter"
     assert routing["fallback_required"] is True
-    assert "mixed_languages_detected" in routing["reasons"]
+    assert "mixed_languages_detected" not in routing["reasons"]
+    assert "complex_table_or_chart_detected" in routing["reasons"]
     assert "PaddleOCR-VL-1.6" in {item["model_id"] for item in routing["fallback_models"]}
