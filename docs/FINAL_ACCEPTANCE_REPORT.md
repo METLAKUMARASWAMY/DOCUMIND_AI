@@ -59,6 +59,7 @@ Runtime uploads, state, generated reports, credentials, and browser traces remai
 The remediation changes the following tracked or newly added source groups. Screenshot files are listed individually in section 18.
 
 ```text
+.github/workflows/ci.yml
 .env.example
 README.md
 docker-compose.yml
