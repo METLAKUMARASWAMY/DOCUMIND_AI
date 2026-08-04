@@ -262,11 +262,11 @@ export const api = {
       body: JSON.stringify({ password }),
     }),
 
-  ask: (question: string, documentId?: string) =>
+  ask: (question: string, options: { scope: string; documentId?: string; documentIds?: string[] }) =>
     apiRequest<AskResponse>("/ai/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, document_id: documentId || null, top_k: 8 }),
+      body: JSON.stringify({ question, scope: options.scope, document_id: options.documentId || null, document_ids: options.documentIds || [], top_k: 8 }),
     }),
   question: (id: string) => apiRequest<Record<string, unknown>>(`/ai/responses/${id}`),
   questionFeedback: (id: string, rating: string, comment: string) =>

@@ -60,6 +60,8 @@ function OverviewAnalytics({ data, sample }: { data: Record<string, unknown>; sa
     <>
       <Box className="analytics-stat-band">
         <Stat label="Documents" value={sample} detail={`${number(data.documents_without_fields)} without extracted fields`} />
+        <Stat label="Structured extraction coverage" value={percent(data.structured_extraction_coverage)} detail={`${number(data.documents_with_fields)} of ${sample} documents`} />
+        <Stat label="Schema coverage" value={number(data.documents_using_exact_schema)} detail={`${number(data.documents_using_generic_schema)} generic | ${number(data.documents_schema_unavailable)} unavailable`} />
         <Stat label="Mean OCR confidence" value={percent(data.mean_ocr_confidence)} detail={`n=${number((data.sample_sizes as Record<string, unknown>)?.ocr_words)}`} />
         <Stat label="Mean field confidence" value={percent(data.mean_field_confidence)} detail={`n=${number((data.sample_sizes as Record<string, unknown>)?.fields)}`} />
         <Stat label="Average processing" value={seconds(data.average_processing_time_seconds)} detail={`n=${number((data.sample_sizes as Record<string, unknown>)?.processing_duration_samples)}`} />

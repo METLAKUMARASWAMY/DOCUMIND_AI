@@ -53,9 +53,26 @@ class EvidenceGraphBuilder:
                 "Relationships are deterministic and source-linked. Unreviewed evidence "
                 "remains proposed until a reviewer verifies it."
             ),
-            schema_version="documind-evidence-graph-v2",
+            schema_version="documind-evidence-graph-v3",
             preferred_backend="neo4j",
             active_backend="local_evidence_graph",
+            legend={
+                "node_types": [
+                    "Document",
+                    "Organisation",
+                    "Person",
+                    "ContactMethod",
+                    "Date",
+                    "Payment",
+                    "BankAccount",
+                    "RiskIndicator",
+                ],
+                "relationships": {
+                    "verified": "green solid",
+                    "proposed": "orange dashed",
+                    "conflict": "red",
+                },
+            },
         )
 
     def _add_pages(self, document_node: str) -> None:
@@ -136,11 +153,19 @@ class EvidenceGraphBuilder:
             )
 
     def _add_entity_relationships(self, document_node: str) -> None:
-        organisation = self._first_entity("organisation_name")
+        organisation = self._first_entity(
+            "organisation_name",
+            "company_name",
+            "recipient_company",
+            "sender_company",
+        )
         vendor = self._first_entity("vendor_name")
         customer = self._first_entity("buyer_name", "customer_name")
         person = self._first_entity(
             "contact_name",
+            "person_name",
+            "recipient_name",
+            "sender_name",
             "authorised_signer",
             "authorized_signer",
             "signature_name",
@@ -152,7 +177,77 @@ class EvidenceGraphBuilder:
         tax = self._first_entity("vendor_tax_id", "tax_identifier")
         address = self._first_entity("address", "vendor_address")
         payment = self._first_entity("payment_reference", "total_amount")
-        contacts = self._entities("phone_number", "fax_number", "email")
+        contacts = self._entities(
+            "phone_number",
+            "fax_number",
+            "recipient_phone",
+            "sender_phone",
+            "recipient_fax",
+            "sender_fax",
+            "visible_phone_numbers",
+            "visible_fax_numbers",
+            "email",
+        )
+        title = self._first_entity("document_title", "form_title", "title")
+        date = self._first_entity(
+            "date",
+            "visible_dates",
+            "invoice_date",
+            "effective_date",
+        )
+        recipient = self._first_entity("recipient_name")
+        sender = self._first_entity("sender_name")
+        recipient_company = self._first_entity("recipient_company")
+        client_number = self._first_entity("client_number", "reference_number")
+
+        if title:
+            self._field_relationship(
+                document_node,
+                title,
+                "HAS_TITLE",
+                "document_title",
+                "form_title",
+                "title",
+            )
+        if date:
+            self._field_relationship(
+                document_node,
+                date,
+                "HAS_DATE",
+                "date",
+                "visible_dates",
+                "invoice_date",
+                "effective_date",
+            )
+        if recipient:
+            self._field_relationship(
+                document_node,
+                recipient,
+                "SENT_TO",
+                "recipient_name",
+            )
+        if sender:
+            self._field_relationship(
+                sender,
+                document_node,
+                "SENT",
+                "sender_name",
+            )
+        if recipient_company:
+            self._field_relationship(
+                document_node,
+                recipient_company,
+                "ASSOCIATED_WITH",
+                "recipient_company",
+            )
+        if client_number:
+            self._field_relationship(
+                document_node,
+                client_number,
+                "HAS_CLIENT_NUMBER",
+                "client_number",
+                "reference_number",
+            )
 
         if organisation:
             self._field_relationship(
@@ -231,10 +326,17 @@ class EvidenceGraphBuilder:
                 "contact_name",
             )
         for field_name, contact in contacts:
+            relationship = (
+                "HAS_FAX"
+                if "fax" in field_name
+                else "HAS_PHONE"
+                if "phone" in field_name
+                else "HAS_CONTACT"
+            )
             self._field_relationship(
                 organisation or vendor or customer or person or document_node,
                 contact,
-                "HAS_CONTACT",
+                relationship,
                 field_name,
             )
 
@@ -361,10 +463,16 @@ class EvidenceGraphBuilder:
         value = field.reviewed_value or field.value
         mapping = {
             "organisation_name": "Organisation",
+            "company_name": "Organisation",
+            "recipient_company": "Organisation",
+            "sender_company": "Organisation",
             "vendor_name": "Vendor",
             "buyer_name": "Customer",
             "customer_name": "Customer",
             "contact_name": "Person",
+            "person_name": "Person",
+            "recipient_name": "Person",
+            "sender_name": "Person",
             "authorised_signer": "Person",
             "authorized_signer": "Person",
             "signature_name": "Person",
@@ -381,7 +489,22 @@ class EvidenceGraphBuilder:
             "vendor_address": "Address",
             "phone_number": "ContactMethod",
             "fax_number": "ContactMethod",
+            "recipient_phone": "ContactMethod",
+            "sender_phone": "ContactMethod",
+            "recipient_fax": "ContactMethod",
+            "sender_fax": "ContactMethod",
+            "visible_phone_numbers": "ContactMethod",
+            "visible_fax_numbers": "ContactMethod",
             "email": "ContactMethod",
+            "document_title": "DocumentTitle",
+            "form_title": "DocumentTitle",
+            "title": "DocumentTitle",
+            "date": "Date",
+            "visible_dates": "Date",
+            "invoice_date": "Date",
+            "effective_date": "Date",
+            "client_number": "ReferenceNumber",
+            "reference_number": "ReferenceNumber",
             "payment_reference": "Payment",
             "total_amount": "Payment",
             "signatures": "Signature",
@@ -437,6 +560,7 @@ class EvidenceGraphBuilder:
                 "document_id": self.document.document_id,
                 "source_document": self.document.document_id,
                 "source_route": f"/documents/{self.document.document_id}",
+                "evidence_count": 1 if properties.get("evidence_id") else 0,
                 **{key: value for key, value in properties.items() if value is not None},
             },
         )
@@ -458,6 +582,7 @@ class EvidenceGraphBuilder:
         confidence: float | None = None,
         review_status: ReviewerStatus | None = None,
         structural: bool = False,
+        source_field: str | None = None,
     ) -> str | None:
         if source not in self.nodes or target not in self.nodes:
             return None
@@ -497,6 +622,7 @@ class EvidenceGraphBuilder:
             "deterministic": True,
             "source_linked": bool(evidence_id or evidence_text),
             "verification_eligible": status == "proposed" and not structural,
+            "source_field": source_field,
         }
         return edge_id
 
@@ -523,6 +649,7 @@ class EvidenceGraphBuilder:
             evidence=evidence_field.evidence,
             status=status,
             provenance="deterministic_entity_relationship",
+            source_field=evidence_field.name,
         )
 
     def _first_entity(self, *field_names: str) -> str | None:

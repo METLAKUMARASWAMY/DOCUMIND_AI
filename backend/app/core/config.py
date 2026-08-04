@@ -124,7 +124,15 @@ class Settings(BaseSettings):
         default=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"]
     )
     role_labels: list[str] = Field(
-        default=["ADMIN", "PROCESSOR", "REVIEWER", "AUDITOR", "VIEWER"]
+        default=[
+            "ADMIN",
+            "PROCESSOR",
+            "REVIEWER",
+            "SENIOR_REVIEWER",
+            "COMPLIANCE_OFFICER",
+            "AUDITOR",
+            "VIEWER",
+        ]
     )
     upload_dir: str = Field(default="var/uploads", alias="UPLOAD_DIR")
     max_upload_bytes: int = Field(default=25 * 1024 * 1024, alias="MAX_UPLOAD_BYTES")

@@ -52,9 +52,9 @@ interface NavigationItem {
 
 const navigation: NavigationItem[] = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/upload", label: "Upload", icon: Upload, roles: ["ADMIN", "PROCESSOR", "REVIEWER"] },
+  { path: "/upload", label: "Upload", icon: Upload, roles: ["ADMIN", "PROCESSOR", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"] },
   { path: "/documents", label: "Documents", icon: Files },
-  { path: "/reviews", label: "Review queue", icon: ClipboardCheck, roles: ["ADMIN", "REVIEWER"] },
+  { path: "/reviews", label: "Review queue", icon: ClipboardCheck, roles: ["ADMIN", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"] },
   { path: "/ask", label: "Ask documents", icon: MessageSquareText },
   { path: "/graph", label: "Knowledge graph", icon: Network },
   { path: "/analytics", label: "Analytics", icon: BarChart3 },

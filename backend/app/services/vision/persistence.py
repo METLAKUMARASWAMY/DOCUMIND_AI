@@ -139,6 +139,7 @@ class VisionPersistenceCoordinator:
                 )
                 self._replace_many(database.pages, document, payload.get("page_artifacts", []), "page_number")
                 self._replace_many(database.ocr_results, document, payload.get("ocr_words", []), "word_id")
+                self._replace_many(database.ocr_lines, document, payload.get("ocr_lines", []), "line_id")
                 self._replace_many(
                     database.extracted_fields,
                     document,
@@ -283,6 +284,7 @@ class VisionPersistenceCoordinator:
                     "documents",
                     "pages",
                     "ocr_results",
+                    "ocr_lines",
                     "extracted_fields",
                     "tables",
                     "risk_indicators",
@@ -524,6 +526,9 @@ class VisionPersistenceCoordinator:
             database.documents.create_index([("tenant_id", 1), ("document_type", 1)])
             database.documents.create_index([("tenant_id", 1), ("updated_at", -1)])
             database.extracted_fields.create_index([("tenant_id", 1), ("document_id", 1), ("name", 1)])
+            database.ocr_lines.create_index(
+                [("tenant_id", 1), ("document_id", 1), ("page", 1), ("reading_order", 1)]
+            )
             database.extracted_fields.create_index([("tenant_id", 1), ("name", 1), ("value_hash", 1)])
             database.review_tasks.create_index([("tenant_id", 1), ("priority", -1), ("status", 1)])
             database.review_tasks.create_index([("tenant_id", 1), ("filename", 1)])
@@ -543,7 +548,7 @@ class VisionPersistenceCoordinator:
             database.reports.create_index(
                 [("tenant_id", 1), ("identity_hash", 1), ("version", 1)],
                 unique=True,
-                partialFilterExpression={"identity_hash": {"$type": "string", "$ne": ""}},
+                partialFilterExpression={"identity_hash": {"$gt": ""}},
             )
             database.finance_narratives.create_index(
                 [("tenant_id", 1), ("narrative_id", 1)],
@@ -552,7 +557,7 @@ class VisionPersistenceCoordinator:
             database.finance_narratives.create_index(
                 [("tenant_id", 1), ("identity_hash", 1), ("version", 1)],
                 unique=True,
-                partialFilterExpression={"identity_hash": {"$type": "string", "$ne": ""}},
+                partialFilterExpression={"identity_hash": {"$gt": ""}},
             )
             database.vision_jobs.create_index([("tenant_id", 1), ("job_id", 1)], unique=True)
             database.users.create_index([("tenant_id", 1), ("user_id", 1)], unique=True)

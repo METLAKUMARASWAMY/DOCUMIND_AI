@@ -1,6 +1,6 @@
-import { Alert, Box, Button, IconButton, MenuItem, Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Download, FilePlus2, RefreshCw } from "lucide-react";
+import { Archive, Download, Eye, FilePlus2, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { api, downloadReport } from "../api/client";
@@ -14,7 +14,7 @@ const reportTypes = ["document_intelligence_report", "risk_screening_report", "c
 
 export function ReportsPage() {
   const { user } = useAuth();
-  const canManage = user?.role === "ADMIN" || user?.role === "REVIEWER";
+  const canManage = ["ADMIN", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"].includes(user?.role || "");
   const queryClient = useQueryClient();
   const reports = useQuery({ queryKey: ["reports"], queryFn: api.reports });
   const documents = useQuery({ queryKey: ["documents"], queryFn: api.documents });
@@ -69,11 +69,13 @@ export function ReportsPage() {
 
 function ReportRow({ report, documentNames, canManage, onRegenerate, onArchive }: { report: ReportRecord; documentNames: Map<string, string>; canManage: boolean; onRegenerate: (report: ReportRecord) => void; onArchive: (report: ReportRecord) => void }) {
   const [busy, setBusy] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   return (
+    <>
     <TableRow>
       <TableCell><Typography fontWeight={700}>{report.title}</Typography><Typography variant="caption" color="text.secondary">{report.report_id}</Typography></TableCell>
       <TableCell>{report.report_type.replaceAll("_", " ")}</TableCell>
-      <TableCell><Box className="report-document-list">{report.document_ids.length ? report.document_ids.map((id) => <Typography variant="body2" key={id}>{documentNames.get(id) || id}</Typography>) : <Typography variant="body2">No document scope</Typography>}</Box></TableCell>
+      <TableCell>{report.document_ids.length ? <><Typography variant="body2">{report.document_ids.length} {report.document_ids.length === 1 ? "document" : "documents"}</Typography><Button size="small" startIcon={<Eye size={14} />} onClick={() => setSourcesOpen(true)}>View sources</Button></> : <Typography variant="body2">No document scope</Typography>}</TableCell>
       <TableCell><Typography fontWeight={700}>v{report.version}</Typography><StatusChip value={report.status} /></TableCell>
       <TableCell><Tooltip title={report.source_data_version}><code>{report.source_data_version.slice(0, 12)}</code></Tooltip></TableCell>
       <TableCell>{new Date(report.created_at).toLocaleString()}<Typography variant="caption" display="block" color="text.secondary">{report.generated_by}</Typography></TableCell>
@@ -83,5 +85,7 @@ function ReportRow({ report, documentNames, canManage, onRegenerate, onArchive }
         {canManage && report.status !== "archived" ? <Tooltip title="Archive report"><IconButton color="warning" onClick={() => onArchive(report)}><Archive size={17} /></IconButton></Tooltip> : null}
       </TableCell>
     </TableRow>
+    <Dialog open={sourcesOpen} onClose={() => setSourcesOpen(false)} maxWidth="sm" fullWidth><DialogTitle>Report sources</DialogTitle><DialogContent><Box className="report-document-list">{report.document_ids.map((id) => <Typography variant="body2" key={id}>{documentNames.get(id) || id}</Typography>)}</Box></DialogContent><DialogActions><Button onClick={() => setSourcesOpen(false)}>Close</Button></DialogActions></Dialog>
+    </>
   );
 }

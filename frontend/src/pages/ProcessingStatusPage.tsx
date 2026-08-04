@@ -9,7 +9,7 @@ import { ErrorState } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
 import { StatusChip } from "../components/StatusChip";
 
-const stages = ["QUEUED", "PREPROCESSING", "OCR_COMPLETED", "EXTRACTION_COMPLETED", "VALIDATION_COMPLETED", "INDEXED", "REVIEW_REQUIRED", "COMPLETED"];
+const stages = ["QUEUED", "PREPROCESSING", "OCR_COMPLETED", "EXTRACTION_COMPLETED", "VALIDATION_COMPLETED", "INDEXED", "COMPLETED"];
 
 export function ProcessingStatusPage() {
   const { jobId = "" } = useParams();
@@ -35,12 +35,15 @@ export function ProcessingStatusPage() {
   }, [firstDocumentId, jobId, queryClient]);
 
   const status = String(job.data?.status || "QUEUED");
-  const currentIndex = Math.max(0, stages.indexOf(status));
+  const pipelineStatus = String(job.data?.pipeline_status || status);
+  const decisionStatus = String(job.data?.decision_status || "PENDING");
+  const currentIndex = Math.max(0, stages.indexOf(pipelineStatus));
+  const extractionOutcomes = (job.data?.extraction_outcomes || []) as Array<Record<string, unknown>>;
   return (
     <Box className="page-stack">
-      <PageHeader title="Processing status" subtitle={`Job ${jobId}`} actions={<StatusChip value={status} size="medium" />} />
+      <PageHeader title="Processing status" subtitle={`${String(job.data?.status_summary || "Processing document")} | Job ${jobId}`} actions={<><Box><Typography variant="caption" display="block">Pipeline status</Typography><StatusChip value={pipelineStatus} size="medium" /></Box><Box><Typography variant="caption" display="block">Decision status</Typography><StatusChip value={decisionStatus} size="medium" /></Box></>} />
       {job.error ? <ErrorState error={job.error} retry={() => void job.refetch()} /> : null}
-      {status === "REVIEW_REQUIRED" ? <Alert severity="warning">Processing completed with evidence that requires reviewer verification.</Alert> : null}
+      {decisionStatus === "REVIEW_REQUIRED" ? <Alert severity="warning">Processing completed - awaiting human review.</Alert> : null}
       <Box className="processing-grid">
         <Box className="surface section-panel">
           <Typography variant="h3">Pipeline</Typography>
@@ -53,9 +56,10 @@ export function ProcessingStatusPage() {
               </ListItem>
             ))}
           </List>
+          {extractionOutcomes.map((outcome) => <Alert key={String(outcome.document_id)} severity={number(outcome.fields_extracted) ? "success" : "info"}>{number(outcome.fields_extracted) ? `Extraction completed: ${number(outcome.fields_extracted)} fields extracted using ${String(outcome.schema || "generic")} schema.` : "Extraction completed with no fields. Generic schema fallback was attempted."}</Alert>)}
           <Box className="form-actions">
             {firstDocumentId && isTerminal(status) ? <Button component={Link} to={`/documents/${firstDocumentId}`} variant="contained">Open document</Button> : null}
-            {status === "REVIEW_REQUIRED" ? <Button component={Link} to="/reviews" variant="outlined">Open review queue</Button> : null}
+            {decisionStatus === "REVIEW_REQUIRED" ? <Button component={Link} to="/reviews" variant="outlined">Open review queue</Button> : null}
             {(job.data?.errors as unknown[])?.length ? <Button startIcon={<RefreshCw size={16} />} onClick={() => void api.retryJob(jobId).then(() => job.refetch())}>Retry job</Button> : null}
           </Box>
         </Box>
@@ -71,6 +75,10 @@ export function ProcessingStatusPage() {
       </Box>
     </Box>
   );
+}
+
+function number(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function isTerminal(status: string) {

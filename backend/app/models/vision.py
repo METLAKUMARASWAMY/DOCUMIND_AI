@@ -22,6 +22,16 @@ class VisionProcessingStatus(str, Enum):
     completed = "COMPLETED"
 
 
+class VisionExtractionOutcome(str, Enum):
+    success_with_fields = "SUCCESS_WITH_FIELDS"
+    completed_no_fields = "COMPLETED_NO_FIELDS"
+    schema_fallback_used = "SCHEMA_FALLBACK_USED"
+    schema_unavailable = "SCHEMA_UNAVAILABLE"
+    low_confidence_fields = "LOW_CONFIDENCE_FIELDS"
+    extraction_failed = "EXTRACTION_FAILED"
+    fallback_required = "FALLBACK_REQUIRED"
+
+
 class ReviewerStatus(str, Enum):
     unverified = "unverified"
     accepted = "accepted"
@@ -37,7 +47,17 @@ class VisionDocumentType(str, Enum):
     contract = "contract"
     receipt = "receipt"
     bank_document = "bank_document"
+    bank_confirmation = "bank_confirmation"
+    fax_transmission = "fax_transmission"
+    business_form = "business_form"
+    legal_form = "legal_form"
     insurance_document = "insurance_document"
+    financial_report = "financial_report"
+    general_report = "general_report"
+    correspondence = "correspondence"
+    letter = "letter"
+    statement = "statement"
+    # Retained for records created before the v3 taxonomy migration.
     form = "form"
     report = "report"
     unknown = "unknown"
@@ -150,6 +170,19 @@ class OCRWord(BaseModel):
     model_version: str = "v1"
 
 
+class OCRLineRecord(BaseModel):
+    line_id: str
+    text: str
+    page: int = Field(default=1, ge=1)
+    bounding_box: VisionBoundingBox
+    mean_confidence: float | None = Field(default=None, ge=0, le=1)
+    word_ids: list[str] = Field(default_factory=list)
+    block_ids: list[str] = Field(default_factory=list)
+    reading_order: int = Field(ge=1)
+    reconstruction_method: str = "geometry-line-reconstructor-v1"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class LayoutRegion(BaseModel):
     region_id: str = Field(default_factory=lambda: f"region-{uuid4().hex[:10]}")
     region_type: str
@@ -225,7 +258,10 @@ class ExtractedVisionField(BaseModel):
     schema_field: str | None = None
     display_name: str = ""
     value: str
+    raw_value: str | None = None
     normalized_value: str | None = None
+    validation_status: str = "not_evaluated"
+    validation_reason: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
     ocr_confidence: float | None = Field(default=None, ge=0, le=1)
     extraction_confidence: float | None = Field(default=None, ge=0, le=1)
@@ -248,6 +284,7 @@ class ExtractedVisionField(BaseModel):
     @model_validator(mode="after")
     def sync_field_contract(self):
         self.schema_field = self.schema_field or self.name
+        self.raw_value = self.raw_value if self.raw_value is not None else self.value
         if not self.display_name:
             self.display_name = self.name.replace("_", " ").title()
         if self.combined_confidence is None:
@@ -333,6 +370,13 @@ class VisionFieldCompleteness(BaseModel):
     expected_required_count: int | None = Field(default=None, ge=0)
     extracted_count: int = Field(default=0, ge=0)
     unresolved_required_count: int | None = Field(default=None, ge=0)
+    exact_schema: str | None = None
+    fallback_schema: str | None = None
+    generic_schema: str | None = None
+    selected_schema: str | None = None
+    schema_source: str = "unavailable"
+    schema_path: list[str] = Field(default_factory=list)
+    fallback_used: bool = False
 
 
 class VisionLanguageAnalysis(BaseModel):
@@ -344,6 +388,9 @@ class VisionLanguageAnalysis(BaseModel):
     sample_text: str = ""
     mixed_language_routing: bool = False
     decision_reason: str = "insufficient_clean_text"
+    primary_language: str | None = None
+    secondary_languages: list[str] = Field(default_factory=list)
+    detector_version: str = "language-router-v3"
 
 
 class DuplicateCandidate(BaseModel):
@@ -373,6 +420,8 @@ class AnomalyAnalysisResult(BaseModel):
 
 class ModelRunRecord(BaseModel):
     run_id: str = Field(default_factory=lambda: f"model-run-{uuid4().hex[:10]}")
+    model_run_id: str | None = None
+    model_id: str | None = None
     stage: str
     model_name: str
     model_version: str
@@ -384,10 +433,33 @@ class ModelRunRecord(BaseModel):
     package_version: str | None = None
     device: str = "cpu"
     processing_duration_ms: float | None = Field(default=None, ge=0)
+    runtime_ms: float | None = Field(default=None, ge=0)
     source_document: str | None = None
     source_pages: list[int] = Field(default_factory=list)
     routing_reason: str | None = None
     notes: list[str] = Field(default_factory=list)
+    input_schema: str | None = None
+    output_schema: str | None = None
+    document_type: VisionDocumentType | None = None
+    selected_schema: str | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    result_status: str | None = None
+    reason: str | None = None
+
+    @model_validator(mode="after")
+    def populate_provenance_aliases(self):
+        self.model_run_id = self.model_run_id or self.run_id
+        version_suffix = f"-{self.model_version}"
+        self.model_id = self.model_id or (
+            self.model_name
+            if self.model_name.lower().endswith(version_suffix.lower())
+            else f"{self.model_name}{version_suffix}"
+        )
+        if self.runtime_ms is None:
+            self.runtime_ms = self.processing_duration_ms
+        if self.processing_duration_ms is None:
+            self.processing_duration_ms = self.runtime_ms
+        return self
 
 
 class VisionAuditEvent(BaseModel):
@@ -415,6 +487,7 @@ class VisionEvidenceChunk(BaseModel):
     model_version: str = "local-structure-chunker-v1"
     text: str
     confidence: float = Field(default=0.0, ge=0, le=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class VisionGraphProjection(BaseModel):
@@ -424,6 +497,7 @@ class VisionGraphProjection(BaseModel):
     schema_version: str = "documind-evidence-graph-v2"
     preferred_backend: str = "neo4j"
     active_backend: str = "local_evidence_graph"
+    legend: dict[str, Any] = Field(default_factory=dict)
 
 
 class VisionReviewTask(BaseModel):
@@ -491,6 +565,7 @@ class VisionDocumentRecord(BaseModel):
     page_artifacts: list[VisionPageArtifact] = Field(default_factory=list)
     quality: list[PageQualityReport] = Field(default_factory=list)
     ocr_words: list[OCRWord] = Field(default_factory=list)
+    ocr_lines: list[OCRLineRecord] = Field(default_factory=list)
     layout_regions: list[LayoutRegion] = Field(default_factory=list)
     tables: list[TableResult] = Field(default_factory=list)
     visual_detections: list[VisualDetection] = Field(default_factory=list)
@@ -579,7 +654,22 @@ class VisionReviewDecisionRequest(BaseModel):
 class VisionAskRequest(BaseModel):
     question: str
     document_id: str | None = None
+    document_ids: list[str] = Field(default_factory=list)
+    scope: str = Field(
+        default="all_accessible",
+        pattern="^(current_document|selected_documents|approved_documents|all_accessible)$",
+    )
     top_k: int = Field(default=5, ge=1, le=12)
+
+    @model_validator(mode="after")
+    def validate_scope_selection(self):
+        if self.document_id:
+            return self
+        if self.scope == "current_document":
+            raise ValueError("document_id is required for current_document scope")
+        if self.scope == "selected_documents" and not self.document_ids:
+            raise ValueError("document_ids are required for selected_documents scope")
+        return self
 
 
 class VisionAskCitation(BaseModel):
@@ -616,6 +706,9 @@ class VisionAskResponse(BaseModel):
     generator_name: str = "grounded-evidence-composer"
     generator_version: str = "v1"
     retriever: str = "local-hybrid"
+    retrieval_path: str = "not_used"
+    scope: dict[str, Any] = Field(default_factory=dict)
+    broader_scope_available: bool = False
 
     @computed_field
     @property

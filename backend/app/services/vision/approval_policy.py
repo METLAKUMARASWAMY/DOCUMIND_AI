@@ -205,7 +205,12 @@ class VisionApprovalPolicyService:
             if value.strip()
         }
         missing_confirmations = sorted(set(required_fields) - set(confirmed_fields))
-        if actor_role not in {UserRole.admin, UserRole.reviewer}:
+        if actor_role not in {
+            UserRole.admin,
+            UserRole.reviewer,
+            UserRole.senior_reviewer,
+            UserRole.compliance_officer,
+        }:
             manual_requirements.append(
                 ApprovalPolicyBlocker(
                     code="manual_override_role_required",
@@ -261,7 +266,14 @@ class VisionApprovalPolicyService:
             blockers = conditions
 
         manual_available = (
-            actor_role in {UserRole.admin, UserRole.reviewer} and not hard_blockers
+            actor_role
+            in {
+                UserRole.admin,
+                UserRole.reviewer,
+                UserRole.senior_reviewer,
+                UserRole.compliance_officer,
+            }
+            and not hard_blockers
         )
         manual_condition_codes = {
             "no_structured_fields",

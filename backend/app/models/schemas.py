@@ -40,6 +40,8 @@ class UserRole(str, Enum):
     admin = "ADMIN"
     processor = "PROCESSOR"
     reviewer = "REVIEWER"
+    senior_reviewer = "SENIOR_REVIEWER"
+    compliance_officer = "COMPLIANCE_OFFICER"
     auditor = "AUDITOR"
     viewer = "VIEWER"
 
@@ -50,7 +52,8 @@ class UserRole(str, Enum):
             "processor": cls.processor,
             "risk_analyst": cls.processor,
             "reviewer": cls.reviewer,
-            "compliance_officer": cls.reviewer,
+            "compliance_officer": cls.compliance_officer,
+            "senior_reviewer": cls.senior_reviewer,
             "finance_reviewer": cls.reviewer,
             "legal_reviewer": cls.reviewer,
             "auditor": cls.auditor,

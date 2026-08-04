@@ -58,7 +58,9 @@ function SmokeEvidence({ model }: { model: Record<string, unknown> }) {
   const inference = (smoke?.inference || {}) as Record<string, unknown>;
   const schema = (smoke?.output_schema || {}) as Record<string, unknown>;
   if (!smoke) return <Typography variant="caption" color="text.secondary">Not run for this configuration</Typography>;
-  return <Stack spacing={0.4}><StatusChip value={String(smoke.status || "unknown")} /><Typography variant="caption">Init {duration(initialization.duration_ms)} · inference {duration(inference.duration_ms)}</Typography><Typography variant="caption">Schema: {schema.valid ? String(schema.name || "valid") : "invalid"}</Typography><Typography variant="caption">{formatTimestamp(String(smoke.completed_at || ""))}</Typography>{smoke.error ? <Typography variant="caption" color="error">{String(smoke.error)}</Typography> : null}</Stack>;
+  const inferenceLabel = inference.status === "not_run" ? "not run" : duration(inference.duration_ms);
+  const schemaLabel = schema.status === "not_evaluated" || schema.valid === null || schema.valid === undefined ? "not evaluated" : schema.valid ? String(schema.name || "valid") : "invalid";
+  return <Stack spacing={0.4}><StatusChip value={String(smoke.status || "unknown")} /><Typography variant="caption">Init {duration(initialization.duration_ms)} · inference {inferenceLabel}</Typography><Typography variant="caption">Schema: {schemaLabel}</Typography><Typography variant="caption">{formatTimestamp(String(smoke.completed_at || ""))}</Typography>{smoke.error ? <Typography variant="caption" color="error">{String(smoke.error)}</Typography> : null}</Stack>;
 }
 
 function duration(value: unknown) {

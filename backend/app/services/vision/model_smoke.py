@@ -73,7 +73,12 @@ class ModelSmokeService:
             "configuration_fingerprint": model_configuration_fingerprint(backend),
             "initialization": {"status": "not_run", "duration_ms": None},
             "inference": {"status": "not_run", "duration_ms": None},
-            "output_schema": {"valid": False, "name": None, "observed_keys": []},
+            "output_schema": {
+                "status": "not_evaluated",
+                "valid": None,
+                "name": None,
+                "observed_keys": [],
+            },
             "error": None,
             "blocker": None,
         }
@@ -541,6 +546,7 @@ class ModelSmokeService:
         if not valid:
             raise ValueError(f"Smoke inference failed output schema {schema_name}")
         return {
+            "status": "evaluated",
             "valid": True,
             "name": schema_name,
             "observed_keys": sorted(output),

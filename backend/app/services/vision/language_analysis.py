@@ -84,6 +84,9 @@ class VisionLanguageAnalysisService:
             sample_text=self._sample(retained),
             mixed_language_routing=mixed,
             decision_reason=reason,
+            primary_language=groups[0][0] if groups else None,
+            secondary_languages=[script for script, _ in groups[1:]],
+            detector_version="language-router-v3",
         )
 
     def _decision(
@@ -107,12 +110,8 @@ class VisionLanguageAnalysisService:
         return True, "mixed_language_thresholds_met"
 
     def _sample(self, words: list[OCRWord]) -> str:
-        lines: dict[tuple[int, str], list[OCRWord]] = defaultdict(list)
-        for word in words:
-            lines[(word.page, word.line_id)].append(word)
-        text = "\n".join(
-            " ".join(item.text for item in sorted(line, key=lambda item: item.reading_order))
-            for _, line in sorted(lines.items(), key=lambda item: (item[0][0], item[1][0].reading_order))
+        text = " ".join(
+            word.text for word in sorted(words, key=lambda item: item.reading_order)
         )
         return text[:320]
 

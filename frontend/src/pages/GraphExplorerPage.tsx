@@ -35,7 +35,7 @@ export function GraphExplorerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const canVerify = user?.role === "ADMIN" || user?.role === "REVIEWER";
+  const canVerify = ["ADMIN", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"].includes(user?.role || "");
   const documents = useQuery({ queryKey: ["documents"], queryFn: api.documents });
   const [documentId, setDocumentId] = useState("");
   const [question, setQuestion] = useState("");
@@ -335,6 +335,7 @@ function GraphLegend({ nodeTypes }: { nodeTypes: string[] }) {
       {nodeTypes.map((type) => <Box className="legend-item" key={type}><span className={`graph-swatch swatch-${type}`} />{type}</Box>)}
       <Box className="legend-item"><span className="edge-swatch edge-verified" />Verified</Box>
       <Box className="legend-item"><span className="edge-swatch edge-proposed" />Proposed</Box>
+      <Box className="legend-item"><span className="edge-swatch" style={{ backgroundColor: "#b42318" }} />Conflict</Box>
     </Box>
   );
 }
@@ -346,6 +347,7 @@ const graphStyles: StylesheetStyle[] = [
   { selector: "node[type = 'Organisation'], node[type = 'Vendor'], node[type = 'Customer']", style: { "background-color": "#087f78", shape: "round-rectangle", width: 34, height: 30 } },
   { selector: "node[type = 'Person']", style: { "background-color": "#3568a8", shape: "ellipse" } },
   { selector: "node[type = 'ContactMethod'], node[type = 'Address']", style: { "background-color": "#5b7f3b", shape: "diamond" } },
+  { selector: "node[type = 'Date'], node[type = 'DocumentTitle'], node[type = 'ReferenceNumber']", style: { "background-color": "#6b7280", shape: "round-rectangle" } },
   { selector: "node[type = 'Invoice'], node[type = 'PurchaseOrder'], node[type = 'Contract'], node[type = 'Payment']", style: { "background-color": "#c28a13", shape: "round-rectangle" } },
   { selector: "node[type = 'BankAccount'], node[type = 'TaxIdentifier']", style: { "background-color": "#7b5ca7", shape: "hexagon" } },
   { selector: "node[type = 'Signature']", style: { "background-color": "#b45f83", shape: "star" } },
@@ -363,13 +365,17 @@ const graphStyles: StylesheetStyle[] = [
 function primaryNodeType(type: string) {
   return new Set([
     "Contract",
+    "ContactMethod",
     "Customer",
     "Document",
+    "DocumentTitle",
+    "Date",
     "Invoice",
     "Organisation",
     "Payment",
     "Person",
     "PurchaseOrder",
+    "ReferenceNumber",
     "RiskIndicator",
     "Vendor",
   ]).has(type);

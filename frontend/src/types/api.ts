@@ -1,4 +1,4 @@
-export type UserRole = "ADMIN" | "PROCESSOR" | "REVIEWER" | "AUDITOR" | "VIEWER";
+export type UserRole = "ADMIN" | "PROCESSOR" | "REVIEWER" | "SENIOR_REVIEWER" | "COMPLIANCE_OFFICER" | "AUDITOR" | "VIEWER";
 
 export interface AuthUser {
   user_id: string;
@@ -356,6 +356,13 @@ export interface VisionDocument {
     expected_required_count: number | null;
     extracted_count: number;
     unresolved_required_count: number | null;
+    exact_schema?: string | null;
+    fallback_schema?: string | null;
+    generic_schema?: string | null;
+    selected_schema?: string | null;
+    schema_source?: string;
+    schema_path?: string[];
+    fallback_used?: boolean;
   };
   processing_warnings: RiskIndicator[];
   risk_indicators: RiskIndicator[];
@@ -412,6 +419,21 @@ export interface AskResponse {
   generator_name: string;
   generator_version: string;
   retriever: string;
+  retrieval_path: string;
+  scope: {
+    scope: string;
+    document_count: number;
+    documents: Array<{
+      document_id: string;
+      filename: string;
+      document_type: string;
+      thumbnail_url: string;
+      page_count: number;
+      field_count: number;
+      processing_version: string;
+    }>;
+  };
+  broader_scope_available: boolean;
 }
 
 export interface FinanceNarrative {

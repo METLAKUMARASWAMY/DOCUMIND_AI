@@ -62,7 +62,7 @@ export function DocumentLibraryPage() {
                   <TableCell>{new Date(document.updated_at).toLocaleString()}</TableCell>
                   <TableCell align="right">
                     <Tooltip title="Open document"><IconButton component={Link} to={`/documents/${document.document_id}`} aria-label={`Open ${document.filename}`}><Eye size={17} /></IconButton></Tooltip>
-                    {user?.role === "ADMIN" || user?.role === "REVIEWER" ? <Tooltip title="Delete document"><span><IconButton color="error" disabled={remove.isPending} onClick={() => { if (window.confirm(`Delete ${document.filename}?`)) remove.mutate(document.document_id); }} aria-label={`Delete ${document.filename}`}><Trash2 size={17} /></IconButton></span></Tooltip> : null}
+                    {["ADMIN", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"].includes(user?.role || "") ? <Tooltip title="Delete document"><span><IconButton color="error" disabled={remove.isPending} onClick={() => { if (window.confirm(`Delete ${document.filename}?`)) remove.mutate(document.document_id); }} aria-label={`Delete ${document.filename}`}><Trash2 size={17} /></IconButton></span></Tooltip> : null}
                   </TableCell>
                 </TableRow>
               );

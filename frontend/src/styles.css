@@ -161,7 +161,12 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .citation-list { display: grid; gap: 6px; }
 .citation-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; text-align: left; color: inherit; background: #f7f9fa; border: 1px solid #dfe4e8; border-radius: 5px; cursor: pointer; }
 .citation-row:hover { border-color: #087f78; }
-.ask-composer { padding: 10px; display: grid; grid-template-columns: minmax(180px,.35fr) minmax(300px,1fr) auto; align-items: end; gap: 9px; }
+.ask-composer { padding: 10px; display: grid; gap: 9px; }
+.ask-scope-row { min-width: 0; display: grid; grid-template-columns: minmax(220px,.45fr) minmax(0,1fr); align-items: center; gap: 9px; }
+.ask-scope-controls { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 9px; }
+.ask-scope-documents { min-width: 0; min-height: 58px; display: flex; align-items: center; gap: 8px; overflow-x: auto; }
+.ask-input-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 9px; }
+.ask-input-row .MuiButton-root { min-width: 112px; min-height: 56px; }
 
 .lab-toolbar, .report-builder, .graph-query-bar { padding: 11px; display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
 .lab-status-band { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1px; border: 1px solid #dfe4e8; background: #dfe4e8; }
@@ -253,8 +258,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .intelligence-workspace, .review-workspace { display: flex; flex-direction: column; height: auto; min-height: 0; }
   .viewer-pane { height: 68vh; min-height: 520px; }
   .intelligence-panel, .review-panel { min-height: 620px; }
-  .ask-composer { grid-template-columns: 1fr auto; }
-  .ask-composer .MuiTextField-root:first-child { grid-column: 1 / -1; }
+  .ask-scope-row { grid-template-columns: 1fr; }
   .lab-status-band { grid-template-columns: 1fr; }
   .graph-workspace { height: auto; min-height: 0; }
   .graph-controls, .graph-path-controls { flex-wrap: wrap; }
@@ -272,8 +276,8 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .analytics-filter-bar, .analytics-stat-band { grid-template-columns: 1fr; }
   .viewer-toolbar { align-items: flex-start; flex-direction: column; }
   .viewer-scroll { padding: 15px; }
-  .ask-composer { grid-template-columns: 1fr; }
-  .ask-composer .MuiButton-root { width: 100%; }
+  .ask-input-row { grid-template-columns: 1fr; }
+  .ask-input-row .MuiButton-root { width: 100%; }
   .graph-query-bar > *, .graph-controls > *, .graph-path-controls > * { width: 100%; }
   .graph-query-bar .MuiTextField-root:nth-child(2), .graph-controls > .MuiTextField-root:first-child, .graph-path-controls .MuiTextField-root { min-width: 0; }
   .graph-icon-actions { width: auto; margin-left: 0; }

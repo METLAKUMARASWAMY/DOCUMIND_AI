@@ -27,7 +27,10 @@ class ModelRegistryService:
             "heavy_models_enabled": settings.enable_heavy_models,
             "generated_at": self._now(),
             "evidence_policy": {
-                "fraud_language": "Suspicious indicators require human review; only reviewers may confirm fraud.",
+                "fraud_language": (
+                    "Suspicious indicators require human review; only Compliance Officers, "
+                    "Senior Reviewers, or Admins may confirm fraud."
+                ),
                 "unsupported_answer": (
                     "The available documents do not contain sufficient evidence to answer this question."
                 ),

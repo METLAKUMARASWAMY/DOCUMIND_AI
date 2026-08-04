@@ -87,6 +87,14 @@ def test_verified_finance_narrative_and_typed_report_flow():
         },
     ).json()["data"]
     assert repeated_narrative["narrative_id"] == narrative["narrative_id"]
+    listed_narratives = client.get(
+        "/api/v1/finance-narratives",
+        headers=headers,
+    ).json()["data"]["narratives"]
+    assert sum(
+        item["identity_hash"] == narrative["identity_hash"]
+        for item in listed_narratives
+    ) == 1
 
     versioned_narrative = client.post(
         "/api/v1/finance-narratives",

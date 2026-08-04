@@ -464,7 +464,7 @@ async def alias_confirm_vision_fraud(
     request: VisionReviewDecisionRequest | None = None,
     user: AuthUser = Depends(require_user),
 ) -> dict:
-    _require_admin(user)
+    _require_fraud_confirmer(user)
     return _review_decision(review_id, VisionProcessingStatus.confirmed_fraud, request, user, http_request)
 
 
@@ -1000,13 +1000,30 @@ def _review_or_404(review_id: str, tenant_id: str | None = None):
 
 
 def _require_reviewer(user: AuthUser) -> None:
-    if user.role not in {UserRole.admin, UserRole.reviewer}:
+    if user.role not in {
+        UserRole.admin,
+        UserRole.reviewer,
+        UserRole.senior_reviewer,
+        UserRole.compliance_officer,
+    }:
         raise HTTPException(status_code=403, detail="Reviewer role required")
 
 
 def _require_admin(user: AuthUser) -> None:
     if user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Admin role required")
+
+
+def _require_fraud_confirmer(user: AuthUser) -> None:
+    if user.role not in {
+        UserRole.admin,
+        UserRole.senior_reviewer,
+        UserRole.compliance_officer,
+    }:
+        raise HTTPException(
+            status_code=403,
+            detail="Compliance Officer, Senior Reviewer, or Admin role required",
+        )
 
 
 def _require_auditor(user: AuthUser) -> None:

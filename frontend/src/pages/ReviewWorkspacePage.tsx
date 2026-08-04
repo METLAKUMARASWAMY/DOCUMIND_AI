@@ -35,6 +35,8 @@ export function ReviewWorkspacePage() {
   const document = reviewQuery.data?.document;
   const review = reviewQuery.data?.review;
   const approvalPolicy = reviewQuery.data?.approval_policy;
+  const canConfirmFraud = ["ADMIN", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"].includes(user?.role || "");
+  const signedInRole = (user?.role || "VIEWER").replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 
   const patch = useMutation({
     mutationFn: ({ field, status }: { field: ExtractedField; status: string }) => api.patchField(reviewId, field.field_id, { reviewed_value: drafts[field.field_id]?.value, reviewer_status: status, comment }),
@@ -120,7 +122,7 @@ export function ReviewWorkspacePage() {
 
   return (
     <Box className="page-stack review-page">
-      <PageHeader title={document.filename} subtitle={`${review.reasons.length} routing reason(s) | ${unresolved === null ? "expected schema unavailable" : `${unresolved} unresolved required field(s)`}`} actions={<StatusChip value={review.priority} size="medium" />} />
+      <PageHeader title={document.filename} subtitle={`Signed in as ${signedInRole} | ${review.reasons.length} routing reason(s) | ${unresolved === null ? "expected schema unavailable" : `${unresolved} unresolved required field(s)`}`} actions={<StatusChip value={review.priority} size="medium" />} />
       {patch.error || decide.error ? <ErrorState error={patch.error || decide.error} /> : null}
       {approvalPolicy?.manual_override_required ? <Alert severity="warning">{approvalPolicy.message}</Alert> : null}
       {hardPolicyBlockers.length ? <Alert severity="error">{hardPolicyBlockers.map((item) => item.message).join(" ")}</Alert> : null}
@@ -169,7 +171,7 @@ export function ReviewWorkspacePage() {
               <Button variant="outlined" color="warning" startIcon={<CircleAlert size={16} />} onClick={() => openDecision("escalate")}>Escalate</Button>
               <Button variant="outlined" startIcon={<RefreshCw size={16} />} onClick={() => void api.reprocessDocument(document.document_id)}>Reprocess</Button>
               <Button variant="outlined" color="error" onClick={() => openDecision("confirm-error")}>Mark error</Button>
-              {user?.role === "ADMIN" ? <Button variant="contained" color="error" startIcon={<ShieldAlert size={16} />} onClick={() => openDecision("confirm-fraud")}>Confirm fraud</Button> : null}
+              {canConfirmFraud ? <Button variant="contained" color="error" startIcon={<ShieldAlert size={16} />} onClick={() => openDecision("confirm-fraud")}>Confirm fraud</Button> : null}
             </Box>
           </Box>
         </Box>

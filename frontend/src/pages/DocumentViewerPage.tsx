@@ -51,6 +51,7 @@ export function DocumentViewerPage() {
         actions={<><StatusChip value={document.status} size="medium" />{document.review_task ? <Button component={Link} to={`/reviews/${document.review_task.review_id}`} variant="contained">Open review</Button> : null}<Button startIcon={<RefreshCw size={16} />} disabled={reprocess.isPending} onClick={() => reprocess.mutate(document.document_id)}>{reprocess.isPending ? "Reprocessing" : "Reprocess"}</Button></>}
       />
       {citation ? <Alert severity="info">Opened from answer citation on page {citation.page_number}.</Alert> : null}
+      {Array.isArray(document.metadata.legacy_flags) && document.metadata.legacy_flags.includes("LEGACY_APPROVAL_REVIEW_REQUIRED") ? <Alert severity="warning">Approved under an earlier policy. Re-verification is recommended.</Alert> : null}
       {reprocess.error ? <Alert severity="error">{reprocess.error.message}</Alert> : null}
       <Box className="intelligence-workspace">
         <Box className="viewer-pane surface">
@@ -72,7 +73,9 @@ export function DocumentViewerPage() {
                   <Alert severity="info">
                     {document.field_completeness.schema_available
                       ? `No structured fields were extracted. ${document.field_completeness.missing_required_fields.length} required fields remain unresolved.`
-                      : "No structured fields were extracted. Expected schema unavailable for this document type."}
+                      : document.field_completeness.selected_schema === "generic_key_value_form"
+                        ? "No structured fields were extracted. Generic key-value schema fallback was attempted."
+                        : "No structured fields were extracted. Expected schema unavailable for this document type."}
                   </Alert>
                 ) : null}
                 {document.extracted_fields.map((field) => (

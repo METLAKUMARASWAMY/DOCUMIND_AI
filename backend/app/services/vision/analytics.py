@@ -132,6 +132,45 @@ class VisionAnalyticsService:
         dates = sorted(document.created_at for document in document_list if document.created_at)
         updated = sorted(document.updated_at for document in document_list if document.updated_at)
         with_fields = sum(bool(document.extracted_fields) for document in document_list)
+        extraction_coverage = (
+            round(with_fields / len(document_list), 4) if document_list else None
+        )
+        exact_schema_count = sum(
+            (document.metadata.get("schema_selection") or {}).get("schema_source")
+            == "exact"
+            for document in document_list
+        )
+        generic_schema_count = sum(
+            (document.metadata.get("schema_selection") or {}).get("schema_source")
+            in {"generic_key_value", "generic_metadata"}
+            for document in document_list
+        )
+        fallback_schema_count = sum(
+            bool((document.metadata.get("schema_selection") or {}).get("fallback_used"))
+            for document in document_list
+        )
+        schema_unavailable_count = sum(
+            not document.field_completeness.schema_available for document in document_list
+        )
+        expected_required = sum(
+            document.field_completeness.expected_required_count or 0
+            for document in document_list
+        )
+        unresolved_required = sum(
+            document.field_completeness.unresolved_required_count or 0
+            for document in document_list
+        )
+        ocr_answers = [
+            item
+            for item in questions
+            if str((item.get("answer") or {}).get("retrieval_path", "")).startswith("ocr_")
+            and (item.get("answer") or {}).get("answer_status") == "supported"
+        ]
+        structured_questions = [
+            item
+            for item in questions
+            if (item.get("answer") or {}).get("query_type") == "structured_lookup"
+        ]
         processing_durations = [
             duration
             for document in document_list
@@ -162,6 +201,26 @@ class VisionAnalyticsService:
             "document_count": len(document_list),
             "documents_with_fields": with_fields,
             "documents_without_fields": len(document_list) - with_fields,
+            "structured_extraction_coverage": extraction_coverage,
+            "extraction_coverage": extraction_coverage,
+            "average_fields_per_supported_document": (
+                round(len(fields) / with_fields, 3) if with_fields else None
+            ),
+            "required_field_completion_rate": (
+                round((expected_required - unresolved_required) / expected_required, 4)
+                if expected_required
+                else None
+            ),
+            "documents_using_exact_schema": exact_schema_count,
+            "documents_using_fallback_schema": fallback_schema_count,
+            "documents_using_generic_schema": generic_schema_count,
+            "documents_schema_unavailable": schema_unavailable_count,
+            "ocr_only_answer_success_count": len(ocr_answers),
+            "ocr_only_answer_success_rate": (
+                round(len(ocr_answers) / len(structured_questions), 4)
+                if structured_questions
+                else None
+            ),
             "field_count": len(fields),
             "approved_field_count": len(approved_fields),
             "ocr_word_count": len(ocr_words),

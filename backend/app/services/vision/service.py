@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 from collections import Counter
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -28,6 +29,7 @@ from app.models.vision import (
     VisionDocumentType,
     VisionEvidence,
     VisionEvidenceChunk,
+    VisionExtractionOutcome,
     VisionFinanceNarrative,
     VisionFinanceNarrativeRequest,
     VisionFinanceNarrativeType,
@@ -56,6 +58,7 @@ from app.services.vision.approval_policy import (
 )
 from app.services.vision.contract_adapters import DebertaContractClauseAdapter
 from app.services.vision.deterministic_extraction import deterministic_schema_extractor
+from app.services.vision.document_classification import hybrid_document_classifier
 from app.services.vision.duplicate_detection import (
     DinoV2DuplicateAdapter,
     cosine_similarity,
@@ -74,6 +77,7 @@ from app.services.vision.language_analysis import vision_language_analysis_servi
 from app.services.vision.layout_adapters import GeometryLayoutAdapter, PaddleStructureV3Adapter
 from app.services.vision.model_smoke import ModelSmokeService
 from app.services.vision.ocr_adapters import PaddleOCRV5Adapter, TesseractOCRAdapter
+from app.services.vision.ocr_lines import ocr_line_reconstructor
 from app.services.vision.persistence import vision_persistence
 from app.services.vision.preprocessing import DocumentPreprocessor
 from app.services.vision.query_router import VisionQueryRouter
@@ -262,8 +266,23 @@ class VisionAIService:
         tenant_id: str,
     ) -> VisionUploadResponse:
         document = self.get_document(document_id, tenant_id)
+        retained_metadata = {
+            key: value
+            for key, value in document.metadata.items()
+            if key
+            not in {
+                "classification",
+                "schema_selection",
+                "extraction",
+                "extraction_diagnostics",
+                "pipeline_status",
+                "decision_status",
+                "status_summary",
+                "legacy_flags",
+            }
+        }
         metadata = {
-            **document.metadata,
+            **retained_metadata,
             "reprocessed_from": document.document_id,
             "reprocess_count": int(document.metadata.get("reprocess_count", 0)) + 1,
         }
@@ -356,6 +375,44 @@ class VisionAIService:
                     if document.review_task:
                         self._persist_review(document.review_task)
         job["status"] = VisionProcessingStatus.completed.value if not job["errors"] else VisionProcessingStatus.review_required.value
+        processed_documents = [
+            self.documents[document_id]
+            for document_id in job["document_ids"]
+            if document_id in self.documents
+        ]
+        decision_statuses = sorted(
+            {document.status.value for document in processed_documents}
+        )
+        job["pipeline_status"] = (
+            VisionProcessingStatus.completed.value
+            if not job["errors"]
+            else VisionProcessingStatus.review_required.value
+        )
+        job["decision_status"] = (
+            VisionProcessingStatus.review_required.value
+            if any(
+                document.status == VisionProcessingStatus.review_required
+                for document in processed_documents
+            )
+            else decision_statuses[0]
+            if len(decision_statuses) == 1
+            else "MIXED"
+        )
+        job["status_summary"] = (
+            "Processing completed - awaiting human review"
+            if job["decision_status"] == VisionProcessingStatus.review_required.value
+            and not job["errors"]
+            else "Processing completed"
+            if not job["errors"]
+            else "Processing requires technical review"
+        )
+        job["extraction_outcomes"] = [
+            {
+                "document_id": document.document_id,
+                **dict(document.metadata.get("extraction") or {}),
+            }
+            for document in processed_documents
+        ]
         job["updated_at"] = utc_now_iso()
         self._persist_job(job)
         self._persist_indexes()
@@ -859,8 +916,14 @@ class VisionAIService:
         actor_role: UserRole,
         reauthentication_payload: dict[str, Any] | None,
     ) -> None:
-        if actor_role != UserRole.admin:
-            raise PermissionError("Admin role is required to confirm fraud")
+        if actor_role not in {
+            UserRole.admin,
+            UserRole.senior_reviewer,
+            UserRole.compliance_officer,
+        }:
+            raise PermissionError(
+                "Compliance Officer, Senior Reviewer, or Admin role is required to confirm fraud"
+            )
         if (
             not reauthentication_payload
             or reauthentication_payload.get("email") != actor
@@ -1149,11 +1212,9 @@ class VisionAIService:
     ) -> VisionAskResponse:
         question = request.question.strip()
         query_type = self.query_router.route(question)
-        casual_documents = (
-            [self.get_document(request.document_id, tenant_id)]
-            if request.document_id
-            else []
-        )
+        documents, effective_scope = self._ask_scope_documents(request, tenant_id)
+        scope_payload = self._ask_scope_payload(effective_scope, documents)
+        casual_documents = documents if request.document_id or request.document_ids else []
         casual_responses = {
             "greeting": VisionAskResponse(
                 answer=(
@@ -1201,20 +1262,17 @@ class VisionAIService:
             ),
         }
         if query_type in casual_responses:
+            casual_responses[query_type].scope = scope_payload
             return self._record_question(
                 request,
                 casual_responses[query_type],
                 casual_documents,
                 tenant_id=tenant_id,
             )
-        documents = (
-            casual_documents
-            if request.document_id
-            else self.list_documents(tenant_id)
-        )
         if not documents:
             response = self._not_found_answer(requires_review=False)
             response.query_type = query_type
+            response.scope = scope_payload
             return self._record_question(request, response, [], tenant_id=tenant_id)
 
         resolved_tenant = tenant_id or documents[0].tenant_id
@@ -1236,12 +1294,99 @@ class VisionAIService:
             resolved_tenant,
         )
         response.query_type = query_type
+        response.scope = scope_payload
+        if (
+            response.answer_status == "not_found"
+            and effective_scope in {"current_document", "selected_documents"}
+        ):
+            broader = [
+                document
+                for document in self.list_documents(tenant_id)
+                if document.document_id not in {item.document_id for item in documents}
+            ]
+            if self._question_has_document_evidence(question, broader):
+                requested = self._requested_field_names(question)
+                label = (
+                    next(iter(sorted(requested))).replace("_", " ")
+                    if requested
+                    else "matching evidence"
+                )
+                response.answer = (
+                    f"The selected document does not contain a {label} field. "
+                    "Search all accessible documents instead?"
+                )
+                response.answer_status = "clarification_needed"
+                response.reasoning_summary = (
+                    "No evidence matched the selected scope; matching evidence exists outside it."
+                )
+                response.broader_scope_available = True
         return self._record_question(
             request,
             response,
             documents,
             tenant_id=tenant_id,
         )
+
+    def _ask_scope_documents(
+        self,
+        request: VisionAskRequest,
+        tenant_id: str | None,
+    ) -> tuple[list[VisionDocumentRecord], str]:
+        if request.document_id:
+            return [self.get_document(request.document_id, tenant_id)], "current_document"
+        if request.document_ids:
+            seen: set[str] = set()
+            selected = []
+            for document_id in request.document_ids:
+                if document_id in seen:
+                    continue
+                selected.append(self.get_document(document_id, tenant_id))
+                seen.add(document_id)
+            return selected, "selected_documents"
+        documents = self.list_documents(tenant_id)
+        if request.scope == "approved_documents":
+            return (
+                [
+                    document
+                    for document in documents
+                    if document.status == VisionProcessingStatus.approved
+                ],
+                "approved_documents",
+            )
+        return documents, request.scope
+
+    def _ask_scope_payload(
+        self,
+        scope: str,
+        documents: list[VisionDocumentRecord],
+    ) -> dict[str, Any]:
+        return {
+            "scope": scope,
+            "document_count": len(documents),
+            "documents": [
+                {
+                    "document_id": document.document_id,
+                    "filename": document.filename,
+                    "document_type": document.document_type.value,
+                    "thumbnail_url": f"/documents/{document.document_id}/pages/1/image?variant=original",
+                    "page_count": document.page_count,
+                    "field_count": len(document.extracted_fields),
+                    "processing_version": document.metadata.get(
+                        "pipeline_version", "legacy"
+                    ),
+                }
+                for document in documents
+            ],
+        }
+
+    def _question_has_document_evidence(
+        self,
+        question: str,
+        documents: list[VisionDocumentRecord],
+    ) -> bool:
+        if self._field_matches(question.lower(), documents):
+            return True
+        return bool(self._ocr_lookup(question, documents, 1))
 
     def _answer_structured(
         self,
@@ -1250,7 +1395,6 @@ class VisionAIService:
         top_k: int,
         tenant_id: str,
     ) -> VisionAskResponse:
-        del tenant_id
         requested_names = self._requested_field_names(question)
         matches = self._field_matches(question.lower(), self._documents_for_question(question, documents))
         if requested_names:
@@ -1263,24 +1407,89 @@ class VisionAIService:
             reverse=True,
         )
         matches = matches[:top_k]
-        if not matches:
-            return self._not_found_answer(requires_review=False)
-        return VisionAskResponse(
-            answer=", ".join(
-                f"{field.name}: {self._mask_sensitive(field.name, field.reviewed_value or field.value)}"
-                for field in matches
-            ),
-            answer_status="supported",
-            citations=[self._field_citation(field) for field in matches],
-            confidence=self._mean_available_field_confidence(matches) or 0.0,
-            reasoning_summary="Returned extracted structured fields and their source evidence.",
-            requires_review=any(
-                field.reviewer_status not in {ReviewerStatus.accepted, ReviewerStatus.edited}
-                or not field.calibrated
-                for field in matches
-            ),
-            retriever="persisted-structured-field-store",
-        )
+        if matches:
+            logical_name = self._logical_requested_field(question)
+            if logical_name and len(matches) == 1:
+                shown = self._mask_sensitive(
+                    matches[0].name,
+                    matches[0].reviewed_value or matches[0].value,
+                )
+                answer = f"The {logical_name.replace('_', ' ')} shown is {shown}."
+            else:
+                answer = ", ".join(
+                    f"{field.name}: {self._mask_sensitive(field.name, field.reviewed_value or field.value)}"
+                    for field in matches
+                )
+            return VisionAskResponse(
+                answer=answer,
+                answer_status="supported",
+                citations=[self._field_citation(field) for field in matches],
+                confidence=self._mean_available_field_confidence(matches) or 0.0,
+                reasoning_summary="Returned extracted structured fields and their source evidence.",
+                requires_review=any(
+                    field.reviewer_status
+                    not in {ReviewerStatus.accepted, ReviewerStatus.edited}
+                    or not field.calibrated
+                    for field in matches
+                ),
+                retriever="persisted-structured-field-store",
+                retrieval_path="structured_field_lookup",
+            )
+
+        ocr_matches = self._ocr_lookup(question, documents, top_k)
+        if ocr_matches:
+            logical_name = self._logical_requested_field(question) or "value"
+            citations = [
+                VisionAskCitation(
+                    document_id=document.document_id,
+                    filename=document.filename,
+                    page_number=line.page,
+                    source_text=line.text,
+                    bounding_boxes=[line.bounding_box],
+                    retrieval_score=line.mean_confidence,
+                    retrieval_backend="ocr-line-retriever-v1",
+                    model_confidence=line.mean_confidence or 0.0,
+                    model_name="ocr-line-retriever",
+                    model_version="v1",
+                    processing_timestamp=document.updated_at,
+                    reviewer_status=ReviewerStatus.unverified,
+                )
+                for document, line, _ in ocr_matches
+            ]
+            values = list(dict.fromkeys(value for _, _, value in ocr_matches))
+            return VisionAskResponse(
+                answer=(
+                    f"The {logical_name.replace('_', ' ')} shown is {values[0]}."
+                    if len(values) == 1
+                    else f"The {logical_name.replace('_', ' ')} values shown are {', '.join(values)}."
+                ),
+                answer_status="supported",
+                citations=citations,
+                confidence=round(
+                    sum(line.mean_confidence or 0.0 for _, line, _ in ocr_matches)
+                    / len(ocr_matches),
+                    4,
+                ),
+                reasoning_summary="Matched a field alias to source-backed OCR label-value evidence.",
+                requires_review=any(
+                    (line.mean_confidence or 0.0) < settings.ocr_low_confidence_threshold
+                    for _, line, _ in ocr_matches
+                ),
+                retriever="ocr-line-retriever-v1",
+                retrieval_path="ocr_label_value_fallback",
+            )
+
+        semantic = self._answer_semantic(question, documents, top_k, tenant_id)
+        if semantic.answer_status != "not_found":
+            semantic.retrieval_path = "local_chunk_retrieval"
+            return semantic
+        graph = self._answer_relationship(question, documents, top_k, tenant_id)
+        if graph.answer_status != "not_found":
+            graph.retrieval_path = "graph_lookup"
+            return graph
+        response = self._not_found_answer(requires_review=False)
+        response.retrieval_path = "cascade_exhausted"
+        return response
 
     def _answer_semantic(
         self,
@@ -2413,11 +2622,18 @@ class VisionAIService:
             request_scope["document_ids"] = sorted(narrative.document_ids)
             identity_hash = self._artifact_identity_hash(
                 {
-                    "tenant_id": tenant_id,
+                    "organisation_id": tenant_id,
                     "narrative_type": request.narrative_type.value,
-                    "date_range": [request.date_from, request.date_to],
                     "vendor_filter": self._normalize(request.vendor_name or ""),
-                    "document_ids": sorted(narrative.document_ids),
+                    "from_date": request.date_from,
+                    "to_date": request.date_to,
+                    "currency": sorted(
+                        {
+                            self._field_map(document).get("currency", "UNSPECIFIED")
+                            for document in selected
+                        }
+                    ),
+                    "document_ids": sorted(set(narrative.document_ids)),
                     "verified_data_version": source_data_version,
                 }
             )
@@ -2472,11 +2688,32 @@ class VisionAIService:
             self.finance_narratives[narrative.narrative_id] = narrative
         for narrative in self.persistence.list_narratives(tenant_id):
             self.finance_narratives[narrative.narrative_id] = narrative
-        return sorted(
-            [item for item in self.finance_narratives.values() if item.tenant_id == tenant_id],
-            key=lambda item: item.created_at,
-            reverse=True,
-        )
+        scoped = [
+            item for item in self.finance_narratives.values() if item.tenant_id == tenant_id
+        ]
+        canonical: dict[str, VisionFinanceNarrative] = {}
+        for item in scoped:
+            identity = item.identity_hash or self._artifact_identity_hash(
+                {
+                    "organisation_id": item.tenant_id,
+                    "narrative_type": item.narrative_type.value,
+                    "request_scope": item.request_scope,
+                    "document_ids": sorted(set(item.document_ids)),
+                    "verified_data_version": item.source_data_version,
+                }
+            )
+            current = canonical.get(identity)
+            if current is None or (item.version, item.created_at) > (
+                current.version,
+                current.created_at,
+            ):
+                canonical[identity] = item
+        active = [
+            item
+            for item in canonical.values()
+            if item.status not in {"archived", "superseded"}
+        ]
+        return sorted(active, key=lambda item: item.created_at, reverse=True)
 
     def generate_report(
         self,
@@ -2486,10 +2723,20 @@ class VisionAIService:
         actor: str,
     ) -> VisionReportRecord:
         with self._artifact_lock:
+            narratives = self.list_finance_narratives(tenant_id)
+            if request.narrative_id and not any(
+                item.narrative_id == request.narrative_id for item in narratives
+            ):
+                try:
+                    narratives.append(
+                        self.get_finance_narrative(request.narrative_id, tenant_id)
+                    )
+                except ValueError:
+                    pass
             report = vision_report_service.generate(
                 request,
                 self.list_documents(tenant_id),
-                self.list_finance_narratives(tenant_id),
+                narratives,
                 tenant_id=tenant_id,
                 actor=actor,
             )
@@ -2756,6 +3003,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         content: bytes,
         metadata: dict[str, Any],
     ) -> None:
+        document.metadata["pipeline_version"] = "documind-vision-v3"
         self._transition(document, VisionProcessingStatus.preprocessing, "Started quality analysis and preprocessing.")
         text, pages, parse_evidence, stored_path = self.ingestion.parse(filename, content)
         parse_confidence = parse_evidence[0].confidence if parse_evidence else 0.5
@@ -2810,6 +3058,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             ocr_adapter = self.local_ocr
         if not document.parsed_text.strip() and document.ocr_words:
             document.parsed_text = self._text_from_ocr(document.ocr_words)
+        document.ocr_lines = ocr_line_reconstructor.reconstruct(document.ocr_words)
+        if not document.parsed_text.strip() and document.ocr_lines:
+            document.parsed_text = self._text_from_ocr(document.ocr_words)
         text = document.parsed_text
         parse_confidence = self._mean_word_confidence(document) or parse_confidence
         document.model_runs.append(
@@ -2860,9 +3111,26 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             )
         )
 
+        classification_started = time.perf_counter()
         document_type_hint = self._document_type_hint(metadata)
         if document_type_hint is not None:
             document.document_type = document_type_hint
+            document.metadata["classification"] = {
+                "predicted_type": document_type_hint.value,
+                "parent_category": None,
+                "confidence": None,
+                "classifier": "user-selected-document-type",
+                "signals": [
+                    {
+                        "type": "user_selection",
+                        "value": document_type_hint.value,
+                        "weight": None,
+                        "candidate_type": document_type_hint.value,
+                    }
+                ],
+                "alternatives": [],
+                "user_override": document_type_hint.value,
+            }
             document.model_runs.append(
                 self._model_run(
                     "document_classification",
@@ -2870,6 +3138,8 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     "v1",
                     "completed",
                     None,
+                    duration_ms=(time.perf_counter() - classification_started) * 1000,
+                    document=document,
                     notes=["The explicit upload selection was used instead of model classification."],
                 )
             )
@@ -2881,43 +3151,76 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             )
         elif self.layoutlmv3_classifier.status().status == "active":
             try:
-                document.document_type, classification_confidence = (
+                statistical_type, classification_confidence = (
                     self.layoutlmv3_classifier.classify(document)
                 )
+                classification = hybrid_document_classifier.classify(
+                    text,
+                    filename,
+                    lines=document.ocr_lines,
+                    layout_regions=document.layout_regions,
+                    statistical_type=statistical_type,
+                    statistical_confidence=classification_confidence,
+                )
+                document.document_type = classification.predicted_type
+                document.metadata["classification"] = classification.as_dict()
                 document.model_runs.append(
                     self._model_run(
                         "document_classification",
                         self.layoutlmv3_classifier.adapter_id,
                         self.layoutlmv3_classifier.model_version,
                         "completed",
-                        classification_confidence,
+                        classification.confidence,
+                        duration_ms=(time.perf_counter() - classification_started) * 1000,
+                        document=document,
+                        metrics={"signals": len(classification.signals)},
                     )
                 )
             except Exception as exc:
-                document.document_type = self._classify_document(text, filename)
+                classification = hybrid_document_classifier.classify(
+                    text,
+                    filename,
+                    lines=document.ocr_lines,
+                    layout_regions=document.layout_regions,
+                )
+                document.document_type = classification.predicted_type
+                document.metadata["classification"] = classification.as_dict()
                 document.model_runs.append(
                     self._model_run(
                         "document_classification",
                         self.layoutlmv3_classifier.adapter_id,
                         self.layoutlmv3_classifier.model_version,
                         "failed_fallback_used",
-                        None,
+                        classification.confidence,
+                        duration_ms=(time.perf_counter() - classification_started) * 1000,
+                        document=document,
                         notes=[str(exc)],
                     )
                 )
         else:
-            document.document_type = self._classify_document(text, filename)
+            classification = hybrid_document_classifier.classify(
+                text,
+                filename,
+                lines=document.ocr_lines,
+                layout_regions=document.layout_regions,
+            )
+            document.document_type = classification.predicted_type
+            document.metadata["classification"] = classification.as_dict()
             document.model_runs.append(
                 self._model_run(
                     "document_classification",
-                    "deterministic-document-classifier",
-                    "v1",
+                    hybrid_document_classifier.adapter_id,
+                    hybrid_document_classifier.model_version,
                     "completed",
-                    None,
-                    notes=["Rule classification is not a learned probability."],
+                    classification.confidence,
+                    duration_ms=(time.perf_counter() - classification_started) * 1000,
+                    document=document,
+                    metrics={"signals": len(classification.signals)},
+                    notes=["Confidence is derived from configured rule weights, not learned accuracy."],
                 )
             )
 
+        extraction_started = time.perf_counter()
         extraction_adapter_name = deterministic_schema_extractor.adapter_id
         extraction_adapter_version = deterministic_schema_extractor.model_version
         if self.layoutlmv3_extractor.status().status == "active":
@@ -2944,6 +3247,24 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 )
         else:
             document.extracted_fields = self._extract_fields(document)
+        extraction_runtime_ms = (time.perf_counter() - extraction_started) * 1000
+        vision_analytics_service.refresh_document(document)
+        extraction_outcome = self._extraction_outcome(document)
+        extraction_diagnostics = dict(document.metadata.get("extraction_diagnostics") or {})
+        schema_selection = dict(document.metadata.get("schema_selection") or {})
+        document.metadata["extraction"] = {
+            "stage": "extraction",
+            "status": extraction_outcome.value,
+            "document_type": document.document_type.value,
+            "schema": schema_selection.get("selected_schema"),
+            "fields_extracted": len(document.extracted_fields),
+            "required_fields_missing": len(
+                document.field_completeness.missing_required_fields
+            ),
+            "extractor": f"{deterministic_schema_extractor.adapter_id}-{deterministic_schema_extractor.model_version}",
+            "runtime_ms": round(extraction_runtime_ms, 3),
+            "pipeline_version": document.metadata["pipeline_version"],
+        }
         if document.document_type == VisionDocumentType.contract:
             self._run_contract_extraction(document)
         visual_adapter = (
@@ -2975,6 +3296,21 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 extraction_adapter_version,
                 "completed",
                 self._mean_field_confidence(document),
+                duration_ms=extraction_runtime_ms,
+                document=document,
+                input_schema="ocr-lines-v1",
+                output_schema="extracted-fields-v1",
+                selected_schema=str(schema_selection.get("selected_schema") or "generic_document"),
+                metrics={
+                    key: extraction_diagnostics.get(key)
+                    for key in (
+                        "ocr_words_inspected",
+                        "ocr_lines_inspected",
+                        "labels_detected",
+                        "fields_extracted",
+                    )
+                },
+                result_status=extraction_outcome.value,
                 notes=[
                     "Confidence is uncalibrated and therefore cannot imply model accuracy."
                     if not bool(self.confidence_policy.get("calibration", {}).get("calibrated"))
@@ -3015,7 +3351,26 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         )
         if document.model_routing.get("fallback_required"):
             self._run_selective_fallbacks(document)
-        self._transition(document, VisionProcessingStatus.extraction_completed, "Completed structured extraction.")
+        self._audit(
+            document,
+            "extraction_outcome",
+            (
+                f"Extraction completed: {len(document.extracted_fields)} fields extracted "
+                f"using {schema_selection.get('selected_schema', 'generic_document')} schema."
+                if document.extracted_fields
+                else "Extraction completed with no source-backed fields. Generic schema fallback was attempted."
+            ),
+            metadata=document.metadata["extraction"],
+        )
+        self._transition(
+            document,
+            VisionProcessingStatus.extraction_completed,
+            (
+                f"Extraction completed - {len(document.extracted_fields)} fields extracted."
+                if document.extracted_fields
+                else "Extraction completed - no fields found."
+            ),
+        )
 
         forensics_adapter = (
             self.segformer_forensics
@@ -3113,6 +3468,13 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             self._transition(document, VisionProcessingStatus.review_required, "Document routed to human review.")
         else:
             self._transition(document, VisionProcessingStatus.completed, "Document completed without mandatory review.")
+        document.metadata["pipeline_status"] = VisionProcessingStatus.completed.value
+        document.metadata["decision_status"] = document.status.value
+        document.metadata["status_summary"] = (
+            "Processing completed - awaiting human review"
+            if document.status == VisionProcessingStatus.review_required
+            else "Processing completed"
+        )
         vision_analytics_service.refresh_document(document)
         self._persist_document(document)
 
@@ -3125,6 +3487,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         previous_review_id = document.review_task.review_id if document.review_task else None
         if previous_review_id:
             self.review_tasks.pop(previous_review_id, None)
+            self._remove_review(previous_review_id)
         self.retrieval_index.remove_document(document.document_id)
         document.status = VisionProcessingStatus.queued
         document.parsed_text = ""
@@ -3132,6 +3495,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         document.page_artifacts = []
         document.quality = []
         document.ocr_words = []
+        document.ocr_lines = []
         document.layout_regions = []
         document.tables = []
         document.visual_detections = []
@@ -3397,6 +3761,12 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             "po": "purchase_order",
             "bank": "bank_document",
             "bank_statement": "bank_document",
+            "fax": "fax_transmission",
+            "facsimile": "fax_transmission",
+            "businessform": "business_form",
+            "general_form": "business_form",
+            "financialreport": "financial_report",
+            "generalreport": "general_report",
         }
         try:
             return VisionDocumentType(aliases.get(normalized, normalized))
@@ -3404,31 +3774,29 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             return None
 
     def _classify_document(self, text: str, filename: str) -> VisionDocumentType:
-        haystack = f"{filename}\n{text}".lower()
-        if "receipt" in haystack:
-            return VisionDocumentType.receipt
-        if "insurance" in haystack or "policy number" in haystack:
-            return VisionDocumentType.insurance_document
-        form_signal = re.search(
-            r"\b(?:application|contact|intake|registration|request)\s+form\b|"
-            r"\bform\s+(?:name|number|title)\b",
-            haystack,
-        )
-        if form_signal or "checkbox" in haystack or "[x]" in haystack or "[ ]" in haystack:
-            return VisionDocumentType.form
-        if "report" in haystack and "invoice" not in haystack:
-            return VisionDocumentType.report
-        if "bank statement" in haystack or "account number" in haystack:
-            return VisionDocumentType.bank_document
-        doc_type, _ = self.classifier.classify(text, filename)
-        mapping = {
-            "invoice": VisionDocumentType.invoice,
-            "purchase_order": VisionDocumentType.purchase_order,
-            "contract": VisionDocumentType.contract,
-            "bank_change_request": VisionDocumentType.bank_document,
-            "bank_statement": VisionDocumentType.bank_document,
-        }
-        return mapping.get(doc_type.value, VisionDocumentType.unknown)
+        return hybrid_document_classifier.classify(text, filename).predicted_type
+
+    def _extraction_outcome(
+        self,
+        document: VisionDocumentRecord,
+    ) -> VisionExtractionOutcome:
+        selection = document.metadata.get("schema_selection") or {}
+        if document.extracted_fields:
+            if selection.get("fallback_used"):
+                return VisionExtractionOutcome.schema_fallback_used
+            observed = [
+                field.confidence
+                for field in document.extracted_fields
+                if field.confidence is not None
+            ]
+            if observed and min(observed) < self._mandatory_review_threshold(document):
+                return VisionExtractionOutcome.low_confidence_fields
+            return VisionExtractionOutcome.success_with_fields
+        if not selection.get("selected_schema"):
+            return VisionExtractionOutcome.schema_unavailable
+        if document.model_routing.get("fallback_required"):
+            return VisionExtractionOutcome.fallback_required
+        return VisionExtractionOutcome.completed_no_fields
 
     def _extract_fields(self, document: VisionDocumentRecord) -> list[ExtractedVisionField]:
         fields = deterministic_schema_extractor.extract(document)
@@ -4049,7 +4417,28 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     rule_id="processing_warning.mixed_languages_detected",
                 )
             )
-        if not document.field_completeness.schema_available:
+        schema_selection = document.metadata.get("schema_selection") or {}
+        if document.field_completeness.schema_available and schema_selection.get(
+            "fallback_used"
+        ):
+            selected_schema = str(schema_selection.get("selected_schema") or "generic_document")
+            warnings.append(
+                self._risk(
+                    document,
+                    title="Generic Schema Fallback Used",
+                    severity=VisionRiskSeverity.info,
+                    category="processing_warning",
+                    description=(
+                        "Using generic key-value schema."
+                        if selected_schema == "generic_key_value_form"
+                        else f"Using {selected_schema.replace('_', ' ')} schema."
+                    ),
+                    recommended_action="Review extracted source evidence for the generic fields.",
+                    source_text=selected_schema,
+                    rule_id="processing_warning.schema_fallback_used",
+                )
+            )
+        elif not document.field_completeness.schema_available:
             warnings.append(
                 self._risk(
                     document,
@@ -4065,6 +4454,87 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
 
     def _chunks(self, document: VisionDocumentRecord) -> list[VisionEvidenceChunk]:
         chunks: list[VisionEvidenceChunk] = []
+        common_metadata = {
+            "filename": document.filename,
+            "pipeline_version": document.metadata.get("pipeline_version", "legacy"),
+            "extractor_version": deterministic_schema_extractor.model_version,
+            "verification_status": ReviewerStatus.unverified.value,
+        }
+        for line in document.ocr_lines:
+            line_chunk = VisionEvidenceChunk(
+                chunk_id=self._chunk_id(
+                    document,
+                    line.page,
+                    "ocr_line",
+                    line.text,
+                ),
+                document_id=document.document_id,
+                tenant_id=document.tenant_id,
+                page_number=line.page,
+                section=line.line_id,
+                document_type=document.document_type,
+                vendor_id=self._field_map(document).get("vendor_name"),
+                bounding_boxes=[line.bounding_box],
+                source_type="ocr_line",
+                model_name="ocr-line-retriever",
+                model_version="v1",
+                text=line.text,
+                confidence=line.mean_confidence or 0.0,
+                metadata={
+                    **common_metadata,
+                    "word_ids": line.word_ids,
+                    "block_ids": line.block_ids,
+                },
+            )
+            chunks.append(line_chunk)
+            if line.metadata.get("key_value_candidate"):
+                chunks.append(
+                    line_chunk.model_copy(
+                        update={
+                            "chunk_id": self._chunk_id(
+                                document,
+                                line.page,
+                                "key_value",
+                                line.text,
+                            ),
+                            "section": "key_value",
+                            "source_type": "key_value",
+                        }
+                    )
+                )
+        lines_by_page: dict[int, list[Any]] = {}
+        for line in document.ocr_lines:
+            lines_by_page.setdefault(line.page, []).append(line)
+        for page_number, page_lines in lines_by_page.items():
+            page_text = "\n".join(
+                line.text for line in sorted(page_lines, key=lambda item: item.reading_order)
+            ).strip()
+            if not page_text:
+                continue
+            chunks.append(
+                VisionEvidenceChunk(
+                    chunk_id=self._chunk_id(document, page_number, "page_text", page_text),
+                    document_id=document.document_id,
+                    tenant_id=document.tenant_id,
+                    page_number=page_number,
+                    section=f"page_{page_number}",
+                    document_type=document.document_type,
+                    vendor_id=self._field_map(document).get("vendor_name"),
+                    bounding_boxes=[
+                        self._union_box([line.bounding_box for line in page_lines])
+                    ],
+                    source_type="page_text",
+                    model_name="ocr-page-chunker",
+                    model_version="v1",
+                    text=page_text[:6000],
+                    confidence=round(
+                        sum((line.mean_confidence or 0.0) for line in page_lines)
+                        / len(page_lines),
+                        4,
+                    ),
+                    metadata=common_metadata,
+                )
+            )
         for region in document.layout_regions:
             if not region.text.strip():
                 continue
@@ -4090,6 +4560,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     model_version=region.model_version,
                     text=region.text,
                     confidence=region.confidence,
+                    metadata=common_metadata,
                 )
             )
         for field in document.extracted_fields:
@@ -4114,6 +4585,12 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     model_version=field.model_version,
                     text=f"{field.name}: {field.reviewed_value or field.value}",
                     confidence=field.confidence or 0.0,
+                    metadata={
+                        **common_metadata,
+                        "evidence_id": field.evidence.evidence_id,
+                        "verification_status": field.reviewer_status.value,
+                        "schema_field": field.schema_field,
+                    },
                 )
             )
         for table in document.tables:
@@ -4137,6 +4614,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     model_version=table.model_version,
                     text=table.markdown,
                     confidence=table.confidence,
+                    metadata=common_metadata,
                 )
             )
         retained: dict[tuple[int, str, str], VisionEvidenceChunk] = {}
@@ -4620,8 +5098,17 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         *,
         routing_reason: str | None = None,
         notes: list[str] | None = None,
+        duration_ms: float | None = None,
+        document: VisionDocumentRecord | None = None,
+        input_schema: str | None = None,
+        output_schema: str | None = None,
+        selected_schema: str | None = None,
+        metrics: dict[str, Any] | None = None,
+        result_status: str | None = None,
+        reason: str | None = None,
     ) -> ModelRunRecord:
         now = utc_now_iso()
+        runtime_ms = round(max(0.0, duration_ms or 0.0), 3)
         return ModelRunRecord(
             stage=stage,
             model_name=model_name,
@@ -4630,17 +5117,33 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             started_at=now,
             completed_at=now,
             confidence=confidence,
+            processing_duration_ms=runtime_ms,
+            runtime_ms=runtime_ms,
+            source_document=document.document_id if document else None,
+            source_pages=list(range(1, document.page_count + 1)) if document else [],
             routing_reason=routing_reason,
             notes=notes or [],
+            input_schema=input_schema,
+            output_schema=output_schema,
+            document_type=document.document_type if document else None,
+            selected_schema=selected_schema,
+            metrics=metrics or {},
+            result_status=result_status,
+            reason=reason,
         )
 
     def _field_matches(self, question: str, documents: list[VisionDocumentRecord]) -> list[ExtractedVisionField]:
         question_tokens = set(re.findall(r"[a-z0-9_]+", question))
+        requested_names = self._requested_field_names(question)
         matches = []
         for document in documents:
             for field in document.extracted_fields:
                 name_tokens = set(field.name.lower().split("_"))
-                if name_tokens & question_tokens or field.name.lower() in question:
+                if (
+                    field.name in requested_names
+                    or name_tokens & question_tokens
+                    or field.name.lower() in question
+                ):
                     matches.append(field)
         return sorted(matches, key=lambda item: item.confidence or 0.0, reverse=True)
 
@@ -4666,8 +5169,14 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             "organisation_name": ("organisation", "organization", "company name"),
             "address": ("address",),
             "contact_name": ("contact name", "contact person", "contact"),
-            "phone_number": ("phone", "telephone"),
-            "fax_number": ("fax", "fax number"),
+            "phone_number": ("phone", "telephone", "contact number"),
+            "recipient_phone": ("phone", "telephone", "contact number"),
+            "sender_phone": ("sender phone", "from phone"),
+            "fax_number": ("fax", "fax number", "facsimile", "telefax"),
+            "recipient_fax": ("fax", "fax number", "facsimile", "telefax"),
+            "sender_fax": ("sender fax", "from fax"),
+            "visible_fax_numbers": ("fax", "fax number", "facsimile", "telefax"),
+            "visible_phone_numbers": ("phone", "telephone", "contact number"),
             "email": ("email", "e-mail"),
             "form_title": ("form title", "form name"),
             "vendor_name": ("vendor", "supplier", "seller"),
@@ -4685,6 +5194,15 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             "currency": ("currency",),
             "payment_terms": ("payment terms",),
             "effective_date": ("effective date",),
+            "date": ("date", "transmission date"),
+            "visible_dates": ("date", "visible date"),
+            "recipient_name": ("recipient", "message to", "sent to"),
+            "sender_name": ("sender", "sent by", "from"),
+            "recipient_company": ("company", "organisation", "organization"),
+            "company_name": ("company", "organisation", "organization"),
+            "client_number": ("client number", "client no", "reference number"),
+            "reference_number": ("reference number", "reference no", "ref no"),
+            "document_title": ("document title", "title"),
             "expiry_date": ("expiry date", "expiration date"),
             "governing_law": ("governing law",),
             "termination_clause": ("termination", "termination clause"),
@@ -4696,6 +5214,106 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         return {
             name for name, terms in aliases.items() if any(term in lower for term in terms)
         }
+
+    def _logical_requested_field(self, question: str) -> str | None:
+        lower = question.lower()
+        terms = (
+            ("fax_number", ("fax", "facsimile", "telefax")),
+            ("phone_number", ("phone", "telephone", "contact number")),
+            ("client_number", ("client number", "client no")),
+            ("reference_number", ("reference number", "reference no", "ref no")),
+            ("recipient_name", ("recipient", "message to", "sent to")),
+            ("sender_name", ("sender", "sent by")),
+            ("company", ("company", "organisation", "organization")),
+            ("date", ("date", "dated")),
+            ("email", ("email", "e-mail")),
+        )
+        return next(
+            (name for name, aliases in terms if any(alias in lower for alias in aliases)),
+            None,
+        )
+
+    def _ocr_lookup(
+        self,
+        question: str,
+        documents: list[VisionDocumentRecord],
+        top_k: int,
+    ) -> list[tuple[VisionDocumentRecord, Any, str]]:
+        logical = self._logical_requested_field(question)
+        if logical is None:
+            return []
+        value_patterns: dict[str, str] = {
+            "fax_number": r"(?i)\b(?:fax|facsimile|telefax)(?:\s+(?:no\.?|number))?\s*[:#=-]?\s*((?:\+?\d[\d()./ -]{6,}\d))",
+            "phone_number": r"(?i)\b(?:phone|telephone|tel|contact\s+number)(?:\s+(?:no\.?|number))?\s*[:#=-]?\s*((?:\+?\d[\d()./ -]{6,}\d))",
+            "client_number": r"(?i)\b(?:client)(?:\s+(?:no\.?|number))?\s*[:#=-]?\s*([A-Z0-9][A-Z0-9._/-]{2,39})",
+            "reference_number": r"(?i)\b(?:reference|ref)(?:\s+(?:no\.?|number))?\s*[:#=-]?\s*([A-Z0-9][A-Z0-9._/-]{2,39})",
+            "recipient_name": r"(?i)^(?:message\s+to|recipient|attention|attn|to)\s*[:#=-]?\s*(\S.+)$",
+            "sender_name": r"(?i)^(?:sender|sent\s+by|from)\s*[:#=-]?\s*(\S.+)$",
+            "company": r"(?i)^(?:company|organisation|organization|firm)\s*[:#=-]?\s*(\S.+)$",
+            "date": r"(?i)\b(?:date|dated|transmission\s+date)\s*[:#=-]?\s*((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
+            "email": r"(?i)\b([^\s@]+@[^\s@]+\.[^\s@]+)\b",
+        }
+        pattern = re.compile(value_patterns[logical])
+        matches: list[tuple[VisionDocumentRecord, Any, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for document in documents:
+            if not document.ocr_lines:
+                document.ocr_lines = ocr_line_reconstructor.reconstruct(document.ocr_words)
+            lines = sorted(document.ocr_lines, key=lambda item: item.reading_order)
+            for index, line in enumerate(lines):
+                match = pattern.search(line.text)
+                value = match.group(1).strip(" :#=-") if match else ""
+                evidence_line = line
+                if not value and self._line_has_requested_label(logical, line.text):
+                    candidate = lines[index + 1] if index + 1 < len(lines) else None
+                    if candidate and candidate.page == line.page:
+                        raw_match = re.search(
+                            r"(?:\+?\d[\d()./ -]{6,}\d|[A-Z0-9][A-Z0-9._/-]{2,39})",
+                            candidate.text,
+                            re.I,
+                        )
+                        if raw_match:
+                            value = raw_match.group(0).strip()
+                            evidence_line = candidate.model_copy(
+                                update={
+                                    "text": f"{line.text} {candidate.text}",
+                                    "bounding_box": self._union_box(
+                                        [line.bounding_box, candidate.bounding_box]
+                                    ),
+                                    "mean_confidence": round(
+                                        ((line.mean_confidence or 0.0) + (candidate.mean_confidence or 0.0))
+                                        / 2,
+                                        4,
+                                    ),
+                                }
+                            )
+                if not value:
+                    continue
+                key = (document.document_id, self._normalize(value))
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append((document, evidence_line, value))
+        matches.sort(
+            key=lambda item: item[1].mean_confidence or 0.0,
+            reverse=True,
+        )
+        return matches[:top_k]
+
+    def _line_has_requested_label(self, logical: str, text: str) -> bool:
+        labels = {
+            "fax_number": ("fax", "facsimile", "telefax"),
+            "phone_number": ("phone", "telephone", "tel"),
+            "client_number": ("client",),
+            "reference_number": ("reference", "ref"),
+            "recipient_name": ("message to", "recipient", "attention", "attn", "to"),
+            "sender_name": ("sender", "sent by", "from"),
+            "company": ("company", "organisation", "organization", "firm"),
+            "date": ("date", "dated"),
+            "email": ("email", "e-mail"),
+        }
+        normalized = text.lower()
+        return any(label in normalized for label in labels.get(logical, ()))
 
     def _documents_for_question(
         self,
@@ -5329,15 +5947,10 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         return round(sum(word.confidence for word in document.ocr_words) / len(document.ocr_words), 3)
 
     def _text_from_ocr(self, words: list[OCRWord]) -> str:
-        grouped: dict[tuple[int, str], list[OCRWord]] = {}
-        for word in sorted(words, key=lambda item: item.reading_order):
-            grouped.setdefault((word.page, word.line_id), []).append(word)
+        lines = ocr_line_reconstructor.reconstruct(words)
         pages: dict[int, list[str]] = {}
-        for (page_number, _), line_words in grouped.items():
-            line = " ".join(
-                word.text for word in sorted(line_words, key=lambda item: item.bounding_box.x1)
-            )
-            pages.setdefault(page_number, []).append(line)
+        for line in lines:
+            pages.setdefault(line.page, []).append(line.text)
         return "\n\n".join(
             "\n".join(pages[page_number]) for page_number in sorted(pages)
         )
