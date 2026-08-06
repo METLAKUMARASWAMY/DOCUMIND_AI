@@ -1,0 +1,1638 @@
+You are the final responsible principal engineer for the EXISTING repository:
+
+DOCUMIND VISION AI
+
+Project title:
+
+“DocuMind Vision AI: An Explainable Multimodal Enterprise Document
+Intelligence System for Evidence-Grounded Analysis and Risk Detection”
+
+Act simultaneously as:
+
+- principal Document AI architect
+- OCR and layout-analysis engineer
+- NLP and information-extraction engineer
+- RAG and GraphRAG architect
+- knowledge-graph engineer
+- local-LLM integration engineer
+- FastAPI backend engineer
+- React frontend engineer
+- database and migration engineer
+- MLOps engineer
+- QA and security lead
+
+This is the final correction cycle.
+
+Do not create another scaffold.
+Do not add decorative pages.
+Do not stop after repository analysis.
+Do not merely list commands for the user.
+Do not claim success because a pipeline stage executed.
+Do not mark models active by changing database flags.
+Do not fabricate fields, relationships, model outputs, confidence or metrics.
+
+Inspect, modify, run, debug, re-run and verify the existing application.
+
+Persist through package conflicts, migrations, test failures, Docker-service
+errors and adapter issues. Do not stop at the first failed installation.
+Find a compatible solution for the actual operating system and hardware.
+
+The application must remain truthful, but “truthful” must not become an excuse
+for leaving every advanced component disabled without making a serious,
+verified activation attempt.
+
+=======================================================================
+1. VERIFIED CURRENT STATE FROM THE LATEST RUN
+=======================================================================
+
+The latest run shows real progress:
+
+- 17 documents exist.
+- 8 of 17 documents have structured fields.
+- Structured-extraction coverage is 47%.
+- 9 documents still have no extracted fields.
+- Mean field confidence is 81% across 74 fields.
+- Fax documents can now be classified as fax_transmission.
+- The fax document produced 11 fields.
+- Review approval is blocked while required fields remain unresolved.
+- Ask Documents now recognises ambiguous questions.
+- Knowledge graph now displays multiple node types.
+- Report source lists are collapsed into “View sources”.
+- Narrative reuse appears improved.
+- Model registry distinguishes active, unavailable, disabled and blocked states.
+- Blocked models display “schema not evaluated” instead of fake schema failure.
+
+However, the core system is not yet acceptable.
+
+Mandatory remaining defects are listed below.
+
+=======================================================================
+2. EXACT OBSERVED DEFECTS — NO ITEM MAY BE SKIPPED
+=======================================================================
+
+DEFECT A — SEMANTICALLY WRONG FIELD EXTRACTION
+
+Document:
+
+00093726.png
+
+Detected type:
+
+business_form
+
+Visible source content contains approximately:
+
+Date: September 21, 1976
+Sample No.: 6030
+Type of Cigarette: 85 mm Filter
+Batch Size: 50 lbs.
+Original Request Made By: Dr. A. W. Spears
+Sample Specifications Written By: W. E. Routh
+
+The current extractor incorrectly produces:
+
+document_title = “bate: september 21, 11/6”
+form_title = “bate: september 21, 11/6”
+
+This is wrong because:
+
+- “Date” was OCR-read as “bate”.
+- “1976” was misread as “11/6”.
+- A date line was mapped to document_title.
+- The same evidence was assigned to two fields.
+- Obvious fields such as sample number, product type and batch size were missed.
+
+DEFECT B — FIELD DEDUPLICATION FAILURE
+
+One source line is being assigned to multiple incompatible schema fields.
+
+The extractor must not populate:
+
+document_title
+and
+form_title
+
+from the same evidence unless the schema explicitly allows the equivalence.
+
+DEFECT C — UNCLEAR EXPECTED/MISSING COUNTS
+
+The review screen displays:
+
+Expected 3
+Extracted 2
+Missing 2
+
+This is confusing unless only one of the extracted fields satisfies the
+required schema.
+
+The interface must distinguish:
+
+- expected required fields
+- extracted fields total
+- matched required fields
+- missing required fields
+- optional fields extracted
+- duplicate fields
+- disputed fields
+
+DEFECT D — RAG FOLLOW-UP FAILURE
+
+Conversation:
+
+User: “Is this safe?”
+
+System:
+clarification needed
+
+System asks whether the user means:
+
+- document quality
+- financial consistency
+- suspicious indicators
+- signature presence
+- approval status
+
+User: “yes”
+
+Current result:
+
+not found
+semantic question
+local-hybrid
+
+This proves that conversational clarification state is not preserved.
+
+“yes” must not be treated as a standalone document question.
+
+DEFECT E — RAG EVIDENCE RETRIEVAL IS STILL WEAK
+
+Ask Documents repeatedly returns the base no-evidence response.
+
+The system must answer questions using:
+
+1. verified fields
+2. unverified extracted fields
+3. OCR key-value pairs
+4. OCR lines
+5. document chunks
+6. graph facts
+7. visual detections
+8. deterministic calculations
+
+It must not stop after one retrieval source returns no match.
+
+DEFECT F — GRAPH RELATIONSHIPS ARE NOT UNDERSTANDABLE
+
+The current graph contains:
+
+- Document
+- Page
+- ExtractedField
+- DocumentTitle
+- proposed relationships
+
+But:
+
+- node names are based on incorrect extraction
+- edge relationship names are not clearly visible
+- the graph resembles a technical projection rather than an enterprise graph
+- incorrect “document title” values are turned into graph entities
+- the reviewer cannot easily understand what each relationship means
+- graph evidence is not prominent
+- semantic business entities are missing
+
+DEFECT G — MOST TARGET MODELS REMAIN BLOCKED
+
+Currently active or available:
+
+- Tesseract-5
+- local-layout-adapter-v1
+- deterministic-schema-extractor-v2
+- OpenCV visual cues
+- ELA-noise-forensics-v1
+- IsolationForest
+- local-hashing-v1
+- local-vector-store-v1
+- local-graph-projection-v1
+- grounded-template-generator-v1
+
+Currently blocked or disabled:
+
+- PP-OCRv5
+- PP-StructureV3 / PP-DocLayoutV3
+- LayoutLMv3
+- PaddleOCR-VL
+- Donut
+- DINOv2
+- trained YOLO document detector
+- DeBERTa-CUAD
+- SegFormer document forensics
+- XGBoost risk model
+- BGE-M3
+- BGE reranker
+- Qdrant
+- Neo4j
+- local instruction LLM
+- external LLM provider
+
+DEFECT H — LOCAL PARSER REGISTRY INCONSISTENCY
+
+The local parser is shown as unavailable because its smoke test has not run,
+although the document-processing pipeline is clearly functioning.
+
+The registry must execute and store a valid smoke test for every component used
+by the live pipeline.
+
+DEFECT I — ANALYTICS PROCESSING-TIME ERROR
+
+Analytics displays:
+
+Average processing = 43683.1 seconds
+
+This is not credible for the visible jobs and likely reflects:
+
+- incorrect timestamps
+- stale jobs
+- queued duration included incorrectly
+- null timestamp substitution
+- timezone mismatch
+- legacy records
+- milliseconds/seconds conversion error
+
+DEFECT J — EXTRACTION COVERAGE IS STILL ONLY 47%
+
+Nine of seventeen documents still lack fields.
+
+The application must improve readable form extraction using generic,
+document-specific and OCR-backed schema fallback.
+
+DEFECT K — GRAPH QUERYING IS NOT YET REAL GRAPHRAG
+
+Graph query and Ask Documents must be able to use graph paths as evidence,
+not merely display the local graph.
+
+DEFECT L — CONFIRM FRAUD MUST REMAIN EVIDENCE-GATED
+
+The button is visible because the current account appears to be ADMIN.
+
+Verify that the backend still requires:
+
+- authorised role
+- selected evidence
+- written rationale
+- acknowledgement
+- reviewer comment
+- audit event
+- recent authentication where configured
+
+=======================================================================
+3. FIRST ACTION — REAL REPOSITORY AND RUNTIME AUDIT
+=======================================================================
+
+Inspect the actual repository and runtime.
+
+Do not rely only on registry configuration.
+
+Inspect:
+
+- operating system
+- CPU architecture
+- available RAM
+- Python version
+- Node version
+- Docker availability
+- currently active virtual environment
+- FastAPI process
+- worker process
+- MongoDB
+- Redis
+- object storage
+- installed packages
+- existing checkpoints
+- environment variables
+- migrations
+- document schemas
+- extraction aliases
+- OCR line storage
+- vector index
+- graph projection
+- RAG query router
+- conversation storage
+- analytics aggregation
+- model-registry smoke-test logic
+
+Run and record:
+
+python --version
+python -c "import platform; print(platform.platform(), platform.machine())"
+pip list
+docker version
+docker compose ps
+git status
+git log -5 --oneline
+
+Create a safe Git checkpoint before modifications.
+
+Do not destroy user documents, review decisions or audit history.
+
+Create a clean demo-organisation migration or archive path where old invalid
+records must be separated from new test results.
+
+Produce a brief audit and then immediately continue implementation.
+
+=======================================================================
+4. PHASE 1 — REBUILD EXTRACTION QUALITY BEFORE ACTIVATING MORE MODELS
+=======================================================================
+
+The current deterministic extractor executes, but it does not understand fields
+accurately enough.
+
+Create or upgrade to:
+
+deterministic-schema-extractor-v3
+
+The extraction pipeline must be:
+
+page image
+    ↓
+multi-pass preprocessing
+    ↓
+OCR words
+    ↓
+OCR line reconstruction
+    ↓
+label candidate recognition
+    ↓
+label alias normalisation
+    ↓
+spatial value association
+    ↓
+field-type validation
+    ↓
+duplicate/conflict resolution
+    ↓
+schema mapping
+    ↓
+evidence persistence
+
+-----------------------------------------------------------------------
+4.1 MULTI-PASS OCR FOR CRITICAL REGIONS
+-----------------------------------------------------------------------
+
+Do not trust a single full-page Tesseract pass.
+
+For low-confidence lines or recognised field labels:
+
+1. crop the line or field region
+2. upscale by an appropriate factor
+3. test grayscale
+4. test adaptive thresholding
+5. test contrast enhancement
+6. test appropriate Tesseract page-segmentation modes
+7. compare candidate outputs
+8. select the candidate using field-type validation
+9. retain all OCR candidates in provenance
+
+For the visible date line:
+
+“Date: September 21, 1976”
+
+The system should attempt to correct:
+
+“bate: september 21, 11/6”
+
+using:
+
+- expected label vocabulary
+- image-region re-OCR
+- date parsing
+- context
+- character-confusion patterns
+
+Do not silently rewrite source text without evidence.
+
+Store:
+
+{
+  "raw_ocr": "bate: september 21, 11/6",
+  "corrected_ocr": "Date: September 21, 1976",
+  "correction_method": "roi_reocr_and_date_validation",
+  "correction_confidence": 0.0,
+  "candidates": [],
+  "evidence_box": []
+}
+
+When correction is still uncertain:
+
+- retain the raw value
+- set normalised_value to null
+- route for review
+
+-----------------------------------------------------------------------
+4.2 LABEL ALIAS DICTIONARY
+-----------------------------------------------------------------------
+
+Add aliases for at least:
+
+date:
+- date
+- dated
+- document date
+- form date
+- request date
+
+sample_number:
+- sample no
+- sample no.
+- sample number
+- sample id
+
+product_type:
+- type of cigarette
+- product type
+- item type
+- sample type
+
+batch_size:
+- batch size
+- quantity
+- lot size
+
+requested_by:
+- original request made by
+- requested by
+- requestor
+- requester
+
+specifications_written_by:
+- sample specifications written by
+- specifications by
+- prepared by
+
+document_title:
+- title
+- document title
+- form title
+- heading
+
+Do not map a line beginning with “Date:” to document_title.
+
+-----------------------------------------------------------------------
+4.3 SPATIAL VALUE ASSOCIATION
+-----------------------------------------------------------------------
+
+Associate values using this order:
+
+1. value after colon on the same line
+2. value immediately right of the label
+3. underlined value region after the label
+4. value directly below the label
+5. table-cell association
+6. nearest validated candidate in the same block
+
+Store separate label and value bounding boxes.
+
+-----------------------------------------------------------------------
+4.4 FIELD-TYPE VALIDATION
+-----------------------------------------------------------------------
+
+Date fields:
+
+- parse month names
+- parse numeric dates
+- preserve raw text
+- store ISO value only when sufficiently unambiguous
+- detect impossible years and malformed dates
+
+Numeric identifiers:
+
+- preserve punctuation
+- avoid interpreting them as dates unless the label is a date label
+
+Names:
+
+- preserve initials and titles
+- do not classify a whole date line as a person or title
+
+Quantities:
+
+- preserve number and unit
+- separate numeric value and unit where useful
+
+-----------------------------------------------------------------------
+4.5 DUPLICATE AND CONFLICT RESOLUTION
+-----------------------------------------------------------------------
+
+Create a field candidate resolver.
+
+The same evidence span must not populate multiple incompatible schema fields.
+
+For every candidate calculate:
+
+- label match
+- spatial relationship
+- type validity
+- OCR confidence
+- schema compatibility
+- duplicate penalty
+- conflict penalty
+
+When two fields use substantially identical evidence:
+
+- select the best schema field
+- mark the other candidate rejected
+- record the reason
+
+Example:
+
+Date line
+→ date
+
+It must not simultaneously become:
+
+document_title
+form_title
+
+-----------------------------------------------------------------------
+4.6 REQUIRED SCHEMAS
+-----------------------------------------------------------------------
+
+Create or verify schemas for:
+
+- business_form
+- generic_key_value_form
+- fax_transmission
+- invoice
+- purchase_order
+- receipt
+- bank_confirmation
+- contract
+- report
+- correspondence
+- unknown/generic metadata
+
+Business-form schema for the displayed test document must include:
+
+- date
+- sample_number
+- product_type
+- batch_size
+- requested_by
+- specifications_written_by
+- document_title, optional
+- organisation_name, optional
+- additional_notes, optional
+
+-----------------------------------------------------------------------
+4.7 EXPECTED-FIELD DISPLAY
+-----------------------------------------------------------------------
+
+Replace ambiguous summary:
+
+Expected 3 | Extracted 2 | Missing 2
+
+with:
+
+Required expected: 3
+Required matched: 1
+Required missing: 2
+Optional extracted: 1
+Total extracted: 2
+Duplicates rejected: 1
+Disputed: 0
+
+Use the same calculation service in:
+
+- document viewer
+- review workspace
+- analytics
+- reports
+
+=======================================================================
+5. PHASE 2 — IMPLEMENT A REAL MULTI-SOURCE RAG PIPELINE
+=======================================================================
+
+The current local-hybrid query pipeline is insufficient.
+
+Implement a full retrieval cascade that works even before all heavy models are
+available.
+
+-----------------------------------------------------------------------
+5.1 QUERY ROUTING
+-----------------------------------------------------------------------
+
+Classify questions as:
+
+- greeting
+- help
+- clarification_response
+- structured_field_lookup
+- OCR_lookup
+- semantic_question
+- relationship_question
+- arithmetic_question
+- visual_question
+- risk_question
+- comparison_question
+- approval_question
+- unsupported_question
+
+-----------------------------------------------------------------------
+5.2 CONVERSATION AND CLARIFICATION STATE
+-----------------------------------------------------------------------
+
+Persist conversation state in backend storage.
+
+Required fields:
+
+{
+  "conversation_id": "...",
+  "user_id": "...",
+  "organisation_id": "...",
+  "selected_scope": {},
+  "pending_clarification": {},
+  "last_query_type": "...",
+  "turns": [],
+  "expires_at": "..."
+}
+
+When the user asks:
+
+“Is this safe?”
+
+Return structured clarification options:
+
+- Check document quality
+- Check suspicious indicators
+- Check financial consistency
+- Check signature or stamp presence
+- Check approval status
+
+The frontend must display selectable chips or buttons.
+
+A reply such as “yes” must not be sent as an independent semantic query.
+
+When no option has been selected, respond:
+
+“Please select which type of safety check you want me to perform.”
+
+When a chip is selected, create the resolved question and continue retrieval.
+
+-----------------------------------------------------------------------
+5.3 RETRIEVAL CASCADE
+-----------------------------------------------------------------------
+
+Use this exact sequence:
+
+1. verified structured fields
+2. reviewed structured fields
+3. unverified extracted fields
+4. field aliases
+5. OCR key-value pairs
+6. reconstructed OCR lines
+7. lexical/BM25 chunks
+8. dense vector retrieval
+9. reranked evidence
+10. graph facts and paths
+11. visual detections
+12. deterministic calculations
+
+Do not return not_found until all enabled relevant sources have been checked.
+
+Store retrieval trace:
+
+{
+  "sources_checked": [],
+  "candidate_counts": {},
+  "selected_evidence": [],
+  "retrieval_duration_ms": 0,
+  "retriever_versions": {}
+}
+
+-----------------------------------------------------------------------
+5.4 OCR AND FIELD QUESTIONS
+-----------------------------------------------------------------------
+
+For the business-form document, these questions must work when evidence exists:
+
+- What is the date?
+- What is the sample number?
+- What type of product is shown?
+- What is the batch size?
+- Who made the original request?
+- Who wrote the sample specifications?
+
+Answers must cite:
+
+- filename
+- page
+- source text
+- bounding box
+- extraction status
+- confidence
+
+-----------------------------------------------------------------------
+5.5 SAFETY AND RISK QUESTIONS
+-----------------------------------------------------------------------
+
+For:
+
+“Is this document safe?”
+
+Do not make a legal or fraud conclusion.
+
+Answer using separated categories:
+
+- processing quality
+- data-quality issues
+- business-rule indicators
+- visual-manipulation indicators
+- approval status
+
+Example:
+
+“No confirmed fraud determination is available. The document has two
+unverified fields and two unresolved required fields. It therefore requires
+human review.”
+
+Include citations to the relevant fields and indicators.
+
+-----------------------------------------------------------------------
+5.6 ANSWER GENERATION
+-----------------------------------------------------------------------
+
+Maintain the grounded-template generator as a safe fallback.
+
+Activate a real LLM only after retrieval works.
+
+The generator must receive only:
+
+- resolved question
+- retrieved evidence
+- verified facts
+- deterministic calculations
+- graph paths
+- source metadata
+
+Required response:
+
+{
+  "answer": "...",
+  "answer_status":
+    "supported|partially_supported|not_found|clarification_needed",
+  "query_type": "...",
+  "citations": [],
+  "confidence": 0.0,
+  "retrieval_trace_id": "...",
+  "retriever": "...",
+  "reranker": "...",
+  "generator": "...",
+  "requires_review": false
+}
+
+No citation means no factual claim.
+
+=======================================================================
+6. PHASE 3 — ACTIVATE THE PRACTICAL CORE AI STACK
+=======================================================================
+
+Do not attempt to activate every large research model simultaneously.
+
+Activate the core operational stack first.
+
+Required priority:
+
+1. local parser
+2. PaddleOCR / PP-OCR
+3. structure/layout parser
+4. BGE embedding model
+5. reranker
+6. Qdrant
+7. Neo4j
+8. local or configured grounded LLM
+
+Advanced task-specific models come afterward.
+
+-----------------------------------------------------------------------
+6.1 PLATFORM-AWARE DEPENDENCY INSTALLATION
+-----------------------------------------------------------------------
+
+Detect the machine architecture.
+
+When running on Apple Silicon:
+
+- do not install CUDA wheels
+- use CPU or MPS-compatible PyTorch packages
+- use a compatible Paddle runtime
+- isolate conflicting AI dependencies if required
+- prefer a separate AI environment or service over breaking the backend
+
+Create dependency groups:
+
+backend/requirements/base.txt
+backend/requirements/ai-core.txt
+backend/requirements/ai-full.txt
+backend/requirements/dev.txt
+
+Create:
+
+scripts/bootstrap_ai_core.sh
+scripts/verify_ai_core.py
+scripts/smoke_test_models.py
+
+The bootstrap script must:
+
+- detect platform
+- install compatible dependencies
+- start required containers
+- download only explicitly permitted checkpoints
+- validate checkpoint paths
+- run smoke tests
+- produce a summary
+
+Never expose credentials in logs.
+
+-----------------------------------------------------------------------
+6.2 LOCAL PARSER
+-----------------------------------------------------------------------
+
+The live pipeline appears to use the local parser, but the registry shows it as
+unavailable.
+
+Run:
+
+python scripts/smoke_test_models.py --model local-parser-v1
+
+Fix any registry or adapter mismatch.
+
+It must become active only after:
+
+- initialisation
+- sample parse
+- output validation
+
+-----------------------------------------------------------------------
+6.3 PADDLEOCR AND STRUCTURE
+-----------------------------------------------------------------------
+
+Attempt real activation of:
+
+- PP-OCR
+- PP-Structure / document-layout adapter
+
+Required evidence:
+
+- package imports
+- one sample-page inference
+- returned text
+- returned boxes/polygons
+- confidence values
+- runtime
+- output-schema validation
+
+If the exact named version is not available in the installed compatible
+runtime, register the exact model/runtime actually used.
+
+Do not label an older or different model as PP-OCRv5.
+
+Use Tesseract fallback when PaddleOCR fails.
+
+-----------------------------------------------------------------------
+6.4 LAYOUTLMV3
+-----------------------------------------------------------------------
+
+Do not activate base LayoutLMv3 as a field extractor unless it has a trained
+token-classification head and label map.
+
+Inspect available training data.
+
+When labelled data exists:
+
+- create document-level train/validation/test split
+- fine-tune the model
+- save checkpoint
+- evaluate token and field F1
+- run smoke inference
+- register the checkpoint
+
+When labels are absent:
+
+- keep LayoutLMv3 marked BLOCKED_BY_LABELS
+- provide annotation conversion tools
+- continue using deterministic extraction
+
+Do not let LayoutLMv3 block core system completion.
+
+-----------------------------------------------------------------------
+6.5 BGE-M3 AND RERANKER
+-----------------------------------------------------------------------
+
+Make a serious activation attempt.
+
+Support either the intended FlagEmbedding package or a compatible,
+truthfully recorded implementation.
+
+Required checks:
+
+- package imports
+- embedding model loads
+- query embedding generated
+- document embedding generated
+- dimensions match
+- reranker scores question/passage pair
+- tenant and scope metadata preserved
+
+Do not mark BGE active merely because the package imports.
+
+-----------------------------------------------------------------------
+6.6 QDRANT
+-----------------------------------------------------------------------
+
+Start Qdrant through the repository’s Docker Compose configuration.
+
+Verify:
+
+- service health
+- collection creation
+- vector dimension
+- payload indexes
+- tenant filtering
+- document filtering
+- insertion
+- search
+- deletion/reprocessing idempotency
+
+Qdrant must be active only when the server is reachable and a real search
+passes.
+
+-----------------------------------------------------------------------
+6.7 NEO4J
+-----------------------------------------------------------------------
+
+Start Neo4j through Docker Compose.
+
+Verify:
+
+- service health
+- authentication
+- uniqueness constraints
+- tenant isolation
+- node insertion
+- relationship insertion
+- path query
+- evidence-property retrieval
+
+Neo4j must be active only when a real graph operation passes.
+
+-----------------------------------------------------------------------
+6.8 GROUNDED LOCAL LLM
+-----------------------------------------------------------------------
+
+Inspect available machine memory before selecting a local model.
+
+Use a compatible instruction model that can run reliably on the available
+hardware.
+
+Do not hard-code a model that cannot fit into memory.
+
+Possible integration paths:
+
+- local Transformers
+- an existing local model runner
+- an OpenAI-compatible local endpoint
+- a configured external endpoint when credentials already exist
+
+The ChatGPT/Codex account must not be treated as a project runtime credential.
+
+Required smoke test:
+
+- initialise provider
+- pass retrieved evidence
+- answer one grounded question
+- validate JSON response
+- verify citation IDs remain unchanged
+- verify unsupported question returns not_found
+
+If a local LLM cannot be run, the grounded-template generator remains the
+fallback, but retrieval must still work correctly.
+
+=======================================================================
+7. PHASE 4 — REBUILD THE KNOWLEDGE GRAPH SEMANTICALLY
+=======================================================================
+
+The graph must represent enterprise meaning, not merely storage structure.
+
+-----------------------------------------------------------------------
+7.1 GRAPH ONTOLOGY
+-----------------------------------------------------------------------
+
+Node types:
+
+- Document
+- Page
+- Organisation
+- Person
+- Product
+- Form
+- Invoice
+- PurchaseOrder
+- Contract
+- BankAccount
+- ContactMethod
+- Date
+- Amount
+- Identifier
+- Signature
+- Stamp
+- ExtractedField
+- RiskIndicator
+
+Relationship types:
+
+- CONTAINS_PAGE
+- HAS_FIELD
+- HAS_DATE
+- HAS_SAMPLE_NUMBER
+- HAS_PRODUCT_TYPE
+- HAS_BATCH_SIZE
+- REQUESTED_BY
+- SPECIFICATIONS_WRITTEN_BY
+- ISSUED_BY
+- ISSUED_TO
+- REFERENCES
+- ASSOCIATED_WITH
+- HAS_CONTACT
+- HAS_BANK_ACCOUNT
+- SIGNED_BY
+- HAS_RISK
+- CONFLICTS_WITH
+- MATCHES
+- DUPLICATE_OF
+
+-----------------------------------------------------------------------
+7.2 GRAPH CREATION RULES
+-----------------------------------------------------------------------
+
+Do not create a DocumentTitle node from a field whose detected label is Date.
+
+Do not promote low-confidence unverified fields into verified enterprise facts.
+
+Use:
+
+- verified relationships
+- proposed relationships
+- conflict relationships
+
+Every graph element must store:
+
+{
+  "tenant_id": "...",
+  "document_id": "...",
+  "source_page": 1,
+  "source_field_id": "...",
+  "source_text": "...",
+  "bounding_box": [],
+  "confidence": 0.0,
+  "verification_status": "verified|proposed|rejected",
+  "extractor_version": "...",
+  "pipeline_version": "..."
+}
+
+-----------------------------------------------------------------------
+7.3 EXPECTED GRAPH FOR 00093726.PNG
+-----------------------------------------------------------------------
+
+When extraction evidence supports it, create:
+
+Document: 00093726.png
+    ├── HAS_DATE → September 21, 1976
+    ├── HAS_SAMPLE_NUMBER → 6030
+    ├── HAS_PRODUCT_TYPE → 85 mm Filter
+    ├── HAS_BATCH_SIZE → 50 lbs.
+    ├── REQUESTED_BY → Dr. A. W. Spears
+    └── SPECIFICATIONS_WRITTEN_BY → W. E. Routh
+
+Do not hard-code these values in production.
+
+Use them only as test expectations derived from the supplied test fixture.
+
+-----------------------------------------------------------------------
+7.4 GRAPH UI
+-----------------------------------------------------------------------
+
+Display:
+
+- readable node labels
+- visible edge labels
+- arrow direction
+- node-type legend
+- relationship-status legend
+- verified/proposed/conflict styling
+- zoom and fit
+- search
+- type filters
+- relationship filters
+- evidence drawer
+- source-document navigation
+- confidence
+- verification status
+
+Avoid overlapping labels.
+
+Limit node size.
+
+Truncate long labels with full value on hover.
+
+When a node or edge is clicked, show:
+
+- semantic meaning
+- evidence
+- page
+- source text
+- confidence
+- relationship status
+- open-document action
+
+-----------------------------------------------------------------------
+7.5 GRAPH QUERY AND GRAPHRAG
+-----------------------------------------------------------------------
+
+Graph queries must return paths with explanations.
+
+Example question:
+
+“Who requested this sample?”
+
+Graph path:
+
+Document
+→ REQUESTED_BY
+→ Person
+
+Answer must cite the extracted field and page evidence.
+
+GraphRAG retrieval must combine:
+
+- graph path
+- related fields
+- supporting OCR text
+- verification status
+
+=======================================================================
+8. PHASE 5 — FIX ANALYTICS AND PIPELINE TIMING
+=======================================================================
+
+Investigate the displayed:
+
+43683.1 seconds average processing time
+
+Define:
+
+queued_duration =
+processing_started_at - queued_at
+
+processing_duration =
+processing_completed_at - processing_started_at
+
+review_wait_duration =
+review_completed_at - processing_completed_at
+
+Do not mix these values.
+
+Exclude:
+
+- incomplete jobs
+- missing timestamps
+- legacy records without reliable timestamps
+- negative durations
+- durations from incompatible pipeline versions
+
+Store duration in milliseconds internally.
+
+Convert once for display.
+
+Add:
+
+- mean
+- median
+- p95
+- sample size
+- pipeline version
+- per-stage timing
+
+Per-stage metrics:
+
+- ingestion
+- preprocessing
+- OCR
+- layout
+- extraction
+- validation
+- indexing
+- graph projection
+- risk screening
+
+Add a migration or recalculation script for legacy timing records.
+
+=======================================================================
+9. PHASE 6 — REPROCESS AND VERSION DATA CORRECTLY
+=======================================================================
+
+After fixing extraction and retrieval:
+
+- increment pipeline version
+- increment extractor version
+- reprocess selected demo documents
+- invalidate obsolete fields
+- replace obsolete chunks
+- replace obsolete vectors
+- rebuild graph projection
+- recalculate review reasons
+- recalculate analytics
+- preserve old audit evidence
+
+Do not create duplicate:
+
+- fields
+- chunks
+- vectors
+- graph nodes
+- graph edges
+- review tasks
+- reports
+- narratives
+
+Create commands:
+
+python -m scripts.reprocess_documents \
+  --organisation documind-demo \
+  --pipeline-version current
+
+python -m scripts.rebuild_search_index \
+  --organisation documind-demo
+
+python -m scripts.rebuild_graph \
+  --organisation documind-demo
+
+python -m scripts.recalculate_analytics \
+  --organisation documind-demo
+
+=======================================================================
+10. PHASE 7 — REVIEW AND FRAUD SAFETY
+=======================================================================
+
+Keep suspicious-indicator language.
+
+Do not automatically declare fraud.
+
+Confirm Fraud must require:
+
+- ADMIN, COMPLIANCE_OFFICER or SENIOR_REVIEWER
+- evidence selection
+- written rationale
+- reviewer comments
+- explicit acknowledgement
+- confirmation modal
+- audit event
+- second review when organisation policy requires it
+
+The button being visible to ADMIN is acceptable only when backend safeguards
+are verified.
+
+Add automated authorisation tests.
+
+=======================================================================
+11. REQUIRED AUTOMATED TESTS
+=======================================================================
+
+TEST 1 — Date extraction correction
+
+Input:
+00093726.png
+
+Expected:
+
+- Date label is recognised.
+- Date value is associated with date.
+- The date line is not assigned to document_title.
+- The same evidence is not assigned to form_title.
+
+TEST 2 — Business-form fields
+
+When visibly present, extract:
+
+- date
+- sample_number
+- product_type
+- batch_size
+- requested_by
+- specifications_written_by
+
+Every field must contain evidence.
+
+TEST 3 — OCR uncertainty
+
+When “1976” remains uncertain:
+
+- preserve raw OCR
+- do not invent the year
+- route for review
+
+TEST 4 — Duplicate field prevention
+
+One evidence span cannot populate two incompatible fields.
+
+TEST 5 — Review counts
+
+Required expected, required matched and required missing must be internally
+consistent.
+
+TEST 6 — Clarification conversation
+
+User:
+“Is this safe?”
+
+Expected:
+clarification options.
+
+User:
+“yes”
+
+Expected:
+request an option selection, not semantic not_found.
+
+User selects:
+“Check suspicious indicators”
+
+Expected:
+evidence-grounded risk summary.
+
+TEST 7 — Structured question
+
+Question:
+“What is the sample number?”
+
+Expected:
+supported answer with citation when evidence exists.
+
+TEST 8 — OCR fallback
+
+Delete or ignore structured field for a test.
+
+Question:
+“What is the date?”
+
+Expected:
+OCR-line retrieval can still return supported evidence when confidence permits.
+
+TEST 9 — Graph semantics
+
+Expected graph includes meaningful typed nodes and named relationships.
+
+TEST 10 — Graph evidence
+
+Clicking an edge exposes its page and source field.
+
+TEST 11 — GraphRAG
+
+Question:
+“Who made the original request?”
+
+Expected:
+graph path plus source citation.
+
+TEST 12 — BGE retrieval
+
+A semantically paraphrased query retrieves the correct chunk.
+
+TEST 13 — Qdrant filtering
+
+A query scoped to one document cannot retrieve another tenant’s or document’s
+evidence.
+
+TEST 14 — LLM grounding
+
+The LLM cannot cite an evidence ID that was not supplied.
+
+TEST 15 — Processing duration
+
+No valid demo job displays an implausible duration caused by timestamp bugs.
+
+TEST 16 — Registry truthfulness
+
+Every active component has:
+
+- successful initialisation
+- successful inference
+- valid output
+- smoke-test timestamp
+
+TEST 17 — Local parser
+
+The parser registry status matches actual pipeline usage.
+
+TEST 18 — Reprocessing idempotency
+
+Running reprocessing twice does not create duplicate fields, chunks or edges.
+
+TEST 19 — Fraud authorisation
+
+Unauthorised role receives 403.
+
+TEST 20 — No hallucination
+
+Unsupported questions return not_found or clarification_needed.
+
+=======================================================================
+12. MANUAL END-TO-END ACCEPTANCE WALKTHROUGH
+=======================================================================
+
+Demonstrate this sequence:
+
+1. Upload 00093726.png.
+2. Processing completes.
+3. Document is classified as business_form.
+4. Correct schema is selected.
+5. Date is not treated as a title.
+6. Multiple correct fields appear.
+7. Clicking a field highlights the exact source.
+8. Review counts are understandable.
+9. Ask “What is the sample number?”
+10. Receive a cited answer.
+11. Ask “Is this safe?”
+12. Select suspicious-indicator check.
+13. Receive an evidence-grounded response.
+14. Open knowledge graph.
+15. See readable entity and relationship labels.
+16. Click REQUESTED_BY.
+17. See source evidence.
+18. Run GraphRAG question.
+19. Generate a report.
+20. Verify no duplicate artefacts are created.
+21. View analytics.
+22. Confirm realistic processing durations.
+23. View Admin Models.
+24. Confirm core active stack has passed smoke tests.
+
+=======================================================================
+13. PRACTICAL MODEL ACTIVATION GATE
+=======================================================================
+
+The final core stack should aim to have:
+
+[ ] local parser active
+[ ] Tesseract active
+[ ] PaddleOCR active, when platform compatible
+[ ] structure/layout adapter active
+[ ] deterministic extractor active
+[ ] BGE embedding model active
+[ ] reranker active
+[ ] local vector retrieval active
+[ ] Qdrant active
+[ ] local graph projection active
+[ ] Neo4j active
+[ ] grounded template generator active
+[ ] one real grounded LLM provider active when compatible credentials or a
+    runnable local checkpoint exist
+
+Conditional advanced models:
+
+[ ] LayoutLMv3 — only with a trained extraction checkpoint
+[ ] Donut — only with a suitable task checkpoint
+[ ] YOLO — only with a trained document-object checkpoint
+[ ] DeBERTa-CUAD — only with a validated clause checkpoint
+[ ] SegFormer — only with a document-forensics checkpoint
+[ ] XGBoost — only with labelled risk data and a trained checkpoint
+[ ] DINOv2 — activate when visual duplicate comparison is implemented
+
+Do not allow conditional research models to block the core RAG and graph system.
+
+=======================================================================
+14. FINAL ACCEPTANCE GATE
+=======================================================================
+
+Do not claim completion until:
+
+[ ] The visible Date line is extracted as a date, not a title.
+[ ] Duplicate field assignment is prevented.
+[ ] Business-form extraction captures multiple meaningful fields.
+[ ] Structured-extraction coverage is recalculated.
+[ ] Review expected/matched/missing counts are clear.
+[ ] Clarification state survives across turns.
+[ ] “yes” is not treated as an independent document question.
+[ ] Ask Documents searches all relevant evidence sources.
+[ ] Supported answers contain clickable citations.
+[ ] Knowledge-graph nodes have meaningful labels.
+[ ] Relationships have visible semantic names.
+[ ] Graph edges expose source evidence.
+[ ] Graph questions use real paths.
+[ ] Processing-time analytics are corrected.
+[ ] Local parser registry is consistent.
+[ ] BGE activation was genuinely attempted and smoke-tested.
+[ ] Qdrant activation was genuinely attempted and smoke-tested.
+[ ] Neo4j activation was genuinely attempted and smoke-tested.
+[ ] A compatible grounded LLM was genuinely attempted.
+[ ] No fake active states exist.
+[ ] No unsupported field corrections exist.
+[ ] No invented graph relationships exist.
+[ ] No unsupported answer is generated.
+[ ] Reprocessing is idempotent.
+[ ] Automated tests pass.
+[ ] Manual walkthrough passes.
+
+When a component remains blocked, the final report must state:
+
+- exact blocker
+- exact command attempted
+- complete error output summary
+- package version
+- operating system
+- missing checkpoint or credential
+- fallback currently used
+- next executable action
+
+“Missing package” alone is not sufficient unless installation was actually
+attempted and the failure was recorded.
+
+=======================================================================
+15. REQUIRED FINAL RESPONSE FROM THE CODEX AGENT
+=======================================================================
+
+Provide:
+
+1. Repository and environment audit
+2. Root causes found
+3. Files modified
+4. Migrations added
+5. Packages installed
+6. Services started
+7. Checkpoints configured
+8. Extraction before/after comparison
+9. RAG before/after comparison
+10. Graph before/after comparison
+11. Processing-time correction
+12. Active model registry
+13. Blocked model registry with attempted commands
+14. Automated-test results
+15. Manual acceptance results
+16. Sample extracted JSON
+17. Sample RAG response with citations
+18. Sample graph path response
+19. Remaining genuine limitations
+20. PASS/FAIL/BLOCKED checklist
+
+Do not produce this report before implementation.
+
+Do not stop after a planning message.
+
+Do not say “the user must install everything manually” without first trying
+the compatible installation and recording why it failed.
+
+=======================================================================
+16. BEGIN EXECUTION
+=======================================================================
+
+Start with the exact failing document:
+
+00093726.png
+
+Trace:
+
+image
+→ OCR words
+→ OCR lines
+→ classifier
+→ selected schema
+→ field candidates
+→ duplicate resolver
+→ stored fields
+→ chunks
+→ graph nodes
+→ RAG response
+
+Find exactly why:
+
+“Date: September 21, 1976”
+
+became:
+
+document_title = “bate: september 21, 11/6”
+form_title = “bate: september 21, 11/6”
+
+Fix that complete chain first.
+
+Then repair conversational RAG.
+
+Then rebuild the semantic knowledge graph.
+
+Then activate the practical AI core stack.
+
+Then reprocess the demo corpus and run every acceptance test.
+
+Do not add another page.
+Do not stop at visual improvement.
+Do not hide behind fallback mode.
+Do not fabricate advanced-model availability.
+
+Make the existing platform actually understand, retrieve, relate and explain
+the visible document evidence.
