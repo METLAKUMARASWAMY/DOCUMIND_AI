@@ -1,0 +1,18 @@
+-r base.txt
+
+# Core semantic/runtime adapters. Keep Transformers below the next major
+# release because FlagEmbedding 1.x imports the Transformers 4.x API.
+torch>=2.4.0,<3
+transformers>=4.49.0,<5
+sentence-transformers>=3.4.0,<6
+FlagEmbedding>=1.3.5,<2
+accelerate>=1.2.0,<2
+sentencepiece>=0.2.0,<1
+
+# Paddle 3 publishes native CPU wheels for supported CPython/macOS ARM and
+# Linux platforms. The bootstrap script verifies wheel availability before
+# installing this group and never selects a CUDA build on macOS.
+paddlepaddle>=3.2.0,<3.4
+paddleocr>=3.0.0,<4
+# PP-StructureV3 is not included in PaddleOCR's default `ocr-core` extra.
+paddlex[ocr]>=3.7.0,<3.8

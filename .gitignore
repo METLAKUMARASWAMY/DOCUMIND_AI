@@ -2,6 +2,8 @@
 .env
 .venv/
 backend/.venv/
+.venv-ai/
+backend/.venv-ai/
 __pycache__/
 *.pyc
 .pytest_cache/

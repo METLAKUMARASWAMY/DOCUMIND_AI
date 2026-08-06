@@ -147,7 +147,10 @@ class PaddleOCRV5Adapter(OCRAdapter):
         self._pipeline: Any | None = None
 
     def status(self) -> AdapterStatus:
-        installed = importlib.util.find_spec("paddleocr") is not None
+        installed = all(
+            importlib.util.find_spec(package) is not None
+            for package in ("paddle", "paddleocr")
+        )
         enabled = settings.enable_heavy_models and settings.enable_paddleocr
         active = installed and enabled
         if not enabled:

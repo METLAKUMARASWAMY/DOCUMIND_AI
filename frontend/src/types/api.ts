@@ -257,6 +257,7 @@ export interface ApprovalPolicy {
   required_evidence_ids: string[];
   confidence_threshold: number;
   message: string;
+  fraud_second_reviewer_required?: boolean;
 }
 
 export interface ReviewDecisionPayload {
@@ -269,6 +270,8 @@ export interface ReviewDecisionPayload {
   decision_rationale?: string;
   automated_indicators_acknowledged?: boolean;
   reauthentication_token?: string;
+  second_reviewer_email?: string;
+  second_reviewer_approved?: boolean;
 }
 
 export interface GraphProjection {
@@ -278,6 +281,7 @@ export interface GraphProjection {
   schema_version: string;
   preferred_backend: string;
   active_backend: string;
+  legend?: Record<string, unknown>;
 }
 
 export interface GraphNode extends Record<string, unknown> {
@@ -291,6 +295,11 @@ export interface GraphNode extends Record<string, unknown> {
   bounding_boxes?: BoundingBox[];
   status?: string;
   review_status?: string;
+  verification_status?: string;
+  source_text?: string;
+  source_field_id?: string | null;
+  extractor_version?: string;
+  pipeline_version?: string;
 }
 
 export interface GraphEdge extends Record<string, unknown> {
@@ -305,9 +314,14 @@ export interface GraphEdge extends Record<string, unknown> {
   evidence_text?: string;
   bounding_boxes?: BoundingBox[];
   confidence?: number | null;
-  status?: "verified" | "proposed";
+  status?: "verified" | "proposed" | "conflict" | "rejected";
   verification_eligible?: boolean;
   source_linked?: boolean;
+  source_field?: string | null;
+  source_field_id?: string | null;
+  verification_status?: string;
+  extractor_version?: string;
+  pipeline_version?: string;
 }
 
 export interface VisionDocument {
@@ -353,6 +367,16 @@ export interface VisionDocument {
     invalid_fields: string[];
     disputed_fields: string[];
     manually_resolved_fields: string[];
+    required_matched_fields: string[];
+    optional_extracted_fields: string[];
+    duplicate_fields: string[];
+    required_expected_count: number | null;
+    required_matched_count: number | null;
+    required_missing_count: number | null;
+    optional_extracted_count: number;
+    total_extracted_count: number;
+    duplicates_rejected_count: number;
+    disputed_count: number;
     expected_required_count: number | null;
     extracted_count: number;
     unresolved_required_count: number | null;
@@ -405,6 +429,24 @@ export interface Citation {
   retrieval_score?: number | null;
   model_confidence: number;
   reviewer_status: string;
+  extraction_status: string;
+  evidence_type: string;
+}
+
+export interface ClarificationOption {
+  option_id: string;
+  label: string;
+  resolved_question: string;
+  query_type: string;
+}
+
+export interface RetrievalTrace {
+  trace_id: string;
+  sources_checked: string[];
+  candidate_counts: Record<string, number>;
+  selected_evidence: string[];
+  retrieval_duration_ms: number;
+  retriever_versions: Record<string, string>;
 }
 
 export interface AskResponse {
@@ -434,6 +476,25 @@ export interface AskResponse {
     }>;
   };
   broader_scope_available: boolean;
+  conversation_id?: string | null;
+  resolved_question?: string | null;
+  clarification_options: ClarificationOption[];
+  retrieval_trace_id?: string | null;
+  retrieval_trace?: RetrievalTrace | null;
+  reranker: string;
+  graph_paths: Array<{
+    path_id: string;
+    document_id: string;
+    node_ids: string[];
+    relationships: string[];
+    display_path: string;
+    explanation: string;
+    verification_status: string;
+    evidence_id?: string | null;
+    source_page: number;
+    source_text: string;
+    source_field?: string | null;
+  }>;
 }
 
 export interface FinanceNarrative {

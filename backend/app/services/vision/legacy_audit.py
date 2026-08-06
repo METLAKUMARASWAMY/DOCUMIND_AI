@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-CURRENT_PIPELINE_VERSION = "documind-vision-v3"
+CURRENT_PIPELINE_VERSION = "documind-vision-v4"
 
 
 def legacy_document_flags(document: dict[str, Any]) -> list[str]:

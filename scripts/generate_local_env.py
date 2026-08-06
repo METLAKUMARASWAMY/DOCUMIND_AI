@@ -41,6 +41,8 @@ def main() -> None:
                 f"POSTGRES_PASSWORD={postgres_password}",
                 "POSTGRES_DB=documind",
                 f"NEO4J_AUTH=neo4j/{neo4j_password}",
+                "NEO4J_USER=neo4j",
+                f"NEO4J_PASSWORD={neo4j_password}",
                 f"MINIO_ACCESS_KEY={minio_access_key}",
                 f"MINIO_SECRET_KEY={minio_secret_key}",
                 "",
@@ -58,6 +60,9 @@ def main() -> None:
                 "DOCUMIND_AUTH_STATE_DIR=var/auth",
                 "DOCUMIND_DATASET_PATH=../dataset/documind_ai_synthetic_dataset",
                 "ENABLE_DEMO_API=false",
+                "NEO4J_URI=bolt://127.0.0.1:7687",
+                "NEO4J_USER=neo4j",
+                f"NEO4J_PASSWORD={neo4j_password}",
                 "",
             ]
         ),

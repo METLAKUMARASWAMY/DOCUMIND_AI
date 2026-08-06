@@ -42,10 +42,12 @@ export function GraphExplorerPage() {
   const [search, setSearch] = useState("");
   const [nodeType, setNodeType] = useState("all");
   const [edgeStatus, setEdgeStatus] = useState("all");
+  const [relationshipType, setRelationshipType] = useState("all");
   const [pathStart, setPathStart] = useState("");
   const [pathEnd, setPathEnd] = useState("");
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [cy, setCy] = useState<Core | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<{ label: string; x: number; y: number } | null>(null);
   const [verifyComment, setVerifyComment] = useState("");
   const [evidenceAcknowledged, setEvidenceAcknowledged] = useState(false);
 
@@ -76,16 +78,20 @@ export function GraphExplorerPage() {
     () => Array.from(new Set(graph.data?.nodes.map((node) => node.type) || [])).sort(),
     [graph.data],
   );
+  const relationshipTypes = useMemo(
+    () => Array.from(new Set(graph.data?.edges.map((edge) => edge.type) || [])).sort(),
+    [graph.data],
+  );
   const projection = useMemo(
-    () => (graph.data ? filterGraphProjection(graph.data, nodeType, edgeStatus) : { nodes: [], edges: [] }),
-    [edgeStatus, graph.data, nodeType],
+    () => (graph.data ? filterGraphProjection(graph.data, nodeType, edgeStatus, relationshipType) : { nodes: [], edges: [] }),
+    [edgeStatus, graph.data, nodeType, relationshipType],
   );
   const elements = useMemo(() => {
     const nodes = projection.nodes.map((node) => ({
       data: {
         ...node,
         id: String(node.id),
-        label: primaryNodeType(node.type)
+        canvasLabel: primaryNodeType(node.type)
           ? truncateGraphLabel(String(node.display_label || node.label || node.id))
           : "",
         fullLabel: String(node.label || node.id),
@@ -117,13 +123,26 @@ export function GraphExplorerPage() {
     const onCanvasTap = (event: EventObject) => {
       if (event.target === cy) setSelection(null);
     };
+    const onNodeMouseOver = (event: EventObject) => {
+      const position = event.target.renderedPosition();
+      setHoveredNode({
+        label: String(event.target.data("fullLabel") || event.target.data("id")),
+        x: position.x,
+        y: position.y,
+      });
+    };
+    const onNodeMouseOut = () => setHoveredNode(null);
     cy.on("tap", "node", onNodeTap);
     cy.on("tap", "edge", onEdgeTap);
     cy.on("tap", onCanvasTap);
+    cy.on("mouseover", "node", onNodeMouseOver);
+    cy.on("mouseout", "node", onNodeMouseOut);
     return () => {
       cy.off("tap", "node", onNodeTap);
       cy.off("tap", "edge", onEdgeTap);
       cy.off("tap", onCanvasTap);
+      cy.off("mouseover", "node", onNodeMouseOver);
+      cy.off("mouseout", "node", onNodeMouseOut);
     };
   }, [cy]);
 
@@ -145,6 +164,7 @@ export function GraphExplorerPage() {
     setSearch("");
     setNodeType("all");
     setEdgeStatus("all");
+    setRelationshipType("all");
     setPathStart("");
     setPathEnd("");
     cy.elements().removeClass("path-highlight search-match");
@@ -152,10 +172,17 @@ export function GraphExplorerPage() {
   };
   const highlightPath = () => {
     if (!cy || cy.destroyed() || !pathStart || !pathEnd) return;
+    const root = cy.$id(pathStart);
+    const goal = cy.$id(pathEnd);
+    if (!root.length || !goal.length) {
+      setPathStart("");
+      setPathEnd("");
+      return;
+    }
     cy.elements().removeClass("path-highlight");
     const result = cy.elements().aStar({
-      root: cy.$id(pathStart),
-      goal: cy.$id(pathEnd),
+      root,
+      goal,
       directed: false,
     });
     if (result.found) {
@@ -174,13 +201,14 @@ export function GraphExplorerPage() {
       evidence_id: edge.evidence_id,
       model_confidence: typeof edge.confidence === "number" ? edge.confidence : 0,
       reviewer_status: String(edge.review_status || "unverified"),
+      extraction_status: String(edge.verification_status || edge.status || "proposed"),
+      evidence_type: "graph_relationship",
     };
     navigate(`/documents/${edge.document_id}`, { state: { citation } });
   };
 
-  const queryAnswer = relationshipQuery.data
-    ? String((relationshipQuery.data.answer as Record<string, unknown>)?.answer || "")
-    : "";
+  const queryResponse = relationshipQuery.data?.answer;
+  const queryAnswer = queryResponse?.answer || "";
 
   return (
     <Box className="page-stack graph-page">
@@ -195,7 +223,27 @@ export function GraphExplorerPage() {
       </Box>
       {graph.error ? <ErrorState error={graph.error} /> : null}
       {relationshipQuery.error ? <Alert severity="error">{relationshipQuery.error.message}</Alert> : null}
-      {queryAnswer ? <Alert severity="info">{queryAnswer}</Alert> : null}
+      {queryAnswer ? (
+        <Alert severity="info">
+          {queryAnswer}
+          {queryResponse?.graph_paths.map((path) => (
+            <Typography display="block" variant="caption" key={path.path_id}>
+              {path.display_path} | {path.verification_status} | page {path.source_page}
+              {path.source_field ? ` | source field: ${path.source_field.replaceAll("_", " ")}` : ""}
+            </Typography>
+          ))}
+          {queryResponse?.citations.map((citation, index) => (
+            <Button
+              key={citation.evidence_id || `${citation.document_id}-${citation.page_number}-${index}`}
+              size="small"
+              startIcon={<ExternalLink size={14} />}
+              onClick={() => navigate(`/documents/${citation.document_id}`, { state: { citation } })}
+            >
+              Open citation {index + 1}
+            </Button>
+          ))}
+        </Alert>
+      ) : null}
       <Box className="graph-workspace surface">
         <Box className="graph-controls">
           <TextField
@@ -209,10 +257,14 @@ export function GraphExplorerPage() {
             <MenuItem value="all">All types</MenuItem>
             {nodeTypes.map((type) => <MenuItem value={type} key={type}>{type}</MenuItem>)}
           </TextField>
-          <TextField select label="Relationship" value={edgeStatus} onChange={(event) => setEdgeStatus(event.target.value)} size="small">
+          <TextField select label="Status" value={edgeStatus} onChange={(event) => setEdgeStatus(event.target.value)} size="small">
             <MenuItem value="all">All statuses</MenuItem>
             <MenuItem value="verified">Verified</MenuItem>
             <MenuItem value="proposed">Proposed</MenuItem>
+          </TextField>
+          <TextField select label="Relationship" value={relationshipType} onChange={(event) => setRelationshipType(event.target.value)} size="small">
+            <MenuItem value="all">All relationships</MenuItem>
+            {relationshipTypes.map((type) => <MenuItem value={type} key={type}>{type.replaceAll("_", " ")}</MenuItem>)}
           </TextField>
           <Box className="graph-icon-actions">
             <Tooltip title="Fit graph"><IconButton onClick={fitGraph}><Maximize2 size={18} /></IconButton></Tooltip>
@@ -243,6 +295,14 @@ export function GraphExplorerPage() {
                 cy={setCy}
               />
             ) : <Box className="graph-empty"><Typography variant="h3">Select a document</Typography></Box>}
+            {hoveredNode ? (
+              <Box
+                className="graph-hover-label"
+                sx={{ left: hoveredNode.x + 12, top: hoveredNode.y + 12 }}
+              >
+                {hoveredNode.label}
+              </Box>
+            ) : null}
           </Box>
           {selection ? (
             <Box className="graph-details">
@@ -278,6 +338,9 @@ function NodeDetails({ node, onOpen }: { node: GraphNode; onOpen: () => void }) 
       <Typography variant="h3">{node.label}</Typography>
       {node.status ? <StatusChip value={String(node.status)} /> : null}
       {node.source_page ? <Typography variant="body2" color="text.secondary">Page {node.source_page}</Typography> : null}
+      {node.source_text ? <Typography variant="body2">{String(node.source_text)}</Typography> : null}
+      {node.source_field_id ? <Typography variant="caption" color="text.secondary">Source field {String(node.source_field_id)}</Typography> : null}
+      {typeof node.confidence === "number" ? <Typography variant="caption" color="text.secondary">Confidence {Math.round(node.confidence * 100)}%</Typography> : null}
       <Button variant="outlined" startIcon={<ExternalLink size={16} />} disabled={!node.document_id} onClick={onOpen}>Open source</Button>
     </Box>
   );
@@ -316,6 +379,8 @@ function EdgeDetails({
       <Typography variant="caption" color="text.secondary">
         Page {edge.source_page || 1} | {typeof edge.confidence === "number" ? `${Math.round(edge.confidence * 100)}%` : "Confidence not available"}
       </Typography>
+      {edge.source_field ? <Typography variant="caption" color="text.secondary">Source field {String(edge.source_field).replaceAll("_", " ")}</Typography> : null}
+      {edge.evidence_id ? <Typography variant="caption" color="text.secondary">Evidence {edge.evidence_id}</Typography> : null}
       <Button variant="outlined" startIcon={<ExternalLink size={16} />} disabled={!edge.document_id} onClick={onOpen}>Open evidence</Button>
       {proposed && canVerify ? (
         <Box className="graph-verification">
@@ -341,42 +406,53 @@ function GraphLegend({ nodeTypes }: { nodeTypes: string[] }) {
 }
 
 const graphStyles: StylesheetStyle[] = [
-  { selector: "node", style: { "background-color": "#46707c", label: "data(label)", color: "#18232d", "font-size": 10, "font-weight": 600, "text-valign": "bottom", "text-margin-y": 7, "text-wrap": "ellipsis", "text-max-width": "100px", width: 28, height: 28, "border-width": 2, "border-color": "#ffffff" } },
+  { selector: "node", style: { "background-color": "#46707c", label: "data(canvasLabel)", color: "#18232d", "font-size": 10, "font-weight": 600, "text-valign": "bottom", "text-margin-y": 7, "text-wrap": "ellipsis", "text-max-width": "100px", width: 28, height: 28, "border-width": 2, "border-color": "#ffffff" } },
   { selector: "node[type = 'Document']", style: { "background-color": "#12324a", shape: "round-rectangle", width: 38, height: 32 } },
   { selector: "node[type = 'Page']", style: { "background-color": "#8796a1", shape: "rectangle", width: 26, height: 32 } },
   { selector: "node[type = 'Organisation'], node[type = 'Vendor'], node[type = 'Customer']", style: { "background-color": "#087f78", shape: "round-rectangle", width: 34, height: 30 } },
   { selector: "node[type = 'Person']", style: { "background-color": "#3568a8", shape: "ellipse" } },
   { selector: "node[type = 'ContactMethod'], node[type = 'Address']", style: { "background-color": "#5b7f3b", shape: "diamond" } },
-  { selector: "node[type = 'Date'], node[type = 'DocumentTitle'], node[type = 'ReferenceNumber']", style: { "background-color": "#6b7280", shape: "round-rectangle" } },
-  { selector: "node[type = 'Invoice'], node[type = 'PurchaseOrder'], node[type = 'Contract'], node[type = 'Payment']", style: { "background-color": "#c28a13", shape: "round-rectangle" } },
+  { selector: "node[type = 'Date'], node[type = 'Form'], node[type = 'Identifier']", style: { "background-color": "#6b7280", shape: "round-rectangle" } },
+  { selector: "node[type = 'Invoice'], node[type = 'PurchaseOrder'], node[type = 'Contract'], node[type = 'Amount']", style: { "background-color": "#c28a13", shape: "round-rectangle" } },
+  { selector: "node[type = 'Product']", style: { "background-color": "#8b6d1f", shape: "barrel" } },
   { selector: "node[type = 'BankAccount'], node[type = 'TaxIdentifier']", style: { "background-color": "#7b5ca7", shape: "hexagon" } },
-  { selector: "node[type = 'Signature']", style: { "background-color": "#b45f83", shape: "star" } },
+  { selector: "node[type = 'Signature'], node[type = 'Stamp']", style: { "background-color": "#b45f83", shape: "star" } },
   { selector: "node[type = 'RiskIndicator']", style: { "background-color": "#b42318", shape: "triangle" } },
   { selector: "node[type = 'ExtractedField']", style: { "background-color": "#c5ccd1", shape: "round-tag", width: 22, height: 22 } },
   { selector: "node.search-match", style: { "border-width": 5, "border-color": "#f2b705" } },
   { selector: "node:selected", style: { "border-width": 5, "border-color": "#18232d", label: "data(fullLabel)" } },
-  { selector: "edge", style: { width: 1.7, "line-color": "#70808c", "target-arrow-color": "#70808c", "target-arrow-shape": "triangle", "curve-style": "bezier", label: "" } },
+  { selector: "edge", style: { width: 1.7, "line-color": "#70808c", "target-arrow-color": "#70808c", "target-arrow-shape": "triangle", "curve-style": "bezier", label: "data(label)", "font-size": 7, color: "#4d5b65", "text-background-color": "#ffffff", "text-background-opacity": 0.84, "text-background-padding": "1px", "text-rotation": "autorotate" } },
   { selector: "edge:selected", style: { label: "data(label)", "font-size": 8, color: "#4d5b65", "text-background-color": "#ffffff", "text-background-opacity": 0.9, "text-background-padding": "2px" } },
   { selector: "edge[status = 'verified']", style: { "line-color": "#287a54", "target-arrow-color": "#287a54" } },
   { selector: "edge[status = 'proposed']", style: { "line-style": "dashed", "line-color": "#b54708", "target-arrow-color": "#b54708" } },
+  { selector: "edge[status = 'conflict']", style: { "line-color": "#b42318", "target-arrow-color": "#b42318", width: 3 } },
   { selector: ".path-highlight", style: { "line-color": "#d4382d", "target-arrow-color": "#d4382d", "border-color": "#d4382d", "border-width": 5, width: 4, "z-index": 20 } },
 ];
 
 function primaryNodeType(type: string) {
   return new Set([
+    "Address",
+    "BankAccount",
     "Contract",
     "ContactMethod",
     "Customer",
     "Document",
     "DocumentTitle",
+    "Form",
     "Date",
+    "Amount",
+    "Identifier",
     "Invoice",
     "Organisation",
     "Payment",
     "Person",
+    "Product",
     "PurchaseOrder",
     "ReferenceNumber",
     "RiskIndicator",
+    "Signature",
+    "Stamp",
+    "TaxIdentifier",
     "Vendor",
   ]).has(type);
 }

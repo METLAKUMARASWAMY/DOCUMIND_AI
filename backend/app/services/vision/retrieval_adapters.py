@@ -6,7 +6,6 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from itertools import pairwise
-from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -15,6 +14,7 @@ import numpy as np
 from app.core.config import settings
 from app.models.vision import ReviewerStatus, VisionEvidenceChunk
 from app.services.vision.adapters import AdapterStatus, VisionAdapter
+from app.services.vision.checkpoint_utils import local_or_hf_cached_checkpoint
 
 TOKEN_PATTERN = re.compile(r"[\w][\w.-]*", re.UNICODE)
 
@@ -39,6 +39,7 @@ class LocalHashingEmbeddingAdapter(VisionAdapter):
     adapter_id = "local-hashing-embedding"
     stage = "retrieval_embedding"
     model_version = "feature-hashing-v1"
+    collection_version = "local_hashing_v1"
 
     def __init__(self, dimensions: int = 768) -> None:
         self.dimensions = dimensions
@@ -82,6 +83,8 @@ class BGEM3EmbeddingAdapter(VisionAdapter):
     adapter_id = "bge-m3-embedding"
     stage = "retrieval_embedding"
     model_version = "BAAI/bge-m3"
+    collection_version = "bge_m3"
+    dimensions = 1024
 
     def __init__(self) -> None:
         self._model: Any | None = None
@@ -89,9 +92,9 @@ class BGEM3EmbeddingAdapter(VisionAdapter):
     def status(self) -> AdapterStatus:
         installed = importlib.util.find_spec("FlagEmbedding") is not None
         enabled = settings.enable_heavy_models and settings.enable_bge_m3
-        checkpoint = Path(settings.bge_m3_checkpoint).expanduser()
-        local_checkpoint = checkpoint.exists()
-        assets_available = local_checkpoint or settings.bge_allow_download
+        checkpoint = settings.bge_m3_checkpoint
+        local_checkpoint = local_or_hf_cached_checkpoint(checkpoint)
+        assets_available = local_checkpoint is not None or settings.bge_allow_download
         active = enabled and installed and assets_available
         return AdapterStatus(
             adapter_id=self.adapter_id,
@@ -106,8 +109,9 @@ class BGEM3EmbeddingAdapter(VisionAdapter):
             installed=installed,
             model_version=self.model_version,
             metadata={
-                "checkpoint": str(checkpoint),
-                "local_checkpoint": local_checkpoint,
+                "checkpoint": checkpoint,
+                "resolved_checkpoint": str(local_checkpoint) if local_checkpoint else None,
+                "local_checkpoint": local_checkpoint is not None,
                 "allow_download": settings.bge_allow_download,
             },
         )
@@ -142,7 +146,7 @@ class BGEM3EmbeddingAdapter(VisionAdapter):
 class BGERerankerAdapter(VisionAdapter):
     adapter_id = "bge-reranker-v2-m3"
     stage = "retrieval_reranking"
-    model_version = "BAAI/bge-reranker-v2-m3"
+    model_version = "configured-bge-reranker"
 
     def __init__(self) -> None:
         self._model: Any | None = None
@@ -150,9 +154,11 @@ class BGERerankerAdapter(VisionAdapter):
     def status(self) -> AdapterStatus:
         installed = importlib.util.find_spec("FlagEmbedding") is not None
         enabled = settings.enable_heavy_models and settings.enable_bge_m3
-        checkpoint = Path(settings.bge_reranker_checkpoint).expanduser()
-        local_checkpoint = checkpoint.exists()
-        active = enabled and installed and (local_checkpoint or settings.bge_allow_download)
+        checkpoint = settings.bge_reranker_checkpoint
+        local_checkpoint = local_or_hf_cached_checkpoint(checkpoint)
+        active = enabled and installed and (
+            local_checkpoint is not None or settings.bge_allow_download
+        )
         return AdapterStatus(
             adapter_id=self.adapter_id,
             stage=self.stage,
@@ -164,10 +170,11 @@ class BGERerankerAdapter(VisionAdapter):
             ),
             enabled=enabled,
             installed=installed,
-            model_version=self.model_version,
+            model_version=checkpoint,
             metadata={
-                "checkpoint": str(checkpoint),
-                "local_checkpoint": local_checkpoint,
+                "checkpoint": checkpoint,
+                "resolved_checkpoint": str(local_checkpoint) if local_checkpoint else None,
+                "local_checkpoint": local_checkpoint is not None,
                 "allow_download": settings.bge_allow_download,
             },
         )
@@ -207,10 +214,16 @@ class LocalHybridRetrievalIndex:
         self._chunks: dict[str, VisionEvidenceChunk] = {}
         self._vectors: dict[str, HybridVector] = {}
         self._document_chunks: dict[str, set[str]] = {}
-        self.qdrant = QdrantHybridBackend()
+        self.qdrant = QdrantHybridBackend(
+            vector_namespace=self.embedding.collection_version,
+            expected_vector_size=self.embedding.dimensions,
+        )
         self._external_error: str | None = None
 
     def upsert_document(self, document_id: str, chunks: list[VisionEvidenceChunk]) -> None:
+        tenant_ids = {chunk.tenant_id for chunk in chunks}
+        if len(tenant_ids) > 1:
+            raise ValueError("A document replacement cannot span multiple tenants")
         for chunk_id in self._document_chunks.get(document_id, set()):
             self._chunks.pop(chunk_id, None)
             self._vectors.pop(chunk_id, None)
@@ -222,15 +235,33 @@ class LocalHybridRetrievalIndex:
         self._document_chunks[document_id] = ids
         if chunks and not self.force_local and self.qdrant.status().status == "active":
             try:
-                self.qdrant.upsert(chunks, [self._vectors[chunk.chunk_id] for chunk in chunks])
+                self.qdrant.replace_document(
+                    document_id,
+                    tenant_id=next(iter(tenant_ids)),
+                    chunks=chunks,
+                    vectors=[self._vectors[chunk.chunk_id] for chunk in chunks],
+                )
                 self._external_error = None
             except Exception as exc:
                 self._external_error = f"{type(exc).__name__}: {exc}"
 
     def remove_document(self, document_id: str) -> None:
-        for chunk_id in self._document_chunks.pop(document_id, set()):
+        existing_ids = self._document_chunks.pop(document_id, set())
+        tenant_ids = {
+            self._chunks[chunk_id].tenant_id
+            for chunk_id in existing_ids
+            if chunk_id in self._chunks
+        }
+        for chunk_id in existing_ids:
             self._chunks.pop(chunk_id, None)
             self._vectors.pop(chunk_id, None)
+        if not self.force_local and self.qdrant.status().status == "active":
+            try:
+                for tenant_id in tenant_ids:
+                    self.qdrant.delete_document(document_id, tenant_id=tenant_id)
+                self._external_error = None
+            except Exception as exc:
+                self._external_error = f"{type(exc).__name__}: {exc}"
 
     def search(
         self,
@@ -352,8 +383,22 @@ class QdrantHybridBackend(VisionAdapter):
     stage = "vector_store"
     model_version = "Qdrant"
 
-    def __init__(self, collection_name: str = "vision_evidence_chunks") -> None:
-        self.collection_name = collection_name
+    def __init__(
+        self,
+        collection_name: str = "vision_evidence_chunks",
+        *,
+        vector_namespace: str = "generic",
+        expected_vector_size: int | None = None,
+    ) -> None:
+        self.base_collection_name = collection_name
+        self.vector_namespace = self._slug(vector_namespace)
+        self.expected_vector_size = expected_vector_size
+        self._active_vector_size = expected_vector_size
+        self.collection_name = (
+            self._collection_for_dimension(expected_vector_size)
+            if expected_vector_size is not None
+            else collection_name
+        )
         self._client: Any | None = None
 
     def status(self) -> AdapterStatus:
@@ -371,13 +416,30 @@ class QdrantHybridBackend(VisionAdapter):
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
-            metadata={"collection": self.collection_name},
+            metadata={
+                "base_collection": self.base_collection_name,
+                "collection": self.collection_name,
+                "collection_template": (
+                    f"{self.base_collection_name}__{self.vector_namespace}__d{{dimensions}}_v1"
+                ),
+                "expected_vector_size": self.expected_vector_size,
+                "schema_policy": "non-destructive-dimension-versioned-v1",
+            },
         )
 
     def ensure_collection(self, vector_size: int) -> None:
         self.ensure_ready()
-        from qdrant_client.models import Distance, VectorParams
+        from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
 
+        if vector_size <= 0:
+            raise ValueError("Qdrant vectors must have a positive dimension")
+        if self.expected_vector_size is not None and vector_size != self.expected_vector_size:
+            raise ValueError(
+                "Vector dimension does not match the configured embedding profile: "
+                f"expected {self.expected_vector_size}, received {vector_size}"
+            )
+        self._active_vector_size = vector_size
+        self.collection_name = self._collection_for_dimension(vector_size)
         client = self._load()
         collections = {item.name for item in client.get_collections().collections}
         if self.collection_name not in collections:
@@ -385,11 +447,36 @@ class QdrantHybridBackend(VisionAdapter):
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
             )
+        collection = client.get_collection(self.collection_name)
+        configured_vectors = collection.config.params.vectors
+        configured_size = getattr(configured_vectors, "size", None)
+        configured_distance = getattr(configured_vectors, "distance", None)
+        if configured_size != vector_size or configured_distance != Distance.COSINE:
+            raise RuntimeError(
+                f"Qdrant collection {self.collection_name!r} has an incompatible vector schema; "
+                f"expected cosine/{vector_size}, found {configured_distance}/{configured_size}. "
+                "The collection was preserved and must be migrated explicitly."
+            )
+        payload_schema = dict(getattr(collection, "payload_schema", {}) or {})
+        for field_name in ("tenant_id", "document_id"):
+            if field_name in payload_schema:
+                continue
+            client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=field_name,
+                field_schema=PayloadSchemaType.KEYWORD,
+                wait=True,
+            )
 
     def upsert(self, chunks: list[VisionEvidenceChunk], vectors: list[HybridVector]) -> None:
         if not chunks:
             return
-        self.ensure_collection(len(vectors[0].dense))
+        if len(chunks) != len(vectors):
+            raise ValueError("Qdrant upsert requires one vector per chunk")
+        vector_size = len(vectors[0].dense)
+        if any(len(vector.dense) != vector_size for vector in vectors):
+            raise ValueError("Qdrant upsert vectors must have one consistent dimension")
+        self.ensure_collection(vector_size)
         from qdrant_client.models import PointStruct
 
         points = [
@@ -402,6 +489,51 @@ class QdrantHybridBackend(VisionAdapter):
         ]
         self._load().upsert(collection_name=self.collection_name, points=points, wait=True)
 
+    def replace_document(
+        self,
+        document_id: str,
+        *,
+        tenant_id: str,
+        chunks: list[VisionEvidenceChunk],
+        vectors: list[HybridVector],
+    ) -> None:
+        if not chunks or len(chunks) != len(vectors):
+            raise ValueError("A document replacement requires matching non-empty chunks and vectors")
+        if any(
+            chunk.document_id != document_id or chunk.tenant_id != tenant_id
+            for chunk in chunks
+        ):
+            raise ValueError("Replacement chunks must match the scoped tenant and document")
+        vector_size = len(vectors[0].dense)
+        if any(len(vector.dense) != vector_size for vector in vectors):
+            raise ValueError("Replacement vectors must have one consistent dimension")
+        self.ensure_collection(vector_size)
+        self.delete_document(document_id, tenant_id=tenant_id)
+        self.upsert(chunks, vectors)
+
+    def delete_document(self, document_id: str, *, tenant_id: str) -> None:
+        self.ensure_ready()
+        from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
+
+        client = self._load()
+        if self._active_vector_size is None:
+            return
+        collections = {item.name for item in client.get_collections().collections}
+        if self.collection_name not in collections:
+            return
+        client.delete(
+            collection_name=self.collection_name,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[
+                        FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id)),
+                        FieldCondition(key="document_id", match=MatchValue(value=document_id)),
+                    ]
+                )
+            ),
+            wait=True,
+        )
+
     def candidate_scores(
         self,
         dense: list[float],
@@ -413,6 +545,7 @@ class QdrantHybridBackend(VisionAdapter):
         self.ensure_ready()
         from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
 
+        self.ensure_collection(len(dense))
         must = [FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))]
         if document_ids:
             must.append(
@@ -433,6 +566,15 @@ class QdrantHybridBackend(VisionAdapter):
             for point in result.points
             if point.payload and point.payload.get("chunk_id")
         }
+
+    def _collection_for_dimension(self, vector_size: int) -> str:
+        return (
+            f"{self.base_collection_name}__{self.vector_namespace}__d{vector_size}_v1"
+        )
+
+    def _slug(self, value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
+        return normalized or "generic"
 
     def _load(self) -> Any:
         if self._client is None:

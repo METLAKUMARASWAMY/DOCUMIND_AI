@@ -262,11 +262,19 @@ export const api = {
       body: JSON.stringify({ password }),
     }),
 
-  ask: (question: string, options: { scope: string; documentId?: string; documentIds?: string[] }) =>
+  ask: (question: string, options: { scope: string; documentId?: string; documentIds?: string[]; clarificationOption?: string; conversationId?: string }) =>
     apiRequest<AskResponse>("/ai/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, scope: options.scope, document_id: options.documentId || null, document_ids: options.documentIds || [], top_k: 8 }),
+      body: JSON.stringify({
+        question,
+        conversation_id: options.conversationId || null,
+        clarification_option: options.clarificationOption || null,
+        scope: options.scope,
+        document_id: options.documentId || null,
+        document_ids: options.documentIds || [],
+        top_k: 8,
+      }),
     }),
   question: (id: string) => apiRequest<Record<string, unknown>>(`/ai/responses/${id}`),
   questionFeedback: (id: string, rating: string, comment: string) =>
@@ -279,7 +287,7 @@ export const api = {
   graphDocument: (id: string) => apiRequest<GraphProjection>(`/graph/document/${id}`),
   graphEntity: (id: string) => apiRequest<Record<string, unknown>>(`/graph/entity/${encodeURIComponent(id)}`),
   graphQuery: (question: string, documentId?: string) =>
-    apiRequest<Record<string, unknown>>("/graph/query", {
+    apiRequest<{ query_type: string; answer: AskResponse }>("/graph/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, document_id: documentId || null }),

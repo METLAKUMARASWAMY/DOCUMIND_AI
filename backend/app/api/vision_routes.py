@@ -712,10 +712,16 @@ async def confirm_vision_fraud(
 @router.post("/ask")
 async def ask_vision_documents(
     request: VisionAskRequest,
+    http_request: Request,
     user: AuthUser = Depends(require_user),
 ) -> dict:
     try:
-        answer = vision_ai_service.ask(request, user.tenant_id)
+        answer = vision_ai_service.ask(
+            request,
+            user.tenant_id,
+            conversation_id=http_request.headers.get("X-Session-ID"),
+            user_id=user.user_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _envelope(answer.model_dump(mode="json"))
@@ -733,12 +739,15 @@ async def vision_graph_for_document(
 @router.post("/graph/query")
 async def vision_graph_query(
     payload: dict[str, Any],
+    http_request: Request,
     user: AuthUser = Depends(require_user),
 ) -> dict:
     question = str(payload.get("question", ""))
     answer = vision_ai_service.ask(
         VisionAskRequest(question=question, document_id=payload.get("document_id")),
         user.tenant_id,
+        conversation_id=http_request.headers.get("X-Session-ID"),
+        user_id=user.user_id,
     )
     return _envelope(
         {
@@ -765,7 +774,7 @@ async def vision_analytics_overview(
 
 @router.get("/infrastructure/readiness")
 async def vision_infrastructure_readiness() -> dict:
-    return _envelope(vision_infrastructure_readiness_service.readiness())
+    return _envelope(await vision_infrastructure_readiness_service.readiness_async())
 
 
 @router.post("/evaluation/run")

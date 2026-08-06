@@ -1,4 +1,4 @@
-import { Alert, Box, Button, IconButton, MenuItem, TextField, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, IconButton, MenuItem, TextField, Tooltip, Typography } from "@mui/material";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ExternalLink, FileText, Send, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -10,6 +10,7 @@ import { StatusChip } from "../components/StatusChip";
 import type { AskResponse, Citation, VisionDocument } from "../types/api";
 
 interface Turn { question: string; response: AskResponse }
+interface AskSubmission { question: string; clarificationOption?: string }
 
 export function AskDocumentsPage() {
   const navigate = useNavigate();
@@ -19,17 +20,31 @@ export function AskDocumentsPage() {
   const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [conversationId, setConversationId] = useState<string>();
   const ask = useMutation({
-    mutationFn: () => api.ask(question, {
+    mutationFn: (submission: AskSubmission) => api.ask(submission.question, {
       scope,
       documentId: scope === "current_document" ? documentId || undefined : undefined,
       documentIds: scope === "selected_documents" ? documentIds : [],
+      clarificationOption: submission.clarificationOption,
+      conversationId,
     }),
-    onSuccess: (response) => {
-      setTurns((current) => [...current, { question, response }]);
+    onSuccess: (response, submission) => {
+      if (response.conversation_id) setConversationId(response.conversation_id);
+      setTurns((current) => [...current, { question: submission.question, response }]);
       setQuestion("");
     },
   });
+  const submit = (submittedQuestion: string, clarificationOption?: string) => {
+    const normalized = submittedQuestion.trim();
+    const scopeReady = !(
+      (scope === "current_document" && !documentId)
+      || (scope === "selected_documents" && !documentIds.length)
+    );
+    if (normalized && scopeReady && !ask.isPending) {
+      ask.mutate({ question: normalized, clarificationOption });
+    }
+  };
 
   const openCitation = (citation: Citation) => {
     navigate(`/documents/${citation.document_id}`, { state: { citation } });
@@ -54,10 +69,13 @@ export function AskDocumentsPage() {
                 {["Hi", "What is the fax number?", "Is this signed?", "Is this safe?"].map((prompt) => <Button key={prompt} variant="outlined" onClick={() => setQuestion(prompt)}>{prompt}</Button>)}
               </Box>
             </Box>
-          ) : turns.map((turn, index) => (
-            <Box className="conversation-turn" key={`${turn.response.question_id}-${index}`}>
-              <Box className="user-message"><Typography>{turn.question}</Typography></Box>
-              <Box className="answer-message">
+          ) : turns.map((turn, index) => {
+            const activeClarification = index === turns.length - 1
+              && turn.response.answer_status === "clarification_needed";
+            return (
+              <Box className="conversation-turn" key={`${turn.response.question_id}-${index}`}>
+                <Box className="user-message"><Typography>{turn.question}</Typography></Box>
+                <Box className="answer-message">
                 <Box className="answer-meta">
                   <StatusChip value={turn.response.answer_status} />
                   <Typography variant="caption">
@@ -69,6 +87,20 @@ export function AskDocumentsPage() {
                 </Box>
                 <Typography>{turn.response.answer}</Typography>
                 <Typography variant="body2" color="text.secondary">{turn.response.reasoning_summary}</Typography>
+                {turn.response.clarification_options.length ? (
+                  <Box className="clarification-options" aria-label="Clarification options">
+                    {turn.response.clarification_options.map((option) => (
+                      <Chip
+                        clickable
+                        disabled={ask.isPending || !activeClarification}
+                        key={option.option_id}
+                        label={option.label}
+                        onClick={() => submit(option.label, option.option_id)}
+                        variant="outlined"
+                      />
+                    ))}
+                  </Box>
+                ) : null}
                 {turn.response.requires_review ? <Alert severity="warning">This answer requires human review.</Alert> : null}
                 {turn.response.broader_scope_available ? <Button size="small" onClick={() => setScope("all_accessible")}>Use all accessible documents</Button> : null}
                 <Box className="citation-list">
@@ -82,14 +114,20 @@ export function AskDocumentsPage() {
                     </button>
                   ))}
                 </Box>
+                {turn.response.retrieval_trace?.sources_checked.length ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Checked {turn.response.retrieval_trace.sources_checked.length} evidence sources in {Math.round(turn.response.retrieval_trace.retrieval_duration_ms)} ms.
+                  </Typography>
+                ) : null}
                 <Box className="answer-feedback">
                   <Typography variant="caption">Was this supported?</Typography>
                   <Tooltip title="Helpful"><IconButton size="small" onClick={() => void api.questionFeedback(turn.response.question_id, "helpful", "") }><ThumbsUp size={15} /></IconButton></Tooltip>
                   <Tooltip title="Not helpful"><IconButton size="small" onClick={() => void api.questionFeedback(turn.response.question_id, "not_helpful", "") }><ThumbsDown size={15} /></IconButton></Tooltip>
                 </Box>
+                </Box>
               </Box>
-            </Box>
-          ))}
+            );
+          })}
           {ask.error ? <Alert severity="error">{ask.error.message}</Alert> : null}
         </Box>
         <Box className="ask-composer surface">
@@ -117,10 +155,10 @@ export function AskDocumentsPage() {
               placeholder="Ask a question about your documents"
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (question.trim()) ask.mutate(); } }}
+              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(question); } }}
               fullWidth
             />
-            <Button variant="contained" startIcon={<Send size={17} />} disabled={!question.trim() || ask.isPending || (scope === "current_document" && !documentId) || (scope === "selected_documents" && !documentIds.length)} onClick={() => ask.mutate()}>
+            <Button variant="contained" startIcon={<Send size={17} />} disabled={!question.trim() || ask.isPending || (scope === "current_document" && !documentId) || (scope === "selected_documents" && !documentIds.length)} onClick={() => submit(question)}>
               {ask.isPending ? "Finding evidence" : "Ask"}
             </Button>
           </Box>

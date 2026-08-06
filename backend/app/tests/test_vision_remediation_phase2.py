@@ -140,6 +140,38 @@ def test_reprocess_reuses_document_fields_chunks_and_review_identity():
     assert updated["review_task"]["review_id"] == initial_review_id
     assert updated["metadata"]["reprocess_count"] == 1
 
+    first_reprocess_field_ids = [item["field_id"] for item in updated["extracted_fields"]]
+    first_reprocess_chunk_ids = [item["chunk_id"] for item in updated["evidence_chunks"]]
+    first_reprocess_node_ids = [item["id"] for item in updated["graph"]["nodes"]]
+    first_reprocess_edge_ids = [item["id"] for item in updated["graph"]["edges"]]
+    second_response = client.post(
+        f"/api/v1/documents/{document_id}/reprocess",
+        headers=_headers(),
+    )
+    assert second_response.status_code == 200
+    second = client.get(
+        f"/api/v1/documents/{document_id}", headers=_headers()
+    ).json()["data"]
+
+    assert sorted(item["field_id"] for item in second["extracted_fields"]) == sorted(
+        first_reprocess_field_ids
+    )
+    assert sorted(item["chunk_id"] for item in second["evidence_chunks"]) == sorted(
+        first_reprocess_chunk_ids
+    )
+    assert sorted(item["id"] for item in second["graph"]["nodes"]) == sorted(
+        first_reprocess_node_ids
+    )
+    assert sorted(item["id"] for item in second["graph"]["edges"]) == sorted(
+        first_reprocess_edge_ids
+    )
+    assert len(first_reprocess_field_ids) == len(set(first_reprocess_field_ids))
+    assert len(first_reprocess_chunk_ids) == len(set(first_reprocess_chunk_ids))
+    assert len(first_reprocess_node_ids) == len(set(first_reprocess_node_ids))
+    assert len(first_reprocess_edge_ids) == len(set(first_reprocess_edge_ids))
+    assert second["review_task"]["review_id"] == initial_review_id
+    assert second["metadata"]["reprocess_count"] == 2
+
     listed = client.get("/api/v1/documents", headers=_headers()).json()["data"]["documents"]
     assert sum(item["document_id"] == document_id for item in listed) == 1
 

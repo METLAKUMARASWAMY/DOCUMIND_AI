@@ -8,10 +8,11 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { DocumentCanvas, type FocusRegion } from "../components/DocumentCanvas";
 import { ErrorState, LoadingRows } from "../components/Feedback";
+import { FieldCompletenessSummary } from "../components/FieldCompletenessSummary";
 import { PageHeader } from "../components/PageHeader";
 import { StatusChip } from "../components/StatusChip";
 import type { ExtractedField } from "../types/api";
-import { reviewApprovalControl } from "../utils/reviewPolicy";
+import { reviewApprovalControl, secondReviewerReady } from "../utils/reviewPolicy";
 
 export function ReviewWorkspacePage() {
   const { reviewId = "" } = useParams();
@@ -30,6 +31,8 @@ export function ReviewWorkspacePage() {
   const [fraudPassword, setFraudPassword] = useState("");
   const [fraudRationale, setFraudRationale] = useState("");
   const [automatedIndicatorsAcknowledged, setAutomatedIndicatorsAcknowledged] = useState(false);
+  const [secondReviewerEmail, setSecondReviewerEmail] = useState("");
+  const [secondReviewerApproved, setSecondReviewerApproved] = useState(false);
   const [dialogAction, setDialogAction] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { value: string; status: string }>>({});
   const document = reviewQuery.data?.document;
@@ -53,6 +56,8 @@ export function ReviewWorkspacePage() {
           automated_indicators_acknowledged: automatedIndicatorsAcknowledged,
           confirmation_acknowledged: confirmationAcknowledged,
           reauthentication_token: reauthentication.reauthentication_token,
+          second_reviewer_email: secondReviewerEmail || undefined,
+          second_reviewer_approved: secondReviewerApproved,
         });
       }
       if (action === "approve") {
@@ -104,6 +109,10 @@ export function ReviewWorkspacePage() {
     && selectedEvidence.length
     && automatedIndicatorsAcknowledged
     && confirmationAcknowledged
+    && (
+      !approvalPolicy?.fraud_second_reviewer_required
+      || secondReviewerReady(secondReviewerEmail, user?.email, secondReviewerApproved)
+    )
   );
 
   const toggleEvidence = (evidenceId: string) => {
@@ -115,6 +124,15 @@ export function ReviewWorkspacePage() {
   const openDecision = (action: string) => {
     setConfirmationAcknowledged(false);
     setDialogAction(action);
+  };
+  const closeDecision = () => {
+    setDialogAction(null);
+    setFraudPassword("");
+    setFraudRationale("");
+    setAutomatedIndicatorsAcknowledged(false);
+    setSecondReviewerEmail("");
+    setSecondReviewerApproved(false);
+    setConfirmationAcknowledged(false);
   };
 
   if (reviewQuery.isLoading) return <Box className="page-stack"><PageHeader title="Review workspace" /><LoadingRows rows={10} /></Box>;
@@ -129,7 +147,7 @@ export function ReviewWorkspacePage() {
       <Box className="review-workspace">
         <Box className="viewer-pane surface"><DocumentCanvas document={document} page={page} onPageChange={setPage} focus={focus} onRegionClick={setFocus} /></Box>
         <Box className="review-panel surface">
-          <Box className="review-summary"><Box><Typography variant="h3">Schema evidence</Typography><Typography color="text.secondary">Expected {document.field_completeness.expected_required_count ?? "unavailable"} | Extracted {document.field_completeness.extracted_count} | Missing {document.field_completeness.missing_required_fields.length} | Disputed {document.field_completeness.disputed_fields.length}</Typography></Box><Button startIcon={<CheckCheck size={16} />} onClick={() => void api.acceptHighConfidence(reviewId).then(() => reviewQuery.refetch())}>Accept high confidence</Button></Box>
+          <Box className="review-summary"><Box><Typography variant="h3">Schema evidence</Typography><FieldCompletenessSummary completeness={document.field_completeness} /></Box><Button startIcon={<CheckCheck size={16} />} onClick={() => void api.acceptHighConfidence(reviewId).then(() => reviewQuery.refetch())}>Accept high confidence</Button></Box>
           <Divider />
           <Box className="review-fields">
             {!document.extracted_fields.length ? <Alert severity="info">No structured fields were extracted from this document.</Alert> : null}
@@ -176,7 +194,7 @@ export function ReviewWorkspacePage() {
           </Box>
         </Box>
       </Box>
-      <Dialog open={Boolean(dialogAction)} onClose={() => setDialogAction(null)} maxWidth="sm" fullWidth>
+      <Dialog open={Boolean(dialogAction)} onClose={closeDecision} maxWidth="sm" fullWidth>
         <DialogTitle>{dialogAction?.replaceAll("-", " ")}</DialogTitle>
         <DialogContent>
           {dialogAction === "confirm-fraud" ? (
@@ -184,6 +202,22 @@ export function ReviewWorkspacePage() {
               <Alert severity="error">You are assigning CONFIRMED_FRAUD. Automated indicators do not independently prove fraud. Confirm that sufficient human-verified evidence has been reviewed.</Alert>
               <TextField type="password" label="Password" required value={fraudPassword} onChange={(event) => setFraudPassword(event.target.value)} fullWidth sx={{ mt: 2 }} />
               <TextField label="Decision rationale" required value={fraudRationale} onChange={(event) => setFraudRationale(event.target.value)} multiline minRows={3} fullWidth sx={{ mt: 2 }} />
+              {approvalPolicy?.fraud_second_reviewer_required ? (
+                <>
+                  <TextField
+                    type="email"
+                    label="Second reviewer email"
+                    required
+                    value={secondReviewerEmail}
+                    onChange={(event) => setSecondReviewerEmail(event.target.value)}
+                    error={Boolean(secondReviewerEmail) && !secondReviewerReady(secondReviewerEmail, user?.email, true)}
+                    helperText={secondReviewerEmail.trim().toLowerCase() === user?.email?.trim().toLowerCase() ? "The second reviewer must be a different user." : undefined}
+                    fullWidth
+                    sx={{ mt: 2 }}
+                  />
+                  <FormControlLabel control={<Checkbox checked={secondReviewerApproved} onChange={(event) => setSecondReviewerApproved(event.target.checked)} />} label="A distinct second reviewer approved this determination" />
+                </>
+              ) : null}
               <FormControlLabel control={<Checkbox checked={automatedIndicatorsAcknowledged} onChange={(event) => setAutomatedIndicatorsAcknowledged(event.target.checked)} />} label="I acknowledge that automated indicators alone are insufficient" />
               <FormControlLabel control={<Checkbox checked={confirmationAcknowledged} onChange={(event) => setConfirmationAcknowledged(event.target.checked)} />} label="I confirm sufficient human-verified evidence was reviewed" />
             </>
@@ -195,7 +229,7 @@ export function ReviewWorkspacePage() {
             <MenuItem value={dialogAction || ""}>{dialogAction?.replaceAll("-", " ")}</MenuItem>
           </TextField>
         </DialogContent>
-        <DialogActions><Button onClick={() => setDialogAction(null)}>Cancel</Button><Button variant="contained" color={dialogAction === "confirm-fraud" ? "error" : "primary"} disabled={decide.isPending || (dialogAction === "approve" && Boolean(approvalPolicy?.manual_override_required) && !confirmationAcknowledged) || (dialogAction === "confirm-fraud" && !fraudReady)} onClick={() => dialogAction && decide.mutate(dialogAction)}>Record decision</Button></DialogActions>
+        <DialogActions><Button onClick={closeDecision}>Cancel</Button><Button variant="contained" color={dialogAction === "confirm-fraud" ? "error" : "primary"} disabled={decide.isPending || (dialogAction === "approve" && Boolean(approvalPolicy?.manual_override_required) && !confirmationAcknowledged) || (dialogAction === "confirm-fraud" && !fraudReady)} onClick={() => dialogAction && decide.mutate(dialogAction)}>Record decision</Button></DialogActions>
       </Dialog>
     </Box>
   );

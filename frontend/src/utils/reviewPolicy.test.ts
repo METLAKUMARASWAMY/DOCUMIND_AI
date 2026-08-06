@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ApprovalPolicy } from "../types/api";
-import { reviewApprovalControl } from "./reviewPolicy";
+import { reviewApprovalControl, secondReviewerReady } from "./reviewPolicy";
 
 const basePolicy: ApprovalPolicy = {
   allowed: false,
@@ -83,5 +83,14 @@ describe("review approval controls", () => {
 
     expect(result.ready).toBe(false);
     expect(result.hardBlockers[0].code).toBe("bank_account_mismatch");
+  });
+});
+
+describe("second reviewer controls", () => {
+  it("requires a valid, approved reviewer distinct from the current actor", () => {
+    expect(secondReviewerReady("second@example.com", "actor@example.com", true)).toBe(true);
+    expect(secondReviewerReady("actor@example.com", "ACTOR@example.com", true)).toBe(false);
+    expect(secondReviewerReady("not-an-email", "actor@example.com", true)).toBe(false);
+    expect(secondReviewerReady("second@example.com", "actor@example.com", false)).toBe(false);
   });
 });

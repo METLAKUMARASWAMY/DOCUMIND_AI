@@ -149,7 +149,7 @@ test("repaired workspaces are connected, readable, and responsive", async ({ pag
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Admin settings" })).toBeVisible();
   await expect(page.getByText(/Requested state is deployment intent/)).toBeVisible();
-  await expect(page.getByText("deterministic-schema-extractor-v2")).toBeVisible();
+  await expect(page.getByText("deterministic-schema-extractor-v3")).toBeVisible();
   await capture(page, "admin-model-runtime.png");
 
   await page.setViewportSize({ width: 390, height: 844 });

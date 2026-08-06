@@ -8,6 +8,7 @@ class VisionQueryRouter:
     field_terms: ClassVar[set[str]] = {
         "address",
         "approval status",
+        "batch size",
         "bank account",
         "bank code",
         "branch",
@@ -22,11 +23,15 @@ class VisionQueryRouter:
         "governing law",
         "invoice date",
         "invoice number",
+        "original request",
         "organisation",
         "organization",
         "payment terms",
         "phone",
         "purchase order",
+        "product type",
+        "sample number",
+        "sample specifications",
         "tax",
         "total",
         "vendor",
@@ -48,6 +53,20 @@ class VisionQueryRouter:
         if re.fullmatch(r"(?:help|what can you do|how can you help|show me what to ask)[?.! ]*", lower):
             return "help"
         if lower in {
+            "yes",
+            "yes.",
+            "y",
+            "no",
+            "no.",
+            "n",
+            "check document quality",
+            "check suspicious indicators",
+            "check financial consistency",
+            "check signature or stamp presence",
+            "check approval status",
+        }:
+            return "clarification_response"
+        if lower in {
             "is this safe",
             "is this safe?",
             "is this okay",
@@ -56,13 +75,39 @@ class VisionQueryRouter:
             "check this",
         }:
             return "ambiguous_question"
+        if lower in {"is this document safe", "is this document safe?"}:
+            return "safety_question"
+        if any(
+            term in lower
+            for term in (
+                "approval status",
+                "approved",
+                "ready for approval",
+                "can this be approved",
+            )
+        ):
+            return "approval_question"
         if any(term in lower for term in ("sum", "average", "how much total", "calculate", "difference in total")):
             return "arithmetic_question"
         if any(term in lower for term in ("signed", "signature", "stamp", "seal", "checkbox", "logo", "handwritten")):
             return "visual_question"
         if any(term in lower for term in ("risk", "suspicious", "warning", "why was", "why is", "tamper", "anomaly")):
             return "risk_question"
-        if any(term in lower for term in ("relationship", "linked", "connected", "shares account", "related to", "different from vendor master")):
+        if any(
+            term in lower
+            for term in (
+                "relationship",
+                "linked",
+                "connected",
+                "shares account",
+                "related to",
+                "different from vendor master",
+                "who requested",
+                "made the original request",
+                "who wrote the sample specifications",
+                "specifications written by",
+            )
+        ):
             return "relationship_question"
         if any(term in lower for term in ("compare", "versus", "difference between", "same as")):
             return "comparison_question"
@@ -70,7 +115,9 @@ class VisionQueryRouter:
             r"\b(what|which|when|who|show|find|give|tell)\b",
             lower,
         ):
-            return "structured_lookup"
+            return "structured_field_lookup"
+        if any(term in lower for term in ("ocr", "read the line", "visible text", "what does the page say")):
+            return "ocr_lookup"
         if self._looks_unsupported(lower):
             return "unsupported_question"
         return "semantic_question"

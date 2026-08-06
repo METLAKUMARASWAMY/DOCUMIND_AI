@@ -197,6 +197,7 @@ class VisionReportService:
             "document_type": document.document_type.value,
             "status": document.status.value,
             "summary": self._summary(document),
+            "field_completeness": document.field_completeness.model_dump(mode="json"),
             "fields": [self._field_payload(field) for field in document.extracted_fields],
             "validation_results": [
                 risk.model_dump(mode="json")
@@ -274,10 +275,32 @@ class VisionReportService:
         return ""
 
     def _summary(self, document: VisionDocumentRecord) -> str:
+        completeness = document.field_completeness
+        required_expected = (
+            str(completeness.required_expected_count)
+            if completeness.required_expected_count is not None
+            else "unavailable"
+        )
+        required_matched = (
+            str(completeness.required_matched_count)
+            if completeness.required_matched_count is not None
+            else "unavailable"
+        )
+        required_missing = (
+            str(completeness.required_missing_count)
+            if completeness.required_missing_count is not None
+            else "unavailable"
+        )
         return (
             f"{document.filename} is classified as {document.document_type.value}, has "
             f"{document.page_count} page(s), {len(document.extracted_fields)} extracted field(s), "
-            f"and {len(document.risk_indicators)} review indicator(s)."
+            f"and {len(document.risk_indicators)} review indicator(s). Field completeness: "
+            f"required expected {required_expected}, required matched {required_matched}, "
+            f"required missing {required_missing}, optional extracted "
+            f"{completeness.optional_extracted_count}, total extracted "
+            f"{completeness.total_extracted_count}, duplicates rejected "
+            f"{completeness.duplicates_rejected_count}, disputed "
+            f"{completeness.disputed_count}."
         )
 
     def _mask(self, name: str, value: str) -> str:

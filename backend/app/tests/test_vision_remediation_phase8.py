@@ -96,9 +96,14 @@ def test_admin_smoke_and_requested_state_endpoints_are_truthful_and_authorized()
         item["model_id"]: item
         for item in models.json()["data"]["registry"]["backends"]
     }
-    assert registered["BAAI/bge-m3"]["requested"] is True
-    assert registered["BAAI/bge-m3"]["status"] != "active"
-    assert registered["BAAI/bge-m3"]["requirements"]["missing_checkpoint"] is True
+    bge = registered["BAAI/bge-m3"]
+    assert bge["requested"] is True
+    assert bge["status"] != "active"
+    requirements = bge["requirements"]
+    assert requirements["missing_checkpoint"] is (
+        requirements["checkpoint_required"]
+        and not requirements["checkpoint_present"]
+    )
 
 
 def test_model_lab_returns_expected_fields_and_null_unavailable_outputs():

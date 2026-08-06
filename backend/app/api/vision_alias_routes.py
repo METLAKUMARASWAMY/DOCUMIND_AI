@@ -472,10 +472,16 @@ async def alias_confirm_vision_fraud(
 @router.post("/ai/ask")
 async def alias_ask_vision_documents(
     request: VisionAskRequest,
+    http_request: Request,
     user: AuthUser = Depends(require_user),
 ) -> dict:
     try:
-        answer = vision_ai_service.ask(request, user.tenant_id)
+        answer = vision_ai_service.ask(
+            request,
+            user.tenant_id,
+            conversation_id=http_request.headers.get("X-Session-ID"),
+            user_id=user.user_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _envelope(answer.model_dump(mode="json"))
@@ -578,6 +584,7 @@ async def alias_vision_graph_entity(
 @router.post("/graph/query")
 async def alias_vision_graph_query(
     payload: dict[str, Any],
+    http_request: Request,
     user: AuthUser = Depends(require_user),
 ) -> dict:
     answer = vision_ai_service.ask(
@@ -586,6 +593,8 @@ async def alias_vision_graph_query(
             document_id=payload.get("document_id"),
         ),
         user.tenant_id,
+        conversation_id=http_request.headers.get("X-Session-ID"),
+        user_id=user.user_id,
     )
     return _envelope({"query_type": "vision_graph_or_evidence_search", "answer": answer.model_dump(mode="json")})
 

@@ -135,7 +135,7 @@ class ModelRegistryService:
                 model_id=self._ocr_model_id(),
                 provider="PaddleOCR",
                 enabled=settings.enable_heavy_models and settings.enable_paddleocr,
-                packages=["paddleocr"],
+                packages=["paddleocr", "paddle"],
                 enable_hint="Set ENABLE_HEAVY_MODELS=true and ENABLE_PADDLEOCR=true.",
                 notes="Target adapter for word polygons, bounding boxes, confidence, line IDs, and reading order.",
                 runtime_status=adapter_status["paddleocr"],
@@ -146,7 +146,7 @@ class ModelRegistryService:
                 model_id="PP-StructureV3 / PP-DocLayoutV3",
                 provider="PaddleOCR",
                 enabled=settings.enable_heavy_models and settings.enable_paddleocr_structure,
-                packages=["paddleocr"],
+                packages=["paddleocr", "paddle"],
                 enable_hint="Set ENABLE_HEAVY_MODELS=true and ENABLE_PADDLEOCR_STRUCTURE=true.",
                 notes="Target adapter for structure-aware regions, tables, merged cells, and reading order.",
                 runtime_status=adapter_status["structure"],
@@ -165,9 +165,10 @@ class ModelRegistryService:
             self._local_backend(
                 stage="classification_extraction",
                 role="schema-aware deterministic field extraction fallback",
-                model_id="deterministic-schema-extractor-v2",
+                model_id="deterministic-schema-extractor-v3",
                 packages=[],
                 notes="Extracts only source-backed values and reports missing schema fields explicitly.",
+                runtime_version="v3",
             ),
             self._target_backend(
                 stage="advanced_parsing",
@@ -175,7 +176,7 @@ class ModelRegistryService:
                 model_id="PaddleOCR-VL-1.6",
                 provider="PaddleOCR",
                 enabled=settings.enable_heavy_models and settings.enable_paddleocr_vl,
-                packages=["paddleocr"],
+                packages=["paddleocr", "paddle"],
                 enable_hint="Set ENABLE_HEAVY_MODELS=true and ENABLE_PADDLEOCR_VL=true.",
                 notes="Run only for low confidence, complex layout, conflict, mixed-language, or manual advanced mode.",
                 runtime_status=adapter_status["paddleocr_vl"],
@@ -292,7 +293,7 @@ class ModelRegistryService:
             self._target_backend(
                 stage="retrieval_reranking",
                 role="cross-encoder evidence reranking",
-                model_id="BAAI/bge-reranker-v2-m3",
+                model_id=self._bge_reranker_model_id(),
                 provider="FlagEmbedding",
                 enabled=settings.enable_heavy_models and settings.enable_bge_m3,
                 packages=["FlagEmbedding"],
@@ -347,12 +348,15 @@ class ModelRegistryService:
             self._target_backend(
                 stage="generator",
                 role="local provider-independent LLM adapter",
-                model_id="Qwen3.5-9B",
+                model_id=self._local_llm_model_id(),
                 provider="local-transformers",
                 enabled=settings.enable_heavy_models and settings.enable_qwen_local,
                 packages=["transformers"],
                 enable_hint="Set ENABLE_HEAVY_MODELS=true and ENABLE_QWEN_LOCAL=true.",
-                notes="Generator must receive only retrieved evidence, verified facts, and deterministic calculations.",
+                notes=(
+                    "Exact configured local Transformers checkpoint; generator receives only "
+                    "retrieved evidence, verified facts, and deterministic calculations."
+                ),
                 runtime_status=adapter_status["qwen"],
             ),
             self._target_backend(
@@ -496,6 +500,7 @@ class ModelRegistryService:
         packages: list[str],
         notes: str,
         runtime_status: Any | None = None,
+        runtime_version: str | None = None,
     ) -> dict[str, Any]:
         if runtime_status is not None:
             return {
@@ -531,6 +536,7 @@ class ModelRegistryService:
             else f"Missing optional packages: {', '.join(missing)}.",
             "packages": packages,
             "notes": notes,
+            "runtime": {"model_version": runtime_version} if runtime_version else {},
         }
 
     def _target_backend(
@@ -685,6 +691,11 @@ class ModelRegistryService:
         item.update(
             {
                 "package_version": self._package_version(item.get("packages", [])),
+                "package_versions": {
+                    package: version
+                    for package in item.get("packages", [])
+                    if (version := self._package_version([package])) is not None
+                },
                 "requirements": {
                     **requirements,
                     "missing_packages": missing_packages,
@@ -703,11 +714,11 @@ class ModelRegistryService:
         values: dict[str, dict[str, Any]] = {
             profile_ocr: {
                 "environment_variables": ["ENABLE_HEAVY_MODELS", "ENABLE_PADDLEOCR"],
-                "preparation_command": "pip install -r backend/requirements/ai-standard.txt",
+                "preparation_command": "scripts/bootstrap_ai_core.sh --allow-paddle-model-downloads",
             },
             "PP-StructureV3 / PP-DocLayoutV3": {
                 "environment_variables": ["ENABLE_HEAVY_MODELS", "ENABLE_PADDLEOCR_STRUCTURE"],
-                "preparation_command": "pip install -r backend/requirements/ai-standard.txt",
+                "preparation_command": "scripts/bootstrap_ai_core.sh --allow-paddle-model-downloads",
             },
             profile_layoutlm: {
                 "environment_variables": [
@@ -720,7 +731,7 @@ class ModelRegistryService:
             },
             "PaddleOCR-VL-1.6": {
                 "environment_variables": ["ENABLE_HEAVY_MODELS", "ENABLE_PADDLEOCR_VL"],
-                "preparation_command": "pip install -r backend/requirements/ai-full.txt",
+                "preparation_command": "python -m pip install -r backend/requirements/ai-full.txt",
             },
             "Donut": {
                 "environment_variables": [
@@ -771,16 +782,16 @@ class ModelRegistryService:
                     "BGE_M3_CHECKPOINT",
                 ],
                 "checkpoint_required": not settings.bge_allow_download,
-                "preparation_command": "Provide a local BGE_M3_CHECKPOINT or explicitly set BGE_ALLOW_DOWNLOAD=true.",
+                "preparation_command": "scripts/bootstrap_ai_core.sh --allow-bge-downloads",
             },
-            "BAAI/bge-reranker-v2-m3": {
+            self._bge_reranker_model_id(): {
                 "environment_variables": [
                     "ENABLE_HEAVY_MODELS",
                     "ENABLE_BGE_M3",
                     "BGE_RERANKER_CHECKPOINT",
                 ],
                 "checkpoint_required": not settings.bge_allow_download,
-                "preparation_command": "Provide a local BGE_RERANKER_CHECKPOINT or explicitly set BGE_ALLOW_DOWNLOAD=true.",
+                "preparation_command": "scripts/bootstrap_ai_core.sh --allow-bge-downloads",
             },
             "Qdrant": {
                 "environment_variables": ["ENABLE_QDRANT", "QDRANT_URL"],
@@ -795,14 +806,17 @@ class ModelRegistryService:
                 ],
                 "preparation_command": "docker compose up -d neo4j",
             },
-            "Qwen3.5-9B": {
+            self._local_llm_model_id(): {
                 "environment_variables": [
                     "ENABLE_HEAVY_MODELS",
                     "ENABLE_QWEN_LOCAL",
                     "QWEN_CHECKPOINT",
                 ],
                 "checkpoint_required": not settings.qwen_allow_download,
-                "preparation_command": "Provide a local QWEN_CHECKPOINT or explicitly set QWEN_ALLOW_DOWNLOAD=true.",
+                "preparation_command": (
+                    "scripts/bootstrap_ai_core.sh --local-llm-checkpoint "
+                    f"{settings.qwen_checkpoint!r}"
+                ),
             },
             settings.external_llm_model or "external-provider-model": {
                 "environment_variables": [
@@ -833,7 +847,7 @@ class ModelRegistryService:
             ("retrieval", "BAAI/bge-m3", "local-hashing-v1"),
             ("vector_store", "Qdrant", "local-vector-store-v1"),
             ("graph", "Neo4j", "local-graph-projection-v1"),
-            ("generator", "Qwen3.5-9B", "grounded-template-generator-v1"),
+            ("generator", self._local_llm_model_id(), "grounded-template-generator-v1"),
         ]
         output = []
         for stage, primary_id, fallback_id in pairs:
@@ -868,12 +882,27 @@ class ModelRegistryService:
     def _checkpoint_present(self, value: Any) -> bool:
         if not value:
             return False
-        path = Path(str(value)).expanduser()
-        return path.exists()
+        from app.services.vision.checkpoint_utils import local_or_hf_cached_checkpoint
+
+        return local_or_hf_cached_checkpoint(str(value)) is not None
 
     def _package_version(self, packages: list[str]) -> str | None:
         for package in packages:
-            candidates = [package, package.replace("_", "-"), package.lower()]
+            distribution_names = {
+                "fitz": ["PyMuPDF"],
+                "docx": ["python-docx"],
+                "cv2": ["opencv-python-headless", "opencv-python"],
+                "PIL": ["Pillow"],
+                "sklearn": ["scikit-learn"],
+                "paddle": ["paddlepaddle"],
+                "qdrant_client": ["qdrant-client"],
+            }
+            candidates = [
+                *distribution_names.get(package, []),
+                package,
+                package.replace("_", "-"),
+                package.lower(),
+            ]
             for candidate in candidates:
                 try:
                     return importlib.metadata.version(candidate)
@@ -894,6 +923,27 @@ class ModelRegistryService:
         if profile == "STANDARD":
             return "YOLO26s"
         return "YOLO26n"
+
+    def _local_llm_model_id(self) -> str:
+        configured = str(settings.qwen_checkpoint or "").strip()
+        if configured and not Path(configured).expanduser().exists():
+            return configured
+        if configured:
+            config_path = Path(configured).expanduser() / "config.json"
+            try:
+                import json
+
+                payload = json.loads(config_path.read_text(encoding="utf-8"))
+                source_name = str(payload.get("_name_or_path") or "").strip()
+                if source_name:
+                    return source_name
+            except (OSError, ValueError, TypeError):
+                pass
+            return f"local:{Path(configured).expanduser().name}"
+        return "local-transformers-model"
+
+    def _bge_reranker_model_id(self) -> str:
+        return str(settings.bge_reranker_checkpoint or "BAAI/bge-reranker-v2-m3")
 
     def _profile(self) -> str:
         value = (settings.model_profile or "LITE").upper()

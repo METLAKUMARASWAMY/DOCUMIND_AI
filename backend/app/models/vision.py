@@ -106,7 +106,9 @@ class VisionBoundingBox(BaseModel):
     @model_validator(mode="after")
     def validate_order(self):
         if self.x2 < self.x1 or self.y2 < self.y1:
-            raise ValueError("Bounding-box maximum coordinates must not precede minimum coordinates")
+            raise ValueError(
+                "Bounding-box maximum coordinates must not precede minimum coordinates"
+            )
         return self
 
 
@@ -294,9 +296,7 @@ class ExtractedVisionField(BaseModel):
         if self.ocr_confidence is None:
             self.ocr_confidence = self.confidence_components.get("ocr_confidence")
         if self.extraction_confidence is None:
-            self.extraction_confidence = self.confidence_components.get(
-                "extraction_confidence"
-            )
+            self.extraction_confidence = self.confidence_components.get("extraction_confidence")
         if self.calibrated_confidence is None and self.calibrated:
             self.calibrated_confidence = self.confidence
         self.verification_status = self.reviewer_status.value
@@ -334,9 +334,7 @@ class VisionRiskIndicator(BaseModel):
             ]
         if self.confidence is None and self.evidence:
             values = [
-                item.model_confidence
-                for item in self.evidence
-                if item.model_confidence is not None
+                item.model_confidence for item in self.evidence if item.model_confidence is not None
             ]
             self.confidence = max(values) if values else None
         self.review_status = self.reviewer_status.value
@@ -367,6 +365,17 @@ class VisionFieldCompleteness(BaseModel):
     invalid_fields: list[str] = Field(default_factory=list)
     disputed_fields: list[str] = Field(default_factory=list)
     manually_resolved_fields: list[str] = Field(default_factory=list)
+    required_matched_fields: list[str] = Field(default_factory=list)
+    optional_extracted_fields: list[str] = Field(default_factory=list)
+    duplicate_fields: list[str] = Field(default_factory=list)
+    required_expected_count: int | None = Field(default=None, ge=0)
+    required_matched_count: int | None = Field(default=None, ge=0)
+    required_missing_count: int | None = Field(default=None, ge=0)
+    optional_extracted_count: int = Field(default=0, ge=0)
+    total_extracted_count: int = Field(default=0, ge=0)
+    duplicates_rejected_count: int = Field(default=0, ge=0)
+    disputed_count: int = Field(default=0, ge=0)
+    # Backward-compatible names retained for existing API clients.
     expected_required_count: int | None = Field(default=None, ge=0)
     extracted_count: int = Field(default=0, ge=0)
     unresolved_required_count: int | None = Field(default=None, ge=0)
@@ -571,15 +580,9 @@ class VisionDocumentRecord(BaseModel):
     visual_detections: list[VisualDetection] = Field(default_factory=list)
     tamper_analysis: list[TamperAnalysisResult] = Field(default_factory=list)
     extracted_fields: list[ExtractedVisionField] = Field(default_factory=list)
-    confidence_summary: VisionConfidenceSummary = Field(
-        default_factory=VisionConfidenceSummary
-    )
-    field_completeness: VisionFieldCompleteness = Field(
-        default_factory=VisionFieldCompleteness
-    )
-    language_analysis: VisionLanguageAnalysis = Field(
-        default_factory=VisionLanguageAnalysis
-    )
+    confidence_summary: VisionConfidenceSummary = Field(default_factory=VisionConfidenceSummary)
+    field_completeness: VisionFieldCompleteness = Field(default_factory=VisionFieldCompleteness)
+    language_analysis: VisionLanguageAnalysis = Field(default_factory=VisionLanguageAnalysis)
     processing_warnings: list[VisionRiskIndicator] = Field(default_factory=list)
     risk_indicators: list[VisionRiskIndicator] = Field(default_factory=list)
     duplicate_candidates: list[DuplicateCandidate] = Field(default_factory=list)
@@ -651,8 +654,38 @@ class VisionReviewDecisionRequest(BaseModel):
     second_reviewer_approved: bool = False
 
 
+class VisionClarificationOption(BaseModel):
+    option_id: str
+    label: str
+    resolved_question: str
+    query_type: str
+
+
+class VisionRetrievalTrace(BaseModel):
+    trace_id: str = Field(default_factory=lambda: f"retrieval-{uuid4().hex[:12]}")
+    sources_checked: list[str] = Field(default_factory=list)
+    candidate_counts: dict[str, int] = Field(default_factory=dict)
+    selected_evidence: list[str] = Field(default_factory=list)
+    retrieval_duration_ms: float = Field(default=0.0, ge=0)
+    retriever_versions: dict[str, str] = Field(default_factory=dict)
+
+
+class VisionConversationState(BaseModel):
+    conversation_id: str
+    user_id: str
+    organisation_id: str
+    selected_scope: dict[str, Any] = Field(default_factory=dict)
+    pending_clarification: dict[str, Any] = Field(default_factory=dict)
+    last_query_type: str = ""
+    turns: list[dict[str, Any]] = Field(default_factory=list)
+    expires_at: str
+    updated_at: str
+
+
 class VisionAskRequest(BaseModel):
     question: str
+    conversation_id: str | None = Field(default=None, max_length=200)
+    clarification_option: str | None = Field(default=None, max_length=100)
     document_id: str | None = None
     document_ids: list[str] = Field(default_factory=list)
     scope: str = Field(
@@ -687,6 +720,8 @@ class VisionAskCitation(BaseModel):
     model_version: str = "v1"
     processing_timestamp: str | None = None
     reviewer_status: ReviewerStatus = ReviewerStatus.unverified
+    extraction_status: str = "unverified"
+    evidence_type: str = "document_evidence"
 
     @computed_field
     @property
@@ -709,6 +744,13 @@ class VisionAskResponse(BaseModel):
     retrieval_path: str = "not_used"
     scope: dict[str, Any] = Field(default_factory=dict)
     broader_scope_available: bool = False
+    conversation_id: str | None = None
+    resolved_question: str | None = None
+    clarification_options: list[VisionClarificationOption] = Field(default_factory=list)
+    retrieval_trace_id: str | None = None
+    retrieval_trace: VisionRetrievalTrace | None = None
+    reranker: str = "not_used"
+    graph_paths: list[dict[str, Any]] = Field(default_factory=list)
 
     @computed_field
     @property

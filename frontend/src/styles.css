@@ -142,6 +142,9 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .queue-reasons { max-width: 360px; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
 .queue-reasons .MuiChip-root { max-width: 220px; }
 .review-summary { padding: 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.field-completeness-summary { display: grid; grid-template-columns: repeat(4,minmax(105px,1fr)); gap: 8px; margin-top: 10px; }
+.field-completeness-item { min-width: 0; padding: 7px 9px; border: 1px solid #dfe4e8; border-radius: 4px; background: #f7f9fa; }
+.field-completeness-item .MuiTypography-root { display: block; }
 .review-fields { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px; }
 .review-field { display: grid; gap: 7px; padding: 12px 0; border-bottom: 1px solid #e3e7ea; }
 .review-field-heading { display: flex; justify-content: space-between; gap: 8px; }
@@ -158,6 +161,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .user-message { justify-self: end; max-width: min(650px,80%); padding: 10px 13px; color: #fff; background: #12324a; border-radius: 6px 6px 1px 6px; }
 .answer-message { max-width: min(850px,94%); display: grid; gap: 10px; }
 .answer-meta, .answer-feedback { display: flex; align-items: center; gap: 8px; }
+.clarification-options { display: flex; flex-wrap: wrap; gap: 7px; }
 .citation-list { display: grid; gap: 6px; }
 .citation-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; text-align: left; color: inherit; background: #f7f9fa; border: 1px solid #dfe4e8; border-radius: 5px; cursor: pointer; }
 .citation-row:hover { border-color: #087f78; }
@@ -183,7 +187,8 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .graph-icon-actions { margin-left: auto; display: flex; align-items: center; }
 .graph-path-controls .MuiTextField-root { min-width: 210px; }
 .graph-main { min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; }
-.graph-canvas { min-width: 0; min-height: 420px; background: #fafbfb; }
+.graph-canvas { position: relative; min-width: 0; min-height: 420px; background: #fafbfb; }
+.graph-hover-label { position: absolute; z-index: 30; max-width: min(360px,80%); padding: 5px 7px; pointer-events: none; color: #fff; background: rgba(18,50,74,.94); border-radius: 3px; box-shadow: 0 3px 10px rgba(18,35,45,.2); font-size: .72rem; line-height: 1.35; overflow-wrap: anywhere; }
 .graph-details { width: 340px; max-width: 38vw; overflow-y: auto; border-left: 1px solid #dfe4e8; background: #fff; }
 .graph-detail-content { padding: 18px; display: grid; align-content: start; gap: 12px; overflow-wrap: anywhere; }
 .graph-detail-content .MuiChip-root { justify-self: start; }
@@ -196,9 +201,11 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .swatch-Organisation, .swatch-Vendor, .swatch-Customer { border-radius: 2px; background: #087f78; }
 .swatch-Person { background: #3568a8; }
 .swatch-ContactMethod, .swatch-Address { border-radius: 1px; transform: rotate(45deg); background: #5b7f3b; }
-.swatch-Invoice, .swatch-PurchaseOrder, .swatch-Contract, .swatch-Payment { border-radius: 2px; background: #c28a13; }
+.swatch-Date, .swatch-Form, .swatch-Identifier { border-radius: 2px; background: #6b7280; }
+.swatch-Invoice, .swatch-PurchaseOrder, .swatch-Contract, .swatch-Amount { border-radius: 2px; background: #c28a13; }
+.swatch-Product { border-radius: 2px; background: #8b6d1f; }
 .swatch-BankAccount, .swatch-TaxIdentifier { background: #7b5ca7; }
-.swatch-Signature { background: #b45f83; }
+.swatch-Signature, .swatch-Stamp { background: #b45f83; }
 .swatch-RiskIndicator { border-radius: 1px; background: #b42318; }
 .swatch-ExtractedField { background: #c5ccd1; }
 .edge-swatch { width: 22px; height: 0; display: inline-block; border-top: 2px solid #287a54; }
@@ -282,6 +289,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .graph-query-bar .MuiTextField-root:nth-child(2), .graph-controls > .MuiTextField-root:first-child, .graph-path-controls .MuiTextField-root { min-width: 0; }
   .graph-icon-actions { width: auto; margin-left: 0; }
   .review-summary { flex-direction: column; }
+  .field-completeness-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .review-queue-filters { grid-template-columns: 1fr; }
   .decision-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
   .auth-form-wrap { padding: 24px 18px; }

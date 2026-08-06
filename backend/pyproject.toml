@@ -61,6 +61,10 @@ dev = [
 pythonpath = ["."]
 testpaths = ["app/tests", "tests"]
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["tests*", "var*", "config*", "migrations*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

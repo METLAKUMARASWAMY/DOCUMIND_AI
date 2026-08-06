@@ -31,6 +31,7 @@ class ApprovalPolicyEvaluation(BaseModel):
     required_evidence_ids: list[str] = Field(default_factory=list)
     confidence_threshold: float
     message: str
+    fraud_second_reviewer_required: bool = False
 
 
 class ApprovalPolicyViolation(ValueError):

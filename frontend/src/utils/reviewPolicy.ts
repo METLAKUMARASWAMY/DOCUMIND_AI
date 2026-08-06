@@ -38,3 +38,17 @@ export function reviewApprovalControl(input: ApprovalControlInput): ApprovalCont
     input.selectedEvidenceIds.includes(id));
   return { hardBlockers, ready: commentReady && reviewed };
 }
+
+export function secondReviewerReady(
+  reviewerEmail: string,
+  actorEmail: string | undefined,
+  approved: boolean,
+): boolean {
+  const normalizedReviewer = reviewerEmail.trim().toLowerCase();
+  const normalizedActor = actorEmail?.trim().toLowerCase() || "";
+  return Boolean(
+    approved
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedReviewer)
+    && normalizedReviewer !== normalizedActor
+  );
+}

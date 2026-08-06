@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     minio_bucket: str = Field(default="documind-documents", alias="MINIO_BUCKET")
     chroma_host: str = Field(default="chroma", alias="CHROMA_HOST")
     neo4j_uri: str = Field(default="bolt://neo4j:7687", alias="NEO4J_URI")
+    neo4j_instance_id: str | None = Field(default=None, alias="NEO4J_INSTANCE_ID")
+    neo4j_auth: str | None = Field(default=None, alias="NEO4J_AUTH", exclude=True)
     neo4j_user: str | None = Field(default=None, alias="NEO4J_USER")
     neo4j_password: str | None = Field(default=None, alias="NEO4J_PASSWORD")
     neo4j_database: str = Field(default="neo4j", alias="NEO4J_DATABASE")
@@ -187,6 +189,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secrets(self):
+        if self.neo4j_auth and (not self.neo4j_user or not self.neo4j_password):
+            user, separator, password = self.neo4j_auth.partition("/")
+            if separator and user and password:
+                self.neo4j_user = user
+                self.neo4j_password = password
         if self.app_env.lower() in {"production", "prod"}:
             if not self.auth_secret or len(self.auth_secret) < 32:
                 raise ValueError("DOCUMIND_AUTH_SECRET must contain at least 32 characters in production")

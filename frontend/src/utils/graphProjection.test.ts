@@ -27,6 +27,7 @@ describe("graph projection helpers", () => {
 
   it("filters edges with their visible endpoints", () => {
     expect(filterGraphProjection(graph, "all", "proposed").edges.map((edge) => edge.id)).toEqual(["proposed"]);
+    expect(filterGraphProjection(graph, "all", "all", "ISSUED_BY").edges.map((edge) => edge.id)).toEqual(["verified"]);
     expect(filterGraphProjection(graph, "Vendor", "all")).toEqual({ nodes: graph.nodes, edges: graph.edges });
   });
 });

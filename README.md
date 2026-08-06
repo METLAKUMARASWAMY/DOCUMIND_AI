@@ -85,6 +85,20 @@ docker compose up --build
 
 The Compose profile starts `backend`, `worker`, `frontend`, Redis, MongoDB, Qdrant, MinIO, Neo4j, Chroma, and PostgreSQL. The backend and worker share `./var:/app/var`; Vision jobs use Celery/Redis in Compose and the local background-task fallback outside `ENABLE_REDIS=true`.
 
+For a PostgreSQL server configured through `DATABASE_URL` in `backend/.env`, inspect connectivity and migration state without changing the database:
+
+```bash
+python scripts/migrate_postgres.py
+```
+
+Apply the initial schema and migrations 002/003 explicitly with:
+
+```bash
+python scripts/migrate_postgres.py --execute
+```
+
+The command accepts both `postgresql://` and SQLAlchemy-style `postgresql+asyncpg://` URLs, uses an authenticated `SELECT 1`, serializes migration execution with an advisory lock, and records checksums in `documind_schema_migrations`. Its JSON output contains only a safe host/port/database summary; credentials and driver exception text are never emitted. Re-running `--execute` skips recorded migrations, while a changed checksum blocks execution. The infrastructure readiness endpoint performs the same bounded PostgreSQL connectivity probe whenever `DATABASE_URL` is configured.
+
 Seed the Vision AI demo after the backend is running:
 
 ```bash

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
 import mimetypes
 import re
 import threading
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -35,8 +37,14 @@ GRAPH_NODE_LABELS = frozenset(
         "TaxIdentifier",
         "Address",
         "ContactMethod",
+        "Date",
+        "Amount",
+        "Identifier",
+        "Product",
+        "Form",
         "Payment",
         "Signature",
+        "Stamp",
         "RiskIndicator",
         "ExtractedField",
     }
@@ -45,6 +53,7 @@ GRAPH_RELATIONSHIP_TYPES = frozenset(
     {
         "OWNS",
         "CONTAINS",
+        "CONTAINS_PAGE",
         "SUBMITTED",
         "ISSUED_BY",
         "ISSUED_TO",
@@ -56,6 +65,20 @@ GRAPH_RELATIONSHIP_TYPES = frozenset(
         "LOCATED_AT",
         "HAS_CONTACT",
         "HAS_FIELD",
+        "HAS_DATE",
+        "HAS_TITLE",
+        "HAS_SAMPLE_NUMBER",
+        "HAS_PRODUCT_TYPE",
+        "HAS_BATCH_SIZE",
+        "REQUESTED_BY",
+        "SPECIFICATIONS_WRITTEN_BY",
+        "ASSOCIATED_WITH",
+        "HAS_BANK_ACCOUNT",
+        "HAS_CLIENT_NUMBER",
+        "HAS_FAX",
+        "HAS_PHONE",
+        "SENT",
+        "SENT_TO",
         "HAS_RISK",
         "SIGNED_BY",
         "DUPLICATE_OF",
@@ -79,6 +102,8 @@ class VisionPersistenceCoordinator:
 
     def initialize(self) -> dict[str, Any]:
         with self._lock:
+            if settings.database_url:
+                self._initialize_postgresql()
             if settings.enable_mongodb:
                 self._initialize_mongodb()
             if settings.enable_redis:
@@ -201,6 +226,10 @@ class VisionPersistenceCoordinator:
                 self._record_error("redis", exc)
         if settings.enable_minio and document.page_artifacts:
             self._store_artifacts(document)
+        if settings.database_url:
+            self._run_postgresql(
+                lambda connection: self._postgresql_save_document(connection, document)
+            )
 
     def save_auth_user(self, user: dict[str, Any], password_hash: str) -> None:
         if not settings.enable_mongodb:
@@ -374,26 +403,90 @@ class VisionPersistenceCoordinator:
         return [VisionReviewTask.model_validate(item) for item in records]
 
     def save_question(self, question: dict[str, Any]) -> None:
-        if not settings.enable_mongodb:
-            return
-        try:
-            self._mongo_database_handle().questions.replace_one(
-                {
-                    "tenant_id": question.get("tenant_id"),
-                    "question_id": question["question_id"],
-                },
-                self._protect(question),
-                upsert=True,
+        if settings.enable_mongodb:
+            try:
+                self._mongo_database_handle().questions.replace_one(
+                    {
+                        "tenant_id": question.get("tenant_id"),
+                        "question_id": question["question_id"],
+                    },
+                    self._protect(question),
+                    upsert=True,
+                )
+                self._errors.pop("mongodb", None)
+            except Exception as exc:
+                self._record_error("mongodb", exc)
+        if settings.database_url:
+            self._run_postgresql(
+                lambda connection: self._postgresql_save_retrieval_trace(
+                    connection,
+                    question,
+                )
             )
-            self._errors.pop("mongodb", None)
-        except Exception as exc:
-            self._record_error("mongodb", exc)
 
     def get_question(self, question_id: str, tenant_id: str) -> dict[str, Any] | None:
         return self._find_one(
             "questions",
             {"tenant_id": tenant_id, "question_id": question_id},
         )
+
+    def save_conversation(self, conversation: dict[str, Any]) -> None:
+        """Persist tenant- and user-scoped conversational retrieval state."""
+        if settings.enable_mongodb:
+            try:
+                payload = {
+                    **conversation,
+                    "tenant_id": conversation.get("organisation_id"),
+                }
+                expires_at = payload.get("expires_at")
+                if isinstance(expires_at, str):
+                    payload["expires_at"] = _utc_datetime(expires_at)
+                self._mongo_database_handle().conversations.replace_one(
+                    {
+                        "tenant_id": conversation.get("organisation_id"),
+                        "user_id": conversation.get("user_id"),
+                        "conversation_id": conversation["conversation_id"],
+                    },
+                    self._protect(payload),
+                    upsert=True,
+                )
+                self._errors.pop("mongodb", None)
+            except Exception as exc:
+                self._record_error("mongodb", exc)
+        if settings.database_url:
+            self._run_postgresql(
+                lambda connection: self._postgresql_save_conversation(
+                    connection,
+                    conversation,
+                )
+            )
+
+    def get_conversation(
+        self,
+        conversation_id: str,
+        tenant_id: str,
+        user_id: str,
+    ) -> dict[str, Any] | None:
+        payload = self._find_one(
+            "conversations",
+            {
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+            },
+        )
+        if payload and isinstance(payload.get("expires_at"), datetime):
+            payload["expires_at"] = payload["expires_at"].isoformat()
+        if payload is None and settings.database_url:
+            payload = self._run_postgresql(
+                lambda connection: self._postgresql_get_conversation(
+                    connection,
+                    conversation_id,
+                    tenant_id,
+                    user_id,
+                )
+            )
+        return payload
 
     def save_report(self, report: dict[str, Any], content: bytes | None = None) -> str | None:
         if settings.enable_mongodb:
@@ -506,6 +599,7 @@ class VisionPersistenceCoordinator:
         return {
             "initialized": self._initialized,
             "enabled": {
+                "postgresql": bool(settings.database_url),
                 "mongodb": settings.enable_mongodb,
                 "redis": settings.enable_redis,
                 "minio": settings.enable_minio,
@@ -515,6 +609,362 @@ class VisionPersistenceCoordinator:
             "errors": dict(self._errors),
             "status": "degraded" if self._errors else "ready",
         }
+
+    def _initialize_postgresql(self) -> None:
+        self._run_postgresql(lambda connection: connection.execute("SELECT 1"))
+
+    def _run_postgresql(self, operation: Any) -> Any:
+        """Run one asyncpg unit of work without borrowing the caller's event loop."""
+        if not settings.database_url:
+            return None
+
+        async def invoke() -> Any:
+            import asyncpg
+
+            connection = await asyncpg.connect(
+                dsn=self._postgresql_dsn(),
+                timeout=5,
+                command_timeout=5,
+            )
+            try:
+                return await operation(connection)
+            finally:
+                await connection.close()
+
+        try:
+            result = _run_async_in_thread(invoke)
+            self._errors.pop("postgresql", None)
+            return result
+        except Exception as exc:
+            self._record_error("postgresql", exc)
+            return None
+
+    def _postgresql_dsn(self) -> str:
+        value = str(settings.database_url or "").strip()
+        return re.sub(r"^postgresql\+asyncpg://", "postgresql://", value, count=1)
+
+    async def _postgresql_save_document(
+        self,
+        connection: Any,
+        document: VisionDocumentRecord,
+    ) -> None:
+        completeness = document.field_completeness.model_dump(mode="json")
+        await connection.execute(
+            """
+            INSERT INTO vision_document_completeness (
+                tenant_id, document_id, document_type, schema_available,
+                required_fields, optional_fields, missing_required_fields,
+                invalid_fields, disputed_fields, manually_resolved_fields, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb,
+                $8::jsonb, $9::jsonb, $10::jsonb, $11
+            )
+            ON CONFLICT (tenant_id, document_id) DO UPDATE SET
+                document_type = EXCLUDED.document_type,
+                schema_available = EXCLUDED.schema_available,
+                required_fields = EXCLUDED.required_fields,
+                optional_fields = EXCLUDED.optional_fields,
+                missing_required_fields = EXCLUDED.missing_required_fields,
+                invalid_fields = EXCLUDED.invalid_fields,
+                disputed_fields = EXCLUDED.disputed_fields,
+                manually_resolved_fields = EXCLUDED.manually_resolved_fields,
+                updated_at = EXCLUDED.updated_at
+            """,
+            document.tenant_id,
+            document.document_id,
+            document.document_type.value,
+            bool(completeness.get("schema_available")),
+            _json_parameter(completeness.get("required_fields", [])),
+            _json_parameter(completeness.get("optional_fields", [])),
+            _json_parameter(completeness.get("missing_required_fields", [])),
+            _json_parameter(completeness.get("invalid_fields", [])),
+            _json_parameter(completeness.get("disputed_fields", [])),
+            _json_parameter(completeness.get("manually_resolved_fields", [])),
+            _optional_utc_datetime(document.updated_at),
+        )
+
+        timing = document.metadata.get("processing_timing")
+        if isinstance(timing, dict):
+            pipeline_version = str(
+                timing.get("pipeline_version")
+                or document.metadata.get("pipeline_version")
+                or ""
+            ).strip()
+            if pipeline_version:
+                await connection.execute(
+                    """
+                    INSERT INTO vision_processing_timings (
+                        tenant_id, document_id, pipeline_version, queued_at,
+                        processing_started_at, processing_completed_at,
+                        queued_duration_ms, processing_duration_ms,
+                        stage_durations_ms, reliable, exclusion_reason, updated_at
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8,
+                        $9::jsonb, $10, $11, $12
+                    )
+                    ON CONFLICT (tenant_id, document_id, pipeline_version) DO UPDATE SET
+                        queued_at = EXCLUDED.queued_at,
+                        processing_started_at = EXCLUDED.processing_started_at,
+                        processing_completed_at = EXCLUDED.processing_completed_at,
+                        queued_duration_ms = EXCLUDED.queued_duration_ms,
+                        processing_duration_ms = EXCLUDED.processing_duration_ms,
+                        stage_durations_ms = EXCLUDED.stage_durations_ms,
+                        reliable = EXCLUDED.reliable,
+                        exclusion_reason = EXCLUDED.exclusion_reason,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    document.tenant_id,
+                    document.document_id,
+                    pipeline_version,
+                    _optional_utc_datetime(timing.get("queued_at")),
+                    _optional_utc_datetime(timing.get("processing_started_at")),
+                    _optional_utc_datetime(timing.get("processing_completed_at")),
+                    _nonnegative_milliseconds(timing.get("queued_duration_ms")),
+                    _nonnegative_milliseconds(timing.get("processing_duration_ms")),
+                    _json_parameter(timing.get("stage_durations_ms", {})),
+                    bool(timing.get("reliable", False)),
+                    _optional_text(timing.get("exclusion_reason")),
+                    _optional_utc_datetime(document.updated_at),
+                )
+
+        for candidate in self._field_candidate_resolutions(document):
+            await connection.execute(
+                """
+                INSERT INTO vision_field_candidate_resolutions (
+                    tenant_id, document_id, candidate_id, schema_field,
+                    evidence_fingerprint, score_components, resolution,
+                    reason, extractor_version
+                ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+                ON CONFLICT (tenant_id, document_id, candidate_id) DO UPDATE SET
+                    schema_field = EXCLUDED.schema_field,
+                    evidence_fingerprint = EXCLUDED.evidence_fingerprint,
+                    score_components = EXCLUDED.score_components,
+                    resolution = EXCLUDED.resolution,
+                    reason = EXCLUDED.reason,
+                    extractor_version = EXCLUDED.extractor_version
+                """,
+                document.tenant_id,
+                document.document_id,
+                candidate["candidate_id"],
+                candidate["schema_field"],
+                candidate["evidence_fingerprint"],
+                _json_parameter(candidate["score_components"]),
+                candidate["resolution"],
+                candidate["reason"],
+                candidate["extractor_version"],
+            )
+
+    def _field_candidate_resolutions(
+        self,
+        document: VisionDocumentRecord,
+    ) -> list[dict[str, Any]]:
+        diagnostics = document.metadata.get("extraction_diagnostics")
+        diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
+        default_extractor = str(
+            diagnostics.get("extractor")
+            or document.metadata.get("pipeline_version")
+            or "unknown"
+        )
+        resolutions: list[dict[str, Any]] = []
+        for field in document.extracted_fields:
+            evidence = field.evidence.model_dump(mode="json")
+            evidence_metadata = evidence.get("metadata")
+            evidence_metadata = evidence_metadata if isinstance(evidence_metadata, dict) else {}
+            score_components = evidence_metadata.get("candidate_score_components")
+            if not isinstance(score_components, dict):
+                score_components = field.confidence_components
+            disputed = field.validation_status not in {"valid", "not_evaluated"}
+            fingerprint_payload = {
+                "evidence_id": evidence.get("evidence_id"),
+                "page": evidence.get("page_number"),
+                "bounding_box": evidence.get("bounding_box"),
+                "source_text": evidence.get("source_text"),
+            }
+            resolutions.append(
+                {
+                    "candidate_id": field.field_id,
+                    "schema_field": field.schema_field or field.name,
+                    "evidence_fingerprint": _fingerprint(fingerprint_payload),
+                    "score_components": score_components,
+                    "resolution": "disputed" if disputed else "selected",
+                    "reason": (
+                        field.validation_reason
+                        if disputed and field.validation_reason
+                        else "selected_by_extractor"
+                    ),
+                    "extractor_version": f"{field.model_name}-{field.model_version}",
+                }
+            )
+
+        rejected = diagnostics.get("rejected_candidates")
+        for item in rejected if isinstance(rejected, list) else []:
+            if not isinstance(item, dict):
+                continue
+            reason = str(item.get("reason") or "candidate_not_selected")
+            resolution = (
+                "rejected_duplicate"
+                if "duplicate" in reason
+                else "rejected_conflict"
+                if "conflict" in reason
+                else "disputed"
+            )
+            identity_payload = {
+                "field": item.get("field"),
+                "value": item.get("value"),
+                "page": item.get("page"),
+                "strategy": item.get("strategy"),
+                "evidence_box": item.get("evidence_box"),
+                "reason": reason,
+            }
+            digest = _fingerprint(identity_payload)
+            resolutions.append(
+                {
+                    "candidate_id": f"candidate-{digest[:20]}",
+                    "schema_field": str(item.get("field") or "unknown"),
+                    "evidence_fingerprint": digest,
+                    "score_components": {"candidate_score": item.get("score")},
+                    "resolution": resolution,
+                    "reason": reason,
+                    "extractor_version": default_extractor,
+                }
+            )
+        return resolutions
+
+    async def _postgresql_save_conversation(
+        self,
+        connection: Any,
+        conversation: dict[str, Any],
+    ) -> None:
+        tenant_id = str(
+            conversation.get("organisation_id") or conversation.get("tenant_id") or ""
+        ).strip()
+        user_id = str(conversation.get("user_id") or "").strip()
+        conversation_id = str(conversation.get("conversation_id") or "").strip()
+        if not tenant_id or not user_id or not conversation_id:
+            raise ValueError("Conversation tenant, user and conversation identifiers are required")
+        selected_scope = self._protect(conversation.get("selected_scope") or {})
+        pending = self._protect(conversation.get("pending_clarification") or {})
+        turns = self._protect(conversation.get("turns") or [])
+        updated_at = _optional_utc_datetime(conversation.get("updated_at")) or datetime.now(UTC)
+        expires_at = _optional_utc_datetime(conversation.get("expires_at"))
+        if expires_at is None:
+            raise ValueError("Conversation expiry is required")
+        await connection.execute(
+            """
+            INSERT INTO vision_conversations (
+                tenant_id, user_id, conversation_id, selected_scope,
+                pending_clarification, last_query_type, turns, expires_at, updated_at
+            ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7::jsonb, $8, $9)
+            ON CONFLICT (tenant_id, conversation_id) DO UPDATE SET
+                selected_scope = EXCLUDED.selected_scope,
+                pending_clarification = EXCLUDED.pending_clarification,
+                last_query_type = EXCLUDED.last_query_type,
+                turns = EXCLUDED.turns,
+                expires_at = EXCLUDED.expires_at,
+                updated_at = EXCLUDED.updated_at
+            WHERE vision_conversations.user_id = EXCLUDED.user_id
+            """,
+            tenant_id,
+            user_id,
+            conversation_id,
+            _json_parameter(selected_scope),
+            _json_parameter(pending),
+            _optional_text(conversation.get("last_query_type")),
+            _json_parameter(turns),
+            expires_at,
+            updated_at,
+        )
+
+    async def _postgresql_get_conversation(
+        self,
+        connection: Any,
+        conversation_id: str,
+        tenant_id: str,
+        user_id: str,
+    ) -> dict[str, Any] | None:
+        row = await connection.fetchrow(
+            """
+            SELECT tenant_id, user_id, conversation_id, selected_scope,
+                   pending_clarification, last_query_type, turns, expires_at, updated_at
+            FROM vision_conversations
+            WHERE tenant_id = $1
+              AND user_id = $2
+              AND conversation_id = $3
+              AND expires_at > now()
+            """,
+            tenant_id,
+            user_id,
+            conversation_id,
+        )
+        if row is None:
+            return None
+        payload = dict(row)
+        expires_at = payload.get("expires_at")
+        updated_at = payload.get("updated_at")
+        return {
+            "conversation_id": str(payload["conversation_id"]),
+            "user_id": str(payload["user_id"]),
+            "organisation_id": str(payload["tenant_id"]),
+            "selected_scope": self._unprotect(
+                _decoded_json(payload.get("selected_scope"), {})
+            ),
+            "pending_clarification": self._unprotect(
+                _decoded_json(payload.get("pending_clarification"), {})
+            ),
+            "last_query_type": str(payload.get("last_query_type") or ""),
+            "turns": self._unprotect(_decoded_json(payload.get("turns"), [])),
+            "expires_at": (
+                expires_at.isoformat() if isinstance(expires_at, datetime) else str(expires_at)
+            ),
+            "updated_at": (
+                updated_at.isoformat() if isinstance(updated_at, datetime) else str(updated_at)
+            ),
+        }
+
+    async def _postgresql_save_retrieval_trace(
+        self,
+        connection: Any,
+        question: dict[str, Any],
+    ) -> None:
+        answer = question.get("answer")
+        answer = answer if isinstance(answer, dict) else {}
+        trace = answer.get("retrieval_trace")
+        trace = trace if isinstance(trace, dict) else {}
+        trace_id = str(trace.get("trace_id") or answer.get("retrieval_trace_id") or "").strip()
+        tenant_id = str(question.get("tenant_id") or "").strip()
+        if not trace_id or not tenant_id:
+            return
+        await connection.execute(
+            """
+            INSERT INTO vision_retrieval_traces (
+                tenant_id, trace_id, conversation_id, question_id,
+                sources_checked, candidate_counts, selected_evidence,
+                retriever_versions, retrieval_duration_ms, created_at
+            ) VALUES (
+                $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb,
+                $8::jsonb, $9, COALESCE($10::timestamptz, now())
+            )
+            ON CONFLICT (tenant_id, trace_id) DO UPDATE SET
+                conversation_id = EXCLUDED.conversation_id,
+                question_id = EXCLUDED.question_id,
+                sources_checked = EXCLUDED.sources_checked,
+                candidate_counts = EXCLUDED.candidate_counts,
+                selected_evidence = EXCLUDED.selected_evidence,
+                retriever_versions = EXCLUDED.retriever_versions,
+                retrieval_duration_ms = EXCLUDED.retrieval_duration_ms,
+                created_at = EXCLUDED.created_at
+            """,
+            tenant_id,
+            trace_id,
+            _optional_text(answer.get("conversation_id")),
+            _optional_text(question.get("question_id")),
+            _json_parameter(trace.get("sources_checked", [])),
+            _json_parameter(trace.get("candidate_counts", {})),
+            _json_parameter(trace.get("selected_evidence", [])),
+            _json_parameter(trace.get("retriever_versions", {})),
+            _nonnegative_milliseconds(trace.get("retrieval_duration_ms")) or 0,
+            _optional_utc_datetime(question.get("created_at")),
+        )
 
     def _initialize_mongodb(self) -> None:
         try:
@@ -544,6 +994,11 @@ class VisionPersistenceCoordinator:
             )
             database.audit_events.create_index([("tenant_id", 1), ("event_id", 1)], unique=True)
             database.questions.create_index([("tenant_id", 1), ("question_id", 1)], unique=True)
+            database.conversations.create_index(
+                [("tenant_id", 1), ("user_id", 1), ("conversation_id", 1)],
+                unique=True,
+            )
+            database.conversations.create_index("expires_at", expireAfterSeconds=0)
             database.reports.create_index([("tenant_id", 1), ("report_id", 1)], unique=True)
             database.reports.create_index(
                 [("tenant_id", 1), ("identity_hash", 1), ("version", 1)],
@@ -834,6 +1289,11 @@ class VisionPersistenceCoordinator:
         ).consume()
 
         edge_ids = [str(edge.get("id", "")) for edge in graph.get("edges", [])]
+        node_ids = [
+            str(node.get("id", ""))
+            for node in graph.get("nodes", [])
+            if str(node.get("type", "")) in GRAPH_NODE_LABELS
+        ]
         tx.run(
             """
             MATCH ()-[r]->()
@@ -846,6 +1306,21 @@ class VisionPersistenceCoordinator:
             tenant_id=tenant_id,
             document_id=document_id,
             edge_ids=edge_ids,
+        ).consume()
+
+        tx.run(
+            """
+            MATCH (d:VisionDocument {tenant_id: $tenant_id, document_id: $document_id})
+                  -[projection:PROJECTS]->(node:VisionEntity)
+            WHERE NOT node.entity_id IN $node_ids
+            DELETE projection
+            WITH DISTINCT node
+            WHERE NOT (node)<-[:PROJECTS]-(:VisionDocument)
+            DETACH DELETE node
+            """,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            node_ids=node_ids,
         ).consume()
 
         for node in graph.get("nodes", []):
@@ -901,6 +1376,75 @@ class VisionPersistenceCoordinator:
 
     def _tenant_hash(self, tenant_id: str, value: str) -> str:
         return hashlib.sha256(f"{tenant_id}:{value}".encode()).hexdigest()
+
+
+def _run_async_in_thread(factory: Any) -> Any:
+    result: list[Any] = []
+    errors: list[BaseException] = []
+
+    def worker() -> None:
+        try:
+            result.append(asyncio.run(factory()))
+        except BaseException as exc:  # pragma: no cover - re-raised on the caller thread
+            errors.append(exc)
+
+    thread = threading.Thread(target=worker, name="vision-postgresql", daemon=True)
+    thread.start()
+    thread.join(timeout=15)
+    if thread.is_alive():
+        raise TimeoutError("PostgreSQL operation exceeded the bounded execution window")
+    if errors:
+        raise errors[0]
+    return result[0] if result else None
+
+
+def _json_parameter(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _decoded_json(value: Any, default: Any) -> Any:
+    if isinstance(value, str | bytes | bytearray):
+        try:
+            return json.loads(value)
+        except (TypeError, ValueError):
+            return default
+    return value if isinstance(value, dict | list) else default
+
+
+def _fingerprint(value: Any) -> str:
+    return hashlib.sha256(_json_parameter(value).encode()).hexdigest()
+
+
+def _optional_utc_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return _utc_datetime(value)
+    except ValueError:
+        return None
+
+
+def _nonnegative_milliseconds(value: Any) -> int | None:
+    try:
+        milliseconds = float(value)
+        if milliseconds < 0:
+            return None
+        return round(milliseconds)
+    except (OverflowError, TypeError, ValueError):
+        return None
+
+
+def _optional_text(value: Any) -> str | None:
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+def _utc_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
 
 def _neo4j_properties(payload: dict[str, Any]) -> dict[str, Any]:
     properties: dict[str, Any] = {}

@@ -6,6 +6,7 @@ import re
 import threading
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.core.config import settings
 
@@ -75,8 +76,69 @@ def model_configuration_fingerprint(backend: dict[str, Any]) -> str:
         "runtime": backend.get("runtime") or {},
         "package_version": backend.get("package_version"),
     }
+    deployment_identity = _deployment_identity(backend)
+    if deployment_identity:
+        # This material is never returned or stored. Only the outer SHA-256 value is
+        # exposed as the configuration fingerprint.
+        material["deployment_identity"] = deployment_identity
     serialized = json.dumps(material, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _deployment_identity(backend: dict[str, Any]) -> dict[str, Any] | None:
+    model_id = str(backend.get("model_id") or "")
+    adapter_id = str(backend.get("adapter_id") or "")
+    if model_id == "Neo4j" or adapter_id == "Neo4j":
+        return {
+            "endpoint": _safe_endpoint_identity(settings.neo4j_uri),
+            "database": settings.neo4j_database,
+            "instance_id": settings.neo4j_instance_id,
+            "credentials": _neo4j_credential_identity(),
+        }
+    if model_id == "Qdrant" or adapter_id == "qdrant-hybrid-retrieval":
+        return {"endpoint": _safe_endpoint_identity(settings.qdrant_url)}
+    return None
+
+
+def _safe_endpoint_identity(value: str) -> dict[str, Any]:
+    """Build endpoint identity without retaining userinfo, query values, or fragments."""
+
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname or ""
+        port = parsed.port
+    except ValueError:
+        return {
+            "configured": bool(value),
+            "invalid_value_digest": hashlib.sha256(value.encode("utf-8")).hexdigest(),
+        }
+    return {
+        "scheme": parsed.scheme.lower(),
+        "hostname": hostname.lower(),
+        "port": port,
+        "path": parsed.path,
+    }
+
+
+def _neo4j_credential_identity() -> dict[str, Any]:
+    user = settings.neo4j_user or ""
+    password = settings.neo4j_password or ""
+    fallback_auth = ""
+    if not user and not password:
+        fallback_auth = settings.neo4j_auth or ""
+    present = bool(user or password or fallback_auth)
+    if not present:
+        return {"present": False, "complete": False, "digest": None}
+    credential_material = json.dumps(
+        {"user": user, "password": password, "fallback_auth": fallback_auth},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return {
+        "present": True,
+        "complete": bool(user and password) or bool(fallback_auth),
+        "digest": hashlib.sha256(credential_material.encode("utf-8")).hexdigest(),
+    }
 
 
 def safe_model_slug(model_id: str) -> str:

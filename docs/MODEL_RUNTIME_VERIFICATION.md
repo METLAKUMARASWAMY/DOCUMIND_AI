@@ -1,77 +1,83 @@
 # Model Runtime Verification
 
-DocuMind keeps requested deployment state separate from verified runtime health. A model is reported as `active` only when the current configuration fingerprint has a successful smoke result covering adapter construction, initialization, one inference, and output-schema validation.
+DocuMind keeps requested deployment state separate from verified runtime health. A model is reported as `active` only when the current configuration fingerprint has a successful smoke result covering adapter construction, initialization, one inference, and output-schema validation. Package installation and partial assets are evidence of preparation, not activation.
 
-## Commands
+## Consolidated verifier
 
-Run every probe, including truthful blocked results for disabled models:
-
-```bash
-.venv/bin/python scripts/smoke_test_models.py
-```
-
-Run one model and fail the command if a configured adapter does not pass:
+Audit dependencies, checkpoints, Docker, services, and registry state without running model inference:
 
 ```bash
-.venv/bin/python scripts/smoke_test_models.py --model Tesseract-5 --strict
+.venv-ai/bin/python scripts/verify_ai_core.py \
+  --output var/ai-core/verification.json
 ```
 
-Results are written atomically to `MODEL_SMOKE_STATE_DIR` and appear in Admin Settings. Changing flags, checkpoint paths, package versions, or adapter metadata invalidates the previous configuration fingerprint.
+Run the 11 core-local probes plus every configured-active adapter:
 
-## Current Local Profile
+```bash
+.venv-ai/bin/python scripts/verify_ai_core.py \
+  --run-smoke \
+  --output var/ai-core/verification.json \
+  --strict
+```
 
-The verified local profile has real inference probes for:
+Run only explicitly named targets by repeating `--smoke-model`:
+
+```bash
+.venv-ai/bin/python scripts/verify_ai_core.py \
+  --smoke-model deterministic-schema-extractor-v3 \
+  --smoke-model BAAI/bge-m3 \
+  --smoke-timeout 300 \
+  --output var/ai-core/verification.json \
+  --strict
+```
+
+Each model runs in a separate subprocess. `--smoke-timeout` limits each subprocess, defaults to 300 seconds, and has an effective minimum of 10 seconds. A timeout is recorded as a failed smoke with its output schema not evaluated. The output JSON is written atomically.
+
+`--strict` fails the command when a configured-active model does not pass, or when enabled Qdrant or Neo4j is unreachable. It does not reinterpret disabled, unconfigured, incomplete, or pending targets as passed. Endpoint reporting omits user information, and diagnostics redact credential-like values.
+
+## Measured activation status
+
+The verified host is macOS `arm64` using isolated `.venv-ai` Python `3.11.14`.
+
+The core-local suite passed **11/11**:
 
 - `local-parser-v1`
 - `Tesseract-5`
 - `local-layout-adapter-v1`
-- `deterministic-schema-extractor-v2`
+- `deterministic-schema-extractor-v3`
 - `OpenCV-visual-cues-v1`
 - `ELA-noise-forensics-v1`
-- `IsolationForest` (the smoke fixture correctly returns its minimum-corpus gate)
+- `IsolationForest` (including its expected minimum-corpus gate behavior)
 - `local-hashing-v1`
 - `local-vector-store-v1`
 - `local-graph-projection-v1`
 - `grounded-template-generator-v1`
 
-Heavy models, external stores, and provider-backed generators remain disabled or unavailable until their package, assets or service, configuration, and smoke inference all pass. A requested-state toggle does not alter runtime configuration.
+Additional measured passes are:
 
-## LayoutLMv3 Blocker
+- `BAAI/bge-m3`: exact checkpoint, CPU inference, hybrid dense/sparse output smoke passed.
+- `PP-OCRv5_mobile`: CPU OCR inference smoke passed.
+- `google/flan-t5-small`: cached checkpoint passed real CPU generation, strict evidence coverage/citation normalization, and the unsupported-answer gate.
+- Qdrant: real collection replacement, filter, and delete behavior passed against `qdrant/qdrant:v1.18.0` using `qdrant-client` 1.19.0. Collections are embedding/dimension-versioned; exact BGE-M3 used `vision_evidence_chunks__bge_m3__d1024_v1`, while the legacy 768-dimensional collection and all 16,310 existing points were preserved.
+- Neo4j: real evidence-path creation/query behavior and tenant-isolation behavior passed at 06:21 UTC against Neo4j 5.22.0 (`neo4j:5.22-community`) using the `neo4j` 6.2.0 driver. The final 06:33 UTC audit then returned `Neo.ClientError.Security.Unauthorized` after environment credential regeneration; current service status is unavailable until the persisted-volume password is reconciled non-destructively.
 
-The repository's synthetic `ner_records.jsonl` contains text-level entity labels, but no rendered page path, page dimensions, or OCR word boxes. It therefore cannot train a layout-aware token classifier without fabricating geometry.
+The following were attempted but are **not active**:
 
-Audit the current records:
+- `BAAI/bge-reranker-v2-m3`: checkpoint download was incomplete/stalled; no activation pass.
+- `BAAI/bge-reranker-base`: checkpoint download was incomplete/stalled; no activation pass.
+- PP-Structure: dependencies were repaired, but the multi-model asset download exceeded the bounded smoke window. Only partial assets are present, so PP-Structure has no activation pass.
 
-```bash
-.venv/bin/python scripts/prepare_layoutlmv3_dataset.py --audit-only
-```
+The precise measured package versions and service images are recorded in [AI core activation report](AI_CORE_ACTIVATION_REPORT.md).
 
-Annotate page images using `ml/annotation/label_studio_token_fields.xml`, export records conforming to `ml/annotation/layoutlmv3_token_record.schema.json`, then prepare leakage-free document splits:
+## Download and checkpoint policy
 
-```bash
-.venv/bin/python scripts/prepare_layoutlmv3_dataset.py \
-  --annotations /path/to/word-box-annotations.jsonl \
-  --output ml/prepared/layoutlmv3
-```
+The verifier does not initiate downloads. The bootstrap permits them only through explicit flags:
 
-Validate and train only after the preparation audit passes:
+- `--allow-bge-downloads` sets the heavy/BGE enablement and permits configured BGE downloads.
+- `--allow-paddle-model-downloads` enables CPU PaddleOCR/PP-Structure model acquisition when the Paddle wheel is available.
+- `--local-llm-checkpoint ID_OR_PATH` selects one local-language-model target; `--allow-local-llm-downloads` is separately required if it is neither a local path nor already cached.
 
-```bash
-.venv/bin/python -m ml.training.layoutlmv3.train_token_classification \
-  --config ml/configs/layoutlmv3_token.example.yml \
-  --validate-only
-
-.venv/bin/python -m ml.training.layoutlmv3.train_token_classification \
-  --config ml/configs/layoutlmv3_token.example.yml
-```
-
-Set `LAYOUTLMV3_CHECKPOINT` to the resulting `best` directory. Activation also requires its adjacent `run_manifest.json`, project field labels, held-out test metrics, and a no-leakage dataset record. A generic LayoutLMv3 base checkpoint is rejected.
-
-## Checkpoint Gates
-
-Project-trained Donut, YOLO visual detection, DeBERTa contract extraction, SegFormer forensics, and XGBoost risk models require a local checkpoint plus the training `run_manifest.json`. The manifest must identify the expected task, record document-level leakage validation, and contain held-out test metrics.
-
-BGE-M3, its reranker, and Qwen require local assets by default. Remote downloads happen only when `BGE_ALLOW_DOWNLOAD=true` or `QWEN_ALLOW_DOWNLOAD=true` is explicitly set. Qdrant and Neo4j require their service flags, drivers, credentials where applicable, network connectivity, and a successful probe.
+Keep attempts bounded. If acquisition stalls, times out, or leaves only partial assets, record the attempt and blocker without changing runtime status to active.
 
 ## Admin APIs
 
@@ -81,4 +87,4 @@ POST  /api/v1/admin/models/{id}/smoke-test
 PATCH /api/v1/admin/models/{id}/requested-state
 ```
 
-These endpoints require the `ADMIN` role. Model IDs containing `/`, such as `BAAI/bge-m3`, are supported.
+These endpoints require the `ADMIN` role. Model IDs containing `/`, such as `BAAI/bge-m3`, are supported. A requested-state change does not bypass verification.

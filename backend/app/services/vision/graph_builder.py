@@ -53,7 +53,7 @@ class EvidenceGraphBuilder:
                 "Relationships are deterministic and source-linked. Unreviewed evidence "
                 "remains proposed until a reviewer verifies it."
             ),
-            schema_version="documind-evidence-graph-v3",
+            schema_version="documind-evidence-graph-v4",
             preferred_backend="neo4j",
             active_backend="local_evidence_graph",
             legend={
@@ -61,10 +61,16 @@ class EvidenceGraphBuilder:
                     "Document",
                     "Organisation",
                     "Person",
+                    "Product",
+                    "Form",
                     "ContactMethod",
                     "Date",
-                    "Payment",
+                    "Amount",
+                    "Identifier",
                     "BankAccount",
+                    "Signature",
+                    "Stamp",
+                    "ExtractedField",
                     "RiskIndicator",
                 ],
                 "relationships": {
@@ -99,7 +105,7 @@ class EvidenceGraphBuilder:
             self._add_edge(
                 document_node,
                 page_id,
-                "CONTAINS",
+                "CONTAINS_PAGE",
                 status="verified",
                 provenance="document_structure",
                 source_page=page_number,
@@ -127,6 +133,9 @@ class EvidenceGraphBuilder:
                 field_name=field.name,
                 required=field.required,
                 confidence=field.confidence,
+                source_field_id=field.field_id,
+                source_text=field.evidence.source_text,
+                extractor_version=field.extractor,
             )
             page_id = f"Page:{self.document.document_id}:{field.evidence.page_number}"
             self._add_edge(
@@ -136,9 +145,10 @@ class EvidenceGraphBuilder:
                 evidence=field.evidence,
                 status=self._status_for(field),
                 provenance=field.extractor,
+                source_field=field.name,
             )
             entity = self._entity_for_field(field)
-            if entity is None:
+            if entity is None or not self._promotable_enterprise_entity(field):
                 continue
             node_type, label = entity
             entity_node = self._add_entity_node(node_type, label, field)
@@ -150,6 +160,7 @@ class EvidenceGraphBuilder:
                 evidence=field.evidence,
                 status=self._status_for(field),
                 provenance="deterministic_field_mapping",
+                source_field=field.name,
             )
 
     def _add_entity_relationships(self, document_node: str) -> None:
@@ -199,6 +210,11 @@ class EvidenceGraphBuilder:
         sender = self._first_entity("sender_name")
         recipient_company = self._first_entity("recipient_company")
         client_number = self._first_entity("client_number", "reference_number")
+        sample_number = self._first_entity("sample_number")
+        product_type = self._first_entity("product_type")
+        batch_size = self._first_entity("batch_size")
+        requested_by = self._first_entity("requested_by")
+        specifications_written_by = self._first_entity("specifications_written_by")
 
         if title:
             self._field_relationship(
@@ -247,6 +263,41 @@ class EvidenceGraphBuilder:
                 "HAS_CLIENT_NUMBER",
                 "client_number",
                 "reference_number",
+            )
+        if sample_number:
+            self._field_relationship(
+                document_node,
+                sample_number,
+                "HAS_SAMPLE_NUMBER",
+                "sample_number",
+            )
+        if product_type:
+            self._field_relationship(
+                document_node,
+                product_type,
+                "HAS_PRODUCT_TYPE",
+                "product_type",
+            )
+        if batch_size:
+            self._field_relationship(
+                document_node,
+                batch_size,
+                "HAS_BATCH_SIZE",
+                "batch_size",
+            )
+        if requested_by:
+            self._field_relationship(
+                document_node,
+                requested_by,
+                "REQUESTED_BY",
+                "requested_by",
+            )
+        if specifications_written_by:
+            self._field_relationship(
+                document_node,
+                specifications_written_by,
+                "SPECIFICATIONS_WRITTEN_BY",
+                "specifications_written_by",
             )
 
         if organisation:
@@ -348,14 +399,15 @@ class EvidenceGraphBuilder:
             "contact_name",
         )
         for detection in self.document.visual_detections:
-            if detection.detection_class != "signature":
+            if detection.detection_class not in {"signature", "stamp"}:
                 continue
-            signature_id = f"Signature:{self.document.document_id}:{detection.detection_id}"
+            node_type = "Signature" if detection.detection_class == "signature" else "Stamp"
+            signature_id = f"{node_type}:{self.document.document_id}:{detection.detection_id}"
             self._add_node(
                 signature_id,
-                "Signature",
-                "Signature candidate",
-                value="signature",
+                node_type,
+                f"{node_type} candidate",
+                value=detection.detection_class,
                 status=(
                     "verified"
                     if detection.reviewer_status in VERIFIED_REVIEW_STATUSES
@@ -366,6 +418,8 @@ class EvidenceGraphBuilder:
                 evidence_id=detection.detection_id,
                 bounding_boxes=[detection.bounding_box.model_dump(mode="json")],
                 confidence=detection.confidence,
+                source_text=f"Visual {detection.detection_class} candidate",
+                extractor_version=detection.model_version,
             )
             status = (
                 "verified"
@@ -375,17 +429,17 @@ class EvidenceGraphBuilder:
             self._add_edge(
                 document_node,
                 signature_id,
-                "CONTAINS",
+                "HAS_FIELD",
                 status=status,
                 provenance="visual_detection",
                 source_page=detection.page_number,
                 evidence_id=detection.detection_id,
-                evidence_text="Visual signature candidate",
+                evidence_text=f"Visual {detection.detection_class} candidate",
                 bounding_boxes=[detection.bounding_box.model_dump(mode="json")],
                 confidence=detection.confidence,
                 review_status=detection.reviewer_status,
             )
-            if signer:
+            if signer and detection.detection_class == "signature":
                 self._add_edge(
                     signature_id,
                     signer,
@@ -496,17 +550,23 @@ class EvidenceGraphBuilder:
             "visible_phone_numbers": "ContactMethod",
             "visible_fax_numbers": "ContactMethod",
             "email": "ContactMethod",
-            "document_title": "DocumentTitle",
-            "form_title": "DocumentTitle",
-            "title": "DocumentTitle",
+            "document_title": "Form",
+            "form_title": "Form",
+            "title": "Form",
             "date": "Date",
             "visible_dates": "Date",
             "invoice_date": "Date",
             "effective_date": "Date",
-            "client_number": "ReferenceNumber",
-            "reference_number": "ReferenceNumber",
-            "payment_reference": "Payment",
-            "total_amount": "Payment",
+            "client_number": "Identifier",
+            "reference_number": "Identifier",
+            "sample_number": "Identifier",
+            "product_type": "Product",
+            "batch_size": "Amount",
+            "requested_by": "Person",
+            "specifications_written_by": "Person",
+            "payment_reference": "Identifier",
+            "total_amount": "Amount",
+            "amount": "Amount",
             "signatures": "Signature",
         }
         node_type = mapping.get(field.name)
@@ -539,7 +599,27 @@ class EvidenceGraphBuilder:
             bounding_boxes=self._boxes(field.evidence),
             confidence=field.confidence,
             field_name=field.name,
+            source_field_id=field.field_id,
+            source_text=field.evidence.source_text,
+            extractor_version=field.extractor,
         )
+
+    def _promotable_enterprise_entity(self, field: ExtractedVisionField) -> bool:
+        """Keep uncertain fields visible without turning them into trusted business facts."""
+        source = " ".join(field.evidence.source_text.lower().split())
+        if field.name in {"document_title", "form_title", "title"} and re.match(
+            r"^(?:date|bate|dated)\s*[:#=-]",
+            source,
+        ):
+            return False
+        if field.validation_status == "invalid" and field.reviewer_status not in VERIFIED_REVIEW_STATUSES:
+            return False
+        if (
+            field.reviewer_status not in VERIFIED_REVIEW_STATUSES
+            and (field.confidence or 0.0) < 0.55
+        ):
+            return False
+        return True
 
     def _add_node(
         self,
@@ -549,6 +629,13 @@ class EvidenceGraphBuilder:
         **properties: Any,
     ) -> str:
         cleaned_label = " ".join(str(label).split()) or node_type
+        boxes = list(properties.get("bounding_boxes") or [])
+        status = str(properties.get("status") or "proposed")
+        verification_status = (
+            status
+            if status in {"verified", "proposed", "rejected", "conflict"}
+            else "verified" if node_type in {"Document", "Page"} else "proposed"
+        )
         self.nodes.setdefault(
             node_id,
             {
@@ -561,6 +648,19 @@ class EvidenceGraphBuilder:
                 "source_document": self.document.document_id,
                 "source_route": f"/documents/{self.document.document_id}",
                 "evidence_count": 1 if properties.get("evidence_id") else 0,
+                "source_page": int(properties.get("source_page") or 1),
+                "source_field_id": properties.get("source_field_id"),
+                "source_text": str(properties.get("source_text") or cleaned_label),
+                "bounding_box": boxes,
+                "bounding_boxes": boxes,
+                "confidence": properties.get("confidence"),
+                "verification_status": verification_status,
+                "extractor_version": str(
+                    properties.get("extractor_version") or "document-structure-v1"
+                ),
+                "pipeline_version": str(
+                    self.document.metadata.get("pipeline_version", "legacy")
+                ),
                 **{key: value for key, value in properties.items() if value is not None},
             },
         )
@@ -583,6 +683,7 @@ class EvidenceGraphBuilder:
         review_status: ReviewerStatus | None = None,
         structural: bool = False,
         source_field: str | None = None,
+        source_field_id: str | None = None,
     ) -> str | None:
         if source not in self.nodes or target not in self.nodes:
             return None
@@ -593,6 +694,8 @@ class EvidenceGraphBuilder:
             bounding_boxes = self._boxes(evidence)
             confidence = evidence.model_confidence
             review_status = evidence.reviewer_status
+        if source_field and source_field in self.fields:
+            source_field_id = source_field_id or self.fields[source_field].field_id
         if not structural and not evidence_text:
             return None
         identity = (
@@ -608,21 +711,34 @@ class EvidenceGraphBuilder:
             "type": relationship,
             "label": relationship.replace("_", " "),
             "status": status,
+            "verification_status": status,
+            "tenant_id": self.document.tenant_id,
             "source_document": self.document.document_id,
             "document_id": self.document.document_id,
             "source_page": source_page or 1,
             "evidence_id": evidence_id,
             "evidence_text": evidence_text or "Document structure",
+            "source_text": evidence_text or "Document structure",
             "bounding_boxes": bounding_boxes or [],
+            "bounding_box": bounding_boxes or [],
             "confidence": confidence,
             "review_status": (
                 review_status.value if isinstance(review_status, ReviewerStatus) else str(review_status or "unverified")
             ),
             "provenance": provenance,
+            "extractor_version": (
+                evidence.model_version if evidence else provenance
+            ),
+            "pipeline_version": str(
+                self.document.metadata.get("pipeline_version", "legacy")
+            ),
+            "model_name": evidence.model_name if evidence else provenance,
+            "model_version": evidence.model_version if evidence else "v1",
             "deterministic": True,
             "source_linked": bool(evidence_id or evidence_text),
             "verification_eligible": status == "proposed" and not structural,
             "source_field": source_field,
+            "source_field_id": source_field_id,
         }
         return edge_id
 

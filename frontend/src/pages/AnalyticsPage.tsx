@@ -56,6 +56,11 @@ function OverviewAnalytics({ data, sample }: { data: Record<string, unknown>; sa
   ];
   const rag = entries(data.rag_answer_status);
   const citation = (data.citation_coverage || {}) as Record<string, unknown>;
+  const timing = (data.processing_timing || {}) as Record<string, unknown>;
+  const timingSample = number(timing.sample_size);
+  const pipelineVersions = Object.entries((timing.pipeline_versions || {}) as Record<string, number>)
+    .map(([version, count]) => `${version}: ${count}`)
+    .join(" | ");
   return (
     <>
       <Box className="analytics-stat-band">
@@ -64,7 +69,9 @@ function OverviewAnalytics({ data, sample }: { data: Record<string, unknown>; sa
         <Stat label="Schema coverage" value={number(data.documents_using_exact_schema)} detail={`${number(data.documents_using_generic_schema)} generic | ${number(data.documents_schema_unavailable)} unavailable`} />
         <Stat label="Mean OCR confidence" value={percent(data.mean_ocr_confidence)} detail={`n=${number((data.sample_sizes as Record<string, unknown>)?.ocr_words)}`} />
         <Stat label="Mean field confidence" value={percent(data.mean_field_confidence)} detail={`n=${number((data.sample_sizes as Record<string, unknown>)?.fields)}`} />
-        <Stat label="Average processing" value={seconds(data.average_processing_time_seconds)} detail={`n=${number((data.sample_sizes as Record<string, unknown>)?.processing_duration_samples)}`} />
+        <Stat label="Mean processing" value={seconds(data.average_processing_time_seconds)} detail={`n=${timingSample}${pipelineVersions ? ` | ${pipelineVersions}` : ""}`} />
+        <Stat label="Median processing" value={seconds(data.median_processing_time_seconds)} detail="Completed compatible pipeline runs" />
+        <Stat label="P95 processing" value={seconds(data.p95_processing_time_seconds)} detail="Completed compatible pipeline runs" />
         <Stat label="Citation coverage" value={percent(citation.coverage)} detail={`${number(citation.supported_answers_with_citations)} of ${number(citation.supported_answer_count)} supported answers`} />
         <Stat label="Generated artefacts" value={number(data.narrative_count) + number(data.report_count)} detail={`${number(data.narrative_count)} narratives | ${number(data.report_count)} reports`} />
       </Box>
@@ -73,9 +80,33 @@ function OverviewAnalytics({ data, sample }: { data: Record<string, unknown>; sa
         <BarPanel title="Documents by status" data={status} sample={sample} />
         <BarPanel title="Documents by type" data={types} sample={sample} />
         <PiePanel title="Processing outcome" data={processing} sample={sample} />
+        <StageTimingPanel timing={timing} />
         <PiePanel title="RAG answer status" data={rag} sample={number((data.sample_sizes as Record<string, unknown>)?.rag_questions)} />
       </Box>
     </>
+  );
+}
+
+function StageTimingPanel({ timing }: { timing: Record<string, unknown> }) {
+  const perStage = (timing.per_stage || {}) as Record<string, Record<string, unknown>>;
+  const rows = Object.entries(perStage).map(([name, summary]) => ({
+    name: name.replaceAll("_", " "),
+    value: number(summary.mean_ms) / 1000,
+  }));
+  return (
+    <Chart title="Mean processing by stage" sample={rows.length ? number(timing.sample_size) : 0}>
+      {rows.length ? (
+        <ResponsiveContainer width="100%" height={290}>
+          <BarChart data={rows} margin={{ bottom: 42 }}>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <XAxis dataKey="name" angle={-25} textAnchor="end" interval={0} tick={{ fontSize: 10 }} />
+            <YAxis unit="s" />
+            <Tooltip formatter={(value) => [`${Number(value).toFixed(3)}s`, "Mean duration"]} />
+            <Bar name="Mean seconds" dataKey="value" fill="#3568a8" />
+          </BarChart>
+        </ResponsiveContainer>
+      ) : <EmptyState title="No stage timing" detail="Stage timing is available after processing with the current pipeline." />}
+    </Chart>
   );
 }
 

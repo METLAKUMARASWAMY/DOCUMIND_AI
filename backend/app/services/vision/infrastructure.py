@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from importlib.util import find_spec
 from io import BytesIO
@@ -38,17 +39,35 @@ class InfrastructureSpec:
 class VisionInfrastructureReadinessService:
     """Readiness and adapter-gating for optional production backends.
 
-    The local Vision AI runtime intentionally stays runnable without MongoDB,
-    Redis, MinIO, Qdrant, or Neo4j. These checks make external backends visible
-    without performing network probes during ordinary unit tests.
+    The local Vision AI runtime intentionally stays runnable without external
+    services. PostgreSQL is the exception to the configuration-only checks: when
+    ``DATABASE_URL`` is present, readiness performs an authenticated ``SELECT 1``
+    so operators can distinguish a configured URL from a usable database.
     """
 
-    def __init__(self, package_checker: Callable[[str], bool] | None = None) -> None:
+    def __init__(
+        self,
+        package_checker: Callable[[str], bool] | None = None,
+        postgres_probe: Callable[[str], Awaitable[dict[str, str]]] | None = None,
+    ) -> None:
         self._package_checker = package_checker or self._installed
+        self._postgres_probe = postgres_probe or self._probe_postgresql
 
     def readiness(self) -> dict[str, Any]:
-        services = [self.service_status(spec.backend_id) for spec in self._specs()]
+        """Synchronous facade for scripts and tests without an active event loop."""
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.readiness_async())
+        raise RuntimeError("Use 'await readiness_async()' from asynchronous code")
+
+    async def readiness_async(self) -> dict[str, Any]:
+        services = [await self.service_status_async(spec.backend_id) for spec in self._specs()]
         services.append(celery_readiness())
+        postgresql = next(
+            service for service in services if service["backend_id"] == "postgresql"
+        )
         enabled_services = [service for service in services if service["enabled"]]
         blocked = [
             service
@@ -65,7 +84,7 @@ class VisionInfrastructureReadinessService:
         return {
             "status": status,
             "default_runtime": "atomic_local_json_artifacts_and_fastapi_background_tasks",
-            "network_probe": "not_executed",
+            "network_probe": postgresql.get("network_probe", "not_executed"),
             "secret_policy": "Endpoints and credentials are redacted; bank/account values must be masked in logs and UI.",
             "services": services,
             "local_fallbacks": [
@@ -75,12 +94,22 @@ class VisionInfrastructureReadinessService:
                 "local-graph-projection-v1",
             ],
             "production_gate": (
-                "Set the ENABLE_* flag, install the matching optional dependency, run docker-compose services, "
-                "then execute deployment smoke tests before switching a tenant from local fallbacks."
+                "Configure DATABASE_URL for PostgreSQL; for other external services set the matching "
+                "ENABLE_* flag. Install each driver and run deployment smoke tests before switching "
+                "a tenant from local fallbacks."
             ),
         }
 
     def service_status(self, backend_id: str) -> dict[str, Any]:
+        """Synchronous facade for callers outside an event loop."""
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.service_status_async(backend_id))
+        raise RuntimeError("Use 'await service_status_async()' from asynchronous code")
+
+    async def service_status_async(self, backend_id: str) -> dict[str, Any]:
         spec = next((item for item in self._specs() if item.backend_id == backend_id), None)
         if not spec:
             raise ValueError(f"Unknown Vision infrastructure backend: {backend_id}")
@@ -88,6 +117,8 @@ class VisionInfrastructureReadinessService:
         installed = self._package_checker(spec.package)
         if backend_id == "mongodb" and not installed:
             installed = self._package_checker("motor")
+        probe: dict[str, str] = {}
+        network_probe = "not_executed"
         if not spec.enabled:
             status = "disabled"
             reason = spec.enable_hint
@@ -107,11 +138,28 @@ class VisionInfrastructureReadinessService:
         elif not spec.endpoint:
             status = "misconfigured"
             reason = "Feature flag is enabled but no endpoint is configured."
+        elif backend_id == "postgresql":
+            try:
+                probe = await self._postgres_probe(_normalise_postgresql_url(spec.endpoint))
+            except (TypeError, ValueError):
+                status = "misconfigured"
+                reason = "DATABASE_URL must use the postgresql or postgresql+asyncpg scheme."
+            except Exception as exc:
+                network_probe = "authenticated_postgresql_select_1_failed"
+                status = "unavailable"
+                reason = (
+                    "Authenticated PostgreSQL SELECT 1 failed "
+                    f"({type(exc).__name__}); verify the safe endpoint and database service."
+                )
+            else:
+                network_probe = "authenticated_postgresql_select_1_succeeded"
+                status = "active"
+                reason = "Authenticated PostgreSQL SELECT 1 succeeded."
         else:
             status = "ready_for_connection"
             reason = "Driver package is importable and configuration is present; no network probe was executed."
 
-        return {
+        result = {
             "backend_id": spec.backend_id,
             "role": spec.role,
             "enabled": spec.enabled,
@@ -123,16 +171,38 @@ class VisionInfrastructureReadinessService:
             "safe_config": spec.safe_config,
             "notes": spec.notes,
         }
+        if probe:
+            result["server"] = {
+                "database": probe["database"],
+                "version": probe["version"],
+                "select_1": True,
+            }
+        if backend_id == "postgresql":
+            result["network_probe"] = network_probe
+        return result
 
     def require_ready(self, backend_id: str) -> None:
         status = self.service_status(backend_id)
-        if status["status"] != "ready_for_connection":
+        if status["status"] not in {"ready_for_connection", "active"}:
             raise InfrastructureUnavailableError(
                 f"{status['backend_id']} is {status['status']}: {status['reason']}"
             )
 
     def _specs(self) -> list[InfrastructureSpec]:
         return [
+            InfrastructureSpec(
+                backend_id="postgresql",
+                role="Operational metadata, document lineage, evidence, workflows, audits, and reports.",
+                enabled=bool(settings.database_url),
+                package="asyncpg",
+                endpoint=settings.database_url or "",
+                enable_hint="Configure DATABASE_URL in backend/.env to enable PostgreSQL.",
+                safe_config=_postgresql_safe_config(settings.database_url),
+                notes=[
+                    "Readiness performs an authenticated SELECT 1 with a bounded timeout.",
+                    "Run scripts/migrate_postgres.py --execute to apply repository migrations.",
+                ],
+            ),
             InfrastructureSpec(
                 backend_id="mongodb",
                 role="Persistent documents, pages, OCR, fields, tables, risks, reviews, reports, and audits.",
@@ -207,6 +277,7 @@ class VisionInfrastructureReadinessService:
                 enable_hint="Set ENABLE_NEO4J=true and configure NEO4J_URI plus deployment credentials.",
                 safe_config={
                     "uri": _redact_url(settings.neo4j_uri),
+                    "instance_id": settings.neo4j_instance_id,
                     "node_labels": [
                         "Vendor",
                         "Document",
@@ -230,6 +301,24 @@ class VisionInfrastructureReadinessService:
                 notes=["LLM-created graph edges must enter with proposed status and evidence."],
             ),
         ]
+
+    async def _probe_postgresql(self, database_url: str) -> dict[str, str]:
+        import asyncpg
+
+        connection = await asyncpg.connect(
+            dsn=database_url,
+            timeout=5,
+            command_timeout=10,
+        )
+        try:
+            select_one = await connection.fetchval("SELECT 1")
+            if select_one != 1:
+                raise RuntimeError("PostgreSQL SELECT 1 returned an unexpected result")
+            version = str(await connection.fetchval("SHOW server_version"))
+            database = str(await connection.fetchval("SELECT current_database()"))
+            return {"version": version, "database": database}
+        finally:
+            await connection.close()
 
     def _installed(self, package: str) -> bool:
         try:
@@ -452,6 +541,45 @@ def _redact_url(value: str) -> str:
 
 def _redact_endpoint(value: str) -> str:
     return re.sub(r"(?i)(secret|password|token|key)[^/]*", "****", value or "")
+
+
+def _normalise_postgresql_url(value: str) -> str:
+    parts = urlsplit(value)
+    if parts.scheme not in {"postgresql", "postgresql+asyncpg"}:
+        raise ValueError("Unsupported PostgreSQL URL scheme")
+    if not parts.hostname or not parts.path.strip("/"):
+        raise ValueError("PostgreSQL URL requires a host and database")
+    return urlunsplit(("postgresql", parts.netloc, parts.path, parts.query, parts.fragment))
+
+
+def _postgresql_safe_config(value: str | None) -> dict[str, Any]:
+    if not value:
+        return {
+            "configured": False,
+            "scheme": "",
+            "host": "",
+            "port": None,
+            "database": "",
+        }
+    try:
+        parts = urlsplit(value)
+        port = parts.port
+    except ValueError:
+        return {
+            "configured": True,
+            "scheme": "invalid",
+            "host": "",
+            "port": None,
+            "database": "",
+        }
+    return {
+        "configured": True,
+        "scheme": parts.scheme,
+        "host": parts.hostname or "",
+        "port": port,
+        "database": parts.path.strip("/").split("/", maxsplit=1)[0],
+        "credentials": "configured" if parts.username or parts.password else "not_in_url",
+    }
 
 
 def _mask_identifier(value: str) -> str:

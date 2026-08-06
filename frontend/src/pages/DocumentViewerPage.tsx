@@ -7,6 +7,7 @@ import { Link, useLocation, useNavigate, useParams } from "../router";
 import { api } from "../api/client";
 import { DocumentCanvas, type FocusRegion } from "../components/DocumentCanvas";
 import { ErrorState, LoadingRows } from "../components/Feedback";
+import { FieldCompletenessSummary } from "../components/FieldCompletenessSummary";
 import { PageHeader } from "../components/PageHeader";
 import { StatusChip } from "../components/StatusChip";
 import type { Citation, Evidence, ExtractedField, RiskIndicator, VisionDocument } from "../types/api";
@@ -69,6 +70,7 @@ export function DocumentViewerPage() {
           <Box className="panel-scroll">
             {tab === 0 ? (
               <Box className="field-list">
+                <FieldCompletenessSummary completeness={document.field_completeness} />
                 {!document.extracted_fields.length ? (
                   <Alert severity="info">
                     {document.field_completeness.schema_available

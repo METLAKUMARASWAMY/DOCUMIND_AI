@@ -29,6 +29,10 @@ from app.services.vision.runtime_health import (
     model_smoke_store,
 )
 
+MODEL_ID_ALIASES = {
+    "deterministic-schema-extractor-v2": "deterministic-schema-extractor-v3",
+}
+
 
 class ModelSmokeService:
     def __init__(
@@ -41,6 +45,9 @@ class ModelSmokeService:
         self.store = store or model_smoke_store
 
     def run(self, model_id: str) -> dict[str, Any]:
+        model_id = MODEL_ID_ALIASES.get(model_id, model_id)
+        if model_id == "Qwen3.5-9B":
+            model_id = settings.qwen_checkpoint
         backend = next(
             (
                 item
@@ -205,7 +212,7 @@ class ModelSmokeService:
             "paddleocr-pp-ocrv5": PaddleOCRV5Adapter,
             "paddleocr-pp-structurev3": PaddleStructureV3Adapter,
             "layoutlmv3-extraction": LayoutLMv3ExtractionAdapter,
-            "deterministic-schema-extractor-v2": lambda: deterministic_schema_extractor,
+            "deterministic-schema-extractor-v3": lambda: deterministic_schema_extractor,
             "paddleocr-vl-parser": PaddleOCRVLAdapter,
             "donut-ocr-free": DonutExtractionAdapter,
             "dinov2-document-embedding": DinoV2DuplicateAdapter,
@@ -220,8 +227,9 @@ class ModelSmokeService:
             "bge-m3-embedding": BGEM3EmbeddingAdapter,
             "bge-reranker-v2-m3": BGERerankerAdapter,
             "local-vector-store-v1": lambda: LocalHybridRetrievalIndex(force_local=True),
-            "qdrant-hybrid-retrieval": lambda: QdrantHybridBackend(
-                collection_name=f"documind_model_smoke_{uuid4().hex[:10]}"
+            "qdrant-hybrid-retrieval": lambda: self._qdrant_smoke_backend(
+                QdrantHybridBackend,
+                BGEM3EmbeddingAdapter,
             ),
             "local-graph-projection-v1": lambda: evidence_graph_builder,
             "grounded-template-generator": GroundedTemplateGeneratorAdapter,
@@ -241,6 +249,14 @@ class ModelSmokeService:
             return factories[adapter_id]()
         except KeyError as exc:
             raise RuntimeError(f"No smoke probe is implemented for adapter {adapter_id}") from exc
+
+    def _qdrant_smoke_backend(self, backend_type: Any, bge_type: Any) -> Any:
+        bge_active = bge_type().status().status == "active"
+        return backend_type(
+            collection_name=f"documind_model_smoke_{uuid4().hex[:10]}",
+            vector_namespace="bge_m3" if bge_active else "local_hashing_smoke",
+            expected_vector_size=1024 if bge_active else 64,
+        )
 
     def _initialize(self, adapter_id: str, adapter: Any) -> None:
         if adapter_id == "tesseract-local-ocr":
@@ -308,9 +324,15 @@ class ModelSmokeService:
     ) -> dict[str, Any]:
         if adapter_id == "local-parser-v1":
             content = b"Invoice Number: INV-SMOKE-1042\nTotal Amount: INR 1250.00"
-            adapter.validate_file("smoke.txt", content)
-            text = adapter._decode_text(content)
-            return {"text": text, "page_count": 1}
+            text, page_count, evidence, stored_path = adapter.parse("smoke.txt", content)
+            if stored_path:
+                Path(stored_path).unlink(missing_ok=True)
+            return {
+                "text": text,
+                "page_count": page_count,
+                "evidence_count": len(evidence),
+                "stored_then_removed": bool(stored_path and not Path(stored_path).exists()),
+            }
         if adapter_id in {"tesseract-local-ocr", "paddleocr-pp-ocrv5"}:
             words = adapter.extract_words(document)
             return {
@@ -324,7 +346,7 @@ class ModelSmokeService:
                 "table_count": len(tables),
                 "regions": [item.model_dump(mode="json") for item in regions[:3]],
             }
-        if adapter_id in {"layoutlmv3-extraction", "deterministic-schema-extractor-v2"}:
+        if adapter_id in {"layoutlmv3-extraction", "deterministic-schema-extractor-v3"}:
             if adapter_id == "layoutlmv3-extraction":
                 fields = adapter.extract_fields(document)
             else:
@@ -373,11 +395,24 @@ class ModelSmokeService:
             analysis = adapter.analyze({name: 0.0 for name in FEATURE_NAMES})
             return {"analysis": analysis.model_dump(mode="json")}
         if adapter_id in {"local-hashing-embedding", "bge-m3-embedding"}:
-            vector = adapter.embed("Invoice INV-SMOKE-1042 total INR 1250.00")
+            query_vector = adapter.embed("What is the invoice total?")
+            document_vector = adapter.embed(
+                "Invoice INV-SMOKE-1042 has a total of INR 1250.00."
+            )
             return {
-                "dense_dimensions": len(vector.dense),
-                "sparse_terms": len(vector.sparse),
-                "finite": all(_finite(value) for value in vector.dense),
+                "query_dense_dimensions": len(query_vector.dense),
+                "document_dense_dimensions": len(document_vector.dense),
+                "dimensions_match": len(query_vector.dense) == len(document_vector.dense),
+                "query_sparse_terms": len(query_vector.sparse),
+                "document_sparse_terms": len(document_vector.sparse),
+                "finite": all(
+                    _finite(value)
+                    for value in [*query_vector.dense, *document_vector.dense]
+                ),
+                "scope_metadata": {
+                    "tenant_id": document.tenant_id,
+                    "document_ids": [document.document_id],
+                },
             }
         if adapter_id == "bge-reranker-v2-m3":
             scores = adapter.rerank(
@@ -397,18 +432,79 @@ class ModelSmokeService:
                 ],
             }
         if adapter_id == "qdrant-hybrid-retrieval":
-            from app.services.vision.retrieval_adapters import LocalHashingEmbeddingAdapter
-
-            chunk = self._chunk(document)
-            vector = LocalHashingEmbeddingAdapter(dimensions=64).embed(chunk.text)
-            adapter.upsert([chunk], [vector])
-            scores = adapter.candidate_scores(
-                vector.dense,
-                tenant_id=document.tenant_id,
-                document_ids={document.document_id},
-                limit=1,
+            from app.services.vision.retrieval_adapters import (
+                BGEM3EmbeddingAdapter,
+                LocalHashingEmbeddingAdapter,
             )
-            return {"hit_count": len(scores), "scores": scores}
+
+            bge = BGEM3EmbeddingAdapter()
+            embedder = (
+                bge
+                if bge.status().status == "active"
+                else LocalHashingEmbeddingAdapter(dimensions=64)
+            )
+            primary = self._chunk(document)
+            same_tenant_other_document = primary.model_copy(
+                update={
+                    "chunk_id": f"smoke-chunk-{uuid4().hex[:8]}",
+                    "document_id": f"smoke-doc-{uuid4().hex[:8]}",
+                    "text": "A separate invoice has a total of INR 9999.00.",
+                }
+            )
+            other_tenant = primary.model_copy(
+                update={
+                    "chunk_id": f"smoke-chunk-{uuid4().hex[:8]}",
+                    "document_id": f"smoke-doc-{uuid4().hex[:8]}",
+                    "tenant_id": "smoke-other-tenant",
+                    "text": "Another tenant invoice has a total of INR 8888.00.",
+                }
+            )
+            chunks = [primary, same_tenant_other_document, other_tenant]
+            vectors = [embedder.embed(chunk.text) for chunk in chunks]
+            adapter.replace_document(
+                primary.document_id,
+                tenant_id=document.tenant_id,
+                chunks=[primary],
+                vectors=[vectors[0]],
+            )
+            adapter.upsert(chunks[1:], vectors[1:])
+            adapter.replace_document(
+                primary.document_id,
+                tenant_id=document.tenant_id,
+                chunks=[primary],
+                vectors=[vectors[0]],
+            )
+            scoped_scores = adapter.candidate_scores(
+                vectors[0].dense,
+                tenant_id=document.tenant_id,
+                document_ids={primary.document_id},
+                limit=10,
+            )
+            tenant_scores = adapter.candidate_scores(
+                vectors[0].dense,
+                tenant_id=document.tenant_id,
+                document_ids=None,
+                limit=10,
+            )
+            adapter.delete_document(primary.document_id, tenant_id=document.tenant_id)
+            after_delete = adapter.candidate_scores(
+                vectors[0].dense,
+                tenant_id=document.tenant_id,
+                document_ids={primary.document_id},
+                limit=10,
+            )
+            return {
+                "collection_name": adapter.collection_name,
+                "vector_namespace": adapter.vector_namespace,
+                "scoped_hit_ids": sorted(scoped_scores),
+                "tenant_hit_ids": sorted(tenant_scores),
+                "idempotent_replace": sorted(scoped_scores) == [primary.chunk_id],
+                "document_filter_valid": set(scoped_scores) == {primary.chunk_id},
+                "tenant_filter_valid": other_tenant.chunk_id not in tenant_scores,
+                "delete_valid": not after_delete,
+                "payload_indexes": ["document_id", "tenant_id"],
+                "vector_dimensions": len(vectors[0].dense),
+            }
         if adapter_id == "local-graph-projection-v1":
             from app.services.vision.deterministic_extraction import deterministic_schema_extractor
 
@@ -416,15 +512,60 @@ class ModelSmokeService:
             graph = adapter.build(document)
             return {"node_count": len(graph.nodes), "edge_count": len(graph.edges)}
         if adapter_id == "Neo4j":
+            probe_id = uuid4().hex
+            source_id = f"{probe_id}:document"
+            evidence_id = f"{probe_id}:evidence"
             with adapter.session(database=settings.neo4j_database) as session:
-                record = session.run("RETURN 1 AS value").single()
-            return {"value": int(record["value"]) if record else None}
+                try:
+                    session.run(
+                        "CREATE CONSTRAINT documind_smoke_probe_key IF NOT EXISTS "
+                        "FOR (n:DocuMindSmoke) REQUIRE n.probe_key IS UNIQUE"
+                    ).consume()
+                    session.run(
+                        "MERGE (d:DocuMindSmoke:Document {probe_key: $source_id}) "
+                        "SET d.tenant_id = $tenant_id, d.document_id = $document_id "
+                        "MERGE (e:DocuMindSmoke:Evidence {probe_key: $evidence_id}) "
+                        "SET e.tenant_id = $tenant_id, e.evidence_id = $evidence_id, "
+                        "e.source_text = $source_text "
+                        "MERGE (d)-[r:HAS_EVIDENCE]->(e) "
+                        "SET r.tenant_id = $tenant_id, r.page_number = 1",
+                        source_id=source_id,
+                        evidence_id=evidence_id,
+                        tenant_id=document.tenant_id,
+                        document_id=document.document_id,
+                        source_text="The invoice total is INR 1250.00.",
+                    ).consume()
+                    record = session.run(
+                        "MATCH p=(d:DocuMindSmoke:Document)-[r:HAS_EVIDENCE]->"
+                        "(e:DocuMindSmoke:Evidence) "
+                        "WHERE d.probe_key = $source_id AND d.tenant_id = $tenant_id "
+                        "AND e.tenant_id = $tenant_id AND r.tenant_id = $tenant_id "
+                        "RETURN length(p) AS path_length, type(r) AS relationship_type, "
+                        "e.evidence_id AS evidence_id, e.source_text AS source_text",
+                        source_id=source_id,
+                        tenant_id=document.tenant_id,
+                    ).single()
+                    return {
+                        "path_length": int(record["path_length"]) if record else None,
+                        "relationship_type": record["relationship_type"] if record else None,
+                        "evidence_id": record["evidence_id"] if record else None,
+                        "evidence_property_present": bool(record and record["source_text"]),
+                        "tenant_isolation_applied": bool(record),
+                        "constraint": "documind_smoke_probe_key",
+                    }
+                finally:
+                    session.run(
+                        "MATCH (n:DocuMindSmoke) WHERE n.probe_key IN [$source_id, $evidence_id] "
+                        "DETACH DELETE n",
+                        source_id=source_id,
+                        evidence_id=evidence_id,
+                    ).consume()
         if adapter_id in {
             "grounded-template-generator",
             "qwen-grounded-generator",
             "openai-compatible-grounded-generator",
         }:
-            generated = adapter.generate(
+            supported = adapter.generate(
                 "What is the invoice total?",
                 [
                     {
@@ -436,12 +577,24 @@ class ModelSmokeService:
                     }
                 ],
             )
-            return {"response": generated}
+            unsupported = adapter.generate("Who approved this invoice?", [])
+            return {
+                "supported_response": supported,
+                "unsupported_response": unsupported,
+                "citation_ids_preserved": supported.get("citation_ids")
+                == ["smoke-evidence-1"],
+            }
         raise RuntimeError(f"No inference probe is implemented for adapter {adapter_id}")
 
     def _validate_output(self, adapter_id: str, output: dict[str, Any]) -> dict[str, Any]:
         validators: dict[str, tuple[str, Any]] = {
-            "local-parser-v1": ("parser-v1", lambda value: bool(value.get("text"))),
+            "local-parser-v1": (
+                "parser-v1",
+                lambda value: bool(value.get("text"))
+                and value.get("page_count") == 1
+                and value.get("evidence_count", 0) > 0
+                and value.get("stored_then_removed") is True,
+            ),
             "tesseract-local-ocr": (
                 "ocr-words-v1",
                 lambda value: (
@@ -463,7 +616,7 @@ class ModelSmokeService:
                 "extracted-fields-v1",
                 lambda value: isinstance(value.get("fields"), list),
             ),
-            "deterministic-schema-extractor-v2": (
+            "deterministic-schema-extractor-v3": (
                 "extracted-fields-v1",
                 lambda value: value.get("field_count", 0) > 0,
             ),
@@ -511,29 +664,45 @@ class ModelSmokeService:
             ),
             "local-hashing-embedding": (
                 "hybrid-vector-v1",
-                lambda value: value.get("dense_dimensions", 0) > 0 and value.get("finite") is True,
+                _valid_hybrid_vector,
             ),
             "bge-m3-embedding": (
                 "hybrid-vector-v1",
-                lambda value: value.get("dense_dimensions", 0) > 0 and value.get("finite") is True,
+                _valid_hybrid_vector,
             ),
             "bge-reranker-v2-m3": (
                 "reranker-scores-v1",
-                lambda value: value.get("score_count") == 2,
+                lambda value: value.get("score_count") == 2
+                and all(_finite(float(score)) for score in value.get("scores", [])),
             ),
             "local-vector-store-v1": (
                 "retrieval-hits-v1",
                 lambda value: value.get("hit_count", 0) > 0,
             ),
             "qdrant-hybrid-retrieval": (
-                "retrieval-hits-v1",
-                lambda value: value.get("hit_count", 0) > 0,
+                "qdrant-filtered-replacement-v1",
+                lambda value: all(
+                    value.get(key) is True
+                    for key in (
+                        "idempotent_replace",
+                        "document_filter_valid",
+                        "tenant_filter_valid",
+                        "delete_valid",
+                    )
+                )
+                and value.get("vector_dimensions", 0) > 0,
             ),
             "local-graph-projection-v1": (
                 "evidence-graph-v2",
                 lambda value: value.get("node_count", 0) > 0 and value.get("edge_count", 0) > 0,
             ),
-            "Neo4j": ("connectivity-query-v1", lambda value: value.get("value") == 1),
+            "Neo4j": (
+                "neo4j-evidence-path-v1",
+                lambda value: value.get("path_length") == 1
+                and value.get("relationship_type") == "HAS_EVIDENCE"
+                and value.get("evidence_property_present") is True
+                and value.get("tenant_isolation_applied") is True,
+            ),
             "grounded-template-generator": ("grounded-answer-v1", _valid_generated),
             "qwen-grounded-generator": ("grounded-answer-v1", _valid_generated),
             "openai-compatible-grounded-generator": ("grounded-answer-v1", _valid_generated),
@@ -734,11 +903,31 @@ def _valid_ocr_words(words: Any) -> bool:
 
 
 def _valid_generated(value: dict[str, Any]) -> bool:
-    response = value.get("response")
+    supported = value.get("supported_response")
+    unsupported = value.get("unsupported_response")
     return (
-        isinstance(response, dict)
-        and response.get("answer_status") in {"supported", "partially_supported", "not_found"}
-        and isinstance(response.get("citation_ids"), list)
+        isinstance(supported, dict)
+        and supported.get("answer_status") in {"supported", "partially_supported"}
+        and supported.get("citation_ids") == ["smoke-evidence-1"]
+        and bool(str(supported.get("answer", "")).strip())
+        and isinstance(unsupported, dict)
+        and unsupported.get("answer_status") == "not_found"
+        and unsupported.get("citation_ids") == []
+        and value.get("citation_ids_preserved") is True
+    )
+
+
+def _valid_hybrid_vector(value: dict[str, Any]) -> bool:
+    scope = value.get("scope_metadata")
+    return (
+        value.get("query_dense_dimensions", 0) > 0
+        and value.get("dimensions_match") is True
+        and value.get("finite") is True
+        and value.get("query_sparse_terms", 0) > 0
+        and value.get("document_sparse_terms", 0) > 0
+        and isinstance(scope, dict)
+        and bool(scope.get("tenant_id"))
+        and bool(scope.get("document_ids"))
     )
 
 

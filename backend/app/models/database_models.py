@@ -24,4 +24,8 @@ DATABASE_TABLES = [
     "workflow_tasks",
     "approvals",
     "audit_logs",
+    "vision_field_candidate_resolutions",
+    "vision_processing_timings",
+    "vision_conversations",
+    "vision_retrieval_traces",
 ]

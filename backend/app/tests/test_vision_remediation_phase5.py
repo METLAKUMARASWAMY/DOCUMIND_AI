@@ -71,7 +71,7 @@ def test_structured_visual_and_absent_answers_are_evidence_bound():
     document_id = document["document_id"]
 
     fax = _ask("What is the fax number?", document_id)
-    assert fax["query_type"] == "structured_lookup"
+    assert fax["query_type"] == "structured_field_lookup"
     assert fax["answer_status"] == "supported"
     assert "212-403-2211" in fax["answer"]
     assert fax["retriever"] == "persisted-structured-field-store"

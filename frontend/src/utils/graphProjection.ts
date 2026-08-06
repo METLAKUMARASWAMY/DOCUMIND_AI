@@ -10,8 +10,12 @@ export function filterGraphProjection(
   graph: GraphProjection,
   nodeType: string,
   edgeStatus: string,
+  relationshipType = "all",
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
-  const statusEdges = graph.edges.filter((edge) => edgeStatus === "all" || edge.status === edgeStatus);
+  const statusEdges = graph.edges.filter(
+    (edge) => (edgeStatus === "all" || edge.status === edgeStatus)
+      && (relationshipType === "all" || edge.type === relationshipType),
+  );
   if (nodeType === "all") return { nodes: graph.nodes, edges: statusEdges };
 
   const matchingIds = new Set(graph.nodes.filter((node) => node.type === nodeType).map((node) => node.id));

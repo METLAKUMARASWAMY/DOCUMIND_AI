@@ -1,50 +1,79 @@
 # AI runtime installation
 
-The local OCR-line, schema extraction, lexical retrieval, graph projection, and grounded-template pipeline runs from `backend/requirements/base.txt`. Heavy adapters stay blocked until their package, checkpoint or service passes a smoke test.
+DocuMind's practical AI core is installed in a dedicated virtual environment and activated only by live verification. Installing a package, finding a partial checkpoint, or setting a requested-state flag is not activation.
 
-## Dependency groups
+## Reproducible bootstrap
 
-- `backend/requirements/base.txt`: API and local deterministic runtime.
-- `backend/requirements/ai-standard.txt`: PaddleOCR, PyTorch, Transformers, LayoutLMv3 preparation, BGE, and model evaluation dependencies.
-- `backend/requirements/ai-full.txt`: training and optional advanced visual adapters.
-- `backend/requirements/dev.txt`: local runtime plus tests and linting.
-
-Use Python 3.11 or 3.12 for the broadest AI-wheel compatibility. The application may run on newer Python versions, but a missing compatible wheel keeps that adapter blocked.
-
-## macOS Apple Silicon
+From the repository root:
 
 ```bash
-python3.12 -m venv backend/.venv-ai
-source backend/.venv-ai/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r backend/requirements/base.txt
-python -m pip install torch
+scripts/bootstrap_ai_core.sh
 ```
 
-Install PaddlePaddle only when its published macOS ARM wheel supports the selected Python version. Then install `backend/requirements/ai-standard.txt`. Do not substitute a CUDA wheel on macOS.
+The bootstrap creates `.venv-ai` with Python 3.11 or 3.12, installs the AI core dependencies, optionally starts the Compose services, and runs `scripts/verify_ai_core.py --run-smoke`. Its default report and log are `var/ai-core/verification.json` and `var/ai-core/bootstrap.log`. The log and report redact credentials; do not copy secrets into documentation or command output.
 
-## CPU Linux
+Useful options are:
 
-```bash
-python3.12 -m venv backend/.venv-ai
-source backend/.venv-ai/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r backend/requirements/base.txt
-python -m pip install torch paddlepaddle
-python -m pip install -r backend/requirements/ai-standard.txt
+```text
+--venv PATH                       use another isolated AI environment
+--python COMMAND                  select a Python 3.11/3.12 executable
+--summary PATH                    write verification JSON elsewhere
+--skip-install                    inspect an existing environment only
+--skip-services                   do not start Qdrant or Neo4j
+--no-paddle                       skip Paddle runtime installation
+--allow-paddle-model-downloads    allow PP-OCR/PP-Structure asset downloads
+--allow-bge-downloads             allow the configured BGE checkpoint downloads
+--local-llm-checkpoint ID_OR_PATH select a local language-model checkpoint
+--allow-local-llm-downloads       allow download of that selected checkpoint
+--strict                          return non-zero when configured core verification fails
 ```
 
-## CUDA Linux
+Model downloads are denied by default. Enable a download option only for a bounded activation attempt. A timed-out or incomplete download remains unavailable and must not be described as active. Without `--strict`, the bootstrap continues independent stages and can exit successfully while reporting failed stages; use the JSON result, not the shell exit alone, as the source of truth.
 
-Create the environment and install `base.txt` first. Install the PyTorch and PaddlePaddle wheels that match the host CUDA driver using each project’s official wheel selector, then install `ai-standard.txt`. Never install a GPU wheel solely from an environment flag.
+## Verified macOS Apple Silicon environment
+
+The measured activation environment is macOS `arm64`, `.venv-ai`, Python `3.11.14`. The actual installed AI/runtime package versions are:
+
+| Package | Version |
+| --- | ---: |
+| `FlagEmbedding` | 1.4.0 |
+| `torch` | 2.13.0 |
+| `transformers` | 4.57.6 |
+| `sentence-transformers` | 5.6.1 |
+| `paddlepaddle` | 3.3.1 |
+| `paddleocr` | 3.7.0 |
+| `paddlex` with the OCR extra | 3.7.2 |
+| `qdrant-client` | 1.19.0 |
+| `neo4j` | 6.2.0 |
+
+These are measured versions, not a promise that every model supplied by those packages is active. In particular, the PaddleOCR package and OCR extra can be installed while a PP-Structure multi-model asset set is still partial.
+
+The local Compose services used in verification are `qdrant/qdrant:v1.18.0` and `neo4j:5.22-community`.
+
+Qdrant collections are non-destructively versioned by embedding profile and dimension. For example, BGE-M3 uses `vision_evidence_chunks__bge_m3__d1024_v1`; it never rewrites an existing 768-dimensional collection. An existing versioned collection with an incompatible cosine/dimension schema is preserved and reported as an explicit migration error.
 
 ## Activation gates
 
+Run the consolidated audit without downloading models:
+
 ```bash
-python scripts/smoke_test_models.py --model deterministic-schema-extractor-v2
-python scripts/smoke_test_models.py --model PP-OCRv5
-python scripts/smoke_test_models.py --model LayoutLMv3
-python scripts/smoke_test_models.py --model BAAI/bge-m3
+.venv-ai/bin/python scripts/verify_ai_core.py \
+  --run-smoke \
+  --output var/ai-core/verification.json \
+  --strict
 ```
 
-An adapter becomes active only after initialization, one inference, and output-schema validation pass for the current configuration fingerprint. LayoutLMv3 extraction additionally requires a trained token-classification head and label mapping. A base pretrained checkpoint remains blocked. Qdrant and Neo4j require live service health checks, not only installed clients.
+To target one or more model IDs, repeat `--smoke-model`:
+
+```bash
+.venv-ai/bin/python scripts/verify_ai_core.py \
+  --smoke-model deterministic-schema-extractor-v3 \
+  --smoke-model BAAI/bge-m3 \
+  --smoke-timeout 300 \
+  --output var/ai-core/verification.json \
+  --strict
+```
+
+`--smoke-timeout` is a per-model isolated-subprocess limit and defaults to 300 seconds; values below 10 are raised to 10. `--strict` returns non-zero when a configured-active model fails or when an enabled Qdrant/Neo4j service is unreachable. The verifier writes JSON atomically and records package imports, checkpoint availability, service reachability, smoke status, and output-schema validation without printing credentials.
+
+An adapter is active only after construction, initialization, one real inference, and output-schema validation pass for the current configuration fingerprint. Qdrant and Neo4j additionally require live service probes; meaningful storage behavior is covered in the activation report. See [AI core activation report](AI_CORE_ACTIVATION_REPORT.md) for the measured pass and non-pass boundaries.
