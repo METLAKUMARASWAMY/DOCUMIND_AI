@@ -1,14 +1,18 @@
 # DocuMind Core Intelligence v4 — Final Engineering Report
 
-Date: 2026-08-06  
-Reference document: `vision-doc-1097f9461f` / `00093726.png`  
-Implementation commit: `ea8b494`
+Implementation date: 2026-08-06
+
+Final pending-task closure: 2026-08-10
+
+Reference document: `vision-doc-1097f9461f` / `00093726.png`
+
+Core implementation commit: `d8d9a2b`
 
 ## 1. Repository and environment audit
 
 - macOS 26.5.2, Apple Silicon arm64, 16 GiB RAM.
 - Node 22.19, npm 10.9, application Python 3.13.9, isolated AI Python 3.11.14.
-- Docker 28.4; Qdrant 1.18 and PostgreSQL available. The supplied Neo4j Desktop binary is 2026.07.0.
+- Docker 28.4; Qdrant 1.18 and PostgreSQL 17.10 available. The exact supplied Neo4j Desktop instance is running Neo4j Enterprise 2026.07.0.
 - A pre-change checkpoint was created as `8b917f2`.
 
 ## 2. Root causes found
@@ -24,7 +28,7 @@ Implementation commit: `ea8b494`
 
 ## 3. Files modified
 
-The final commit changes 79 files: extraction/schema/model services, RAG/generator/retrieval/graph services, persistence and readiness, API contracts, frontend workspaces, migrations, operational scripts, documentation and regression tests. Use `git show --stat ea8b494` for the authoritative list.
+The core implementation commit changes 80 files: extraction/schema/model services, RAG/generator/retrieval/graph services, persistence and readiness, API contracts, frontend workspaces, migrations, operational scripts, documentation and regression tests. Use `git show --stat d8d9a2b` for the authoritative core list. The 2026-08-10 closure adds only acceptance-test corrections, refreshed evidence, and truthful runtime documentation.
 
 ## 4. Migrations added
 
@@ -40,14 +44,15 @@ The isolated AI environment contains Torch 2.13.0, Transformers 4.57.6, Sentence
 
 - Qdrant 1.18: live filtered replace/query/delete passed.
 - PostgreSQL 17.10 (Postgres.app): authenticated `SELECT 1`, migrations and v4 persistence mirror passed.
-- Neo4j Desktop `22201bd7-b52f-473a-a809-0c14666764e2`: endpoint and version verified; authentication remains blocked pending its matching credential.
-- The redundant Docker Neo4j container was stopped without deleting its volume.
+- Neo4j Desktop `22201bd7-b52f-473a-a809-0c14666764e2`: the configured credential authenticates against Neo4j Enterprise 2026.07.0; all databases are online and the default `neo4j` database is connected.
+- The redundant Docker Neo4j 5.22 container is stopped without deleting its volume. Neo4j Desktop manages the live process on port 7687.
 
 ## 7. Checkpoints configured
 
 - `BAAI/bge-m3`: cached and verified on CPU.
 - `google/flan-t5-small`: cached and verified as the compatible grounded local generator.
-- BGE reranker and PP-Structure assets are not marked active because their bounded downloads did not complete.
+- Exact `BAAI/bge-reranker-v2-m3`: cached and verified by real offline CPU reranking.
+- `PP-StructureV3 / PP-DocLayoutV3`: all required components are cached and verified by real offline CPU layout inference.
 
 ## 8. Extraction before/after
 
@@ -59,33 +64,35 @@ Ask now has tenant/user/conversation state, five safety clarification options, a
 
 ## 10. Graph before/after
 
-The semantic graph contains 16 unique nodes and 21 unique edges for the reference record, with readable entity/relationship labels, source field/page/text/evidence/confidence/status, tenant/document scope and idempotent cleanup. The requester path is evidence-linked rather than invented.
+The semantic graph contains 16 unique nodes and 21 unique edges for the reference record, with readable entity/relationship labels, source field/page/text/evidence/confidence/status, tenant/document scope and idempotent cleanup. The requester path is evidence-linked rather than invented. The live Desktop database contains 203/203 unique tenant entity IDs and 272/272 unique relationship IDs after two 22-document rebuilds; the second rebuild changed no document.
 
 ## 11. Processing-time correction
 
-Twenty current-pipeline samples are included. Mean is 4224.074 ms, median 2646.778 ms and p95 10999.747 ms; queue mean is 0.959 ms. Legacy/incomplete/negative/over-one-hour samples are excluded and review activity after the first terminal processing event cannot inflate processing time.
+Twenty-two current-pipeline samples are included. Mean is 4961.886 ms, median 2874.443 ms and p95 13004.021 ms; queue mean is 2.384 ms. Structured extraction coverage is 0.7273. Legacy/incomplete/negative/over-one-hour samples are excluded and review activity after the first terminal processing event cannot inflate processing time.
 
-## 12. Active model registry
+## 12. Verified model runtime
 
-Verified active paths include local parser, Tesseract 5, local layout, PP-OCRv5 mobile, deterministic schema extractor v3, OpenCV visual cues, ELA/noise screening, Isolation Forest, local hashing, BGE-M3, local vector store, Qdrant, local graph projection, grounded template generator and FLAN-T5-small.
+Measured smoke passes include local parser, Tesseract 5, local layout, PP-OCRv5 mobile, PP-StructureV3, deterministic schema extractor v3, OpenCV visual cues, ELA/noise screening, Isolation Forest, local hashing, BGE-M3, exact BGE reranking, local vector store, Qdrant, local graph projection, Neo4j Desktop, grounded template generation and FLAN-T5-small. Heavy adapters remain explicit deployment flags; a passed smoke is not described as currently loaded when its flag is disabled.
 
-## 13. Blocked model registry and attempts
+## 13. Model completion and conditional boundaries
 
-- BGE reranker v2-m3 and reranker-base: Xet downloads stalled beyond bounded five-minute attempts; checkpoint incomplete; local ranking fallback remains.
-- PP-StructureV3: dependency extra installed and multiple assets downloaded, then bounded initialization stopped during remaining formula/layout assets; deterministic geometry layout remains.
-- Other advanced adapters remain disabled without project checkpoints.
-- Neo4j Desktop is unavailable only for the missing matching credential; local semantic GraphRAG remains active.
+- Exact BGE reranker v2-m3: the resumed 2,271,071,852-byte checkpoint completed and strict offline initialization/inference passed in 9.209 seconds. The smaller fallback was superseded and intentionally not downloaded.
+- PP-StructureV3: the missing 735,468,877-byte FormulaNet component completed and full strict offline layout inference passed in 18.225 seconds.
+- Other advanced adapters remain correctly disabled because no project-trained checkpoint was supplied; no generic public weight is substituted for a project model.
+- The external provider remains unconfigured because no provider credential was supplied. The verified local grounded generator remains available.
+- Exact commands and machine-readable artifact names are in `docs/MODEL_ASSET_VERIFICATION_2026-08-10.md`.
 
 ## 14. Automated tests
 
-- Backend: 127 passed, 44 known deprecation warnings, 108.92 seconds.
+- Backend: 127 passed, zero skipped/deselected, 44 known deprecation warnings, 99.72 seconds.
 - Ruff: passed.
 - Frontend: 18 tests passed; 3192-module production build passed; lint passed.
+- Live Playwright: 1 exact end-to-end journey passed in 9.5 seconds with zero captured browser errors.
 - `git diff --check`: passed.
 
 ## 15. Manual acceptance
 
-Live API acceptance passed upload/processing, the exact six-field viewer, all seven counters and idempotent report reuse. A screenshot is stored at `docs/screenshots/core-v4-00093726-fields.png`. The final browser test reached Ask Documents but its duplicate-filename option selector timed out; the selector is fixed but was not rerun before the session cutoff. This is recorded as pending rather than reported as a pass.
+Live Playwright acceptance passed in 9.5 seconds against the final Neo4j Desktop target. It covered upload/terminal processing, the exact six-field viewer, all seven counters, idempotent report reuse, a cited sample-number answer, safety clarification with cited document-quality evidence, the evidence-linked requester GraphRAG path, analytics, and Admin Models. No browser console or page errors were captured. Five refreshed screenshots are stored under `docs/screenshots/core-v4-*.png`.
 
 ## 16. Sample extracted JSON
 
@@ -117,11 +124,11 @@ Relationship status: proposed; page 1; evidence `vis-ev-85de3cb6feea`; source fi
 
 ## 19. Remaining genuine limitations
 
-See `docs/PENDING_TASKS_2026-08-06.md`. The concrete items are the Neo4j Desktop credential, one final Playwright rerun, incomplete reranker/PP-Structure assets and project-specific advanced checkpoints. Local JSON remains the recoverable document source of truth while PostgreSQL mirrors v4 operational intelligence records.
+No actionable item from the 2026-08-06 hand-off remains; see `docs/PENDING_TASKS_2026-08-06.md` for the closure evidence. Project-trained advanced checkpoints and an external provider are conditional future deployment inputs, not incomplete current work. Local JSON remains the recoverable document source of truth while PostgreSQL mirrors v4 operational intelligence records.
 
 ## 20. PASS/FAIL/BLOCKED checklist
 
-- PASS: exact extraction, provenance, seven counters, clarification state, 12-source retrieval, citations, abstention, semantic local GraphRAG, analytics, report identity, reprocessing idempotency, Qdrant, PostgreSQL, model truthfulness, automated tests.
-- BLOCKED: Neo4j Desktop live write/query until its credential is supplied; optional incomplete model assets.
-- PENDING: rerun the corrected live Playwright journey.
-- FAIL: none in the committed automated core.
+- PASS: exact extraction, provenance, seven counters, clarification state, 12-source retrieval, citations, abstention, semantic local and live Neo4j GraphRAG, analytics, report identity, reprocessing idempotency, Qdrant, PostgreSQL, exact reranking, PP-Structure, live Playwright, model truthfulness, and automated tests.
+- BLOCKED: none.
+- PENDING: none from the recorded hand-off.
+- FAIL: none.

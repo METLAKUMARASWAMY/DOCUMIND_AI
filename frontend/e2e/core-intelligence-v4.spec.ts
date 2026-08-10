@@ -98,9 +98,10 @@ test("00093726 core-intelligence walkthrough is grounded and readable", async ({
   await ask(page, "Is this safe?");
   const options = page.locator(".clarification-options").last();
   await expect(options).toBeVisible();
-  await expect(options.getByText("Check suspicious indicators", { exact: true })).toBeVisible();
-  await options.getByText("Check suspicious indicators", { exact: true }).click();
-  await expect(page.getByText("partially_supported", { exact: true }).last()).toBeVisible();
+  await expect(options.getByText("Check document quality", { exact: true })).toBeVisible();
+  await options.getByText("Check document quality", { exact: true }).click();
+  await expect(page.getByText("partially supported", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText(/Human review is required before relying on the document\./)).toBeVisible();
   await expect(page.locator(".citation-row").last()).toBeVisible();
   await capture(page, "core-v4-ask-clarification.png");
 
@@ -116,7 +117,7 @@ test("00093726 core-intelligence walkthrough is grounded and readable", async ({
 
   await page.goto("/analytics");
   await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
-  await expect(page.getByText(/Median processing time/).first()).toBeVisible();
+  await expect(page.getByText(/Median processing/).first()).toBeVisible();
   await capture(page, "core-v4-analytics.png");
 
   await page.goto("/admin");
@@ -139,7 +140,7 @@ async function waitForProcessedDocument(api: APIRequestContext, id: string) {
       },
       { timeout: 60_000, intervals: [500, 1000, 2000] },
     )
-    .toMatch(/COMPLETED|REVIEW_REQUIRED|APPROVED/);
+    .toMatch(/^(COMPLETED|REVIEW_REQUIRED|APPROVED)$/);
 }
 
 async function signIn(page: Page) {
@@ -151,7 +152,13 @@ async function signIn(page: Page) {
 }
 
 async function selectDocument(page: Page, label: string, filename: string) {
-  await page.getByLabel(label).click();
+  if (label === "Scope") {
+    await page.getByLabel("Scope", { exact: true }).click();
+    await page.getByRole("option", { name: "Current document", exact: true }).click();
+    await page.getByLabel("Document", { exact: true }).click();
+  } else {
+    await page.getByLabel(label, { exact: true }).click();
+  }
   await page.getByRole("option").filter({ hasText: filename }).first().click();
 }
 

@@ -46,9 +46,9 @@ The measured activation environment is macOS `arm64`, `.venv-ai`, Python `3.11.1
 | `qdrant-client` | 1.19.0 |
 | `neo4j` | 6.2.0 |
 
-These are measured versions, not a promise that every model supplied by those packages is active. In particular, the PaddleOCR package and OCR extra can be installed while a PP-Structure multi-model asset set is still partial.
+These are measured versions, not a promise that every model supplied by those packages is active. Package presence alone never establishes model readiness. As of 2026-08-10, the PP-Structure multi-model asset set is complete and has passed real offline inference; deployment loading remains controlled by its feature flag.
 
-The local Compose services used in verification are `qdrant/qdrant:v1.18.0` and `neo4j:5.22-community`.
+Qdrant verification uses the local Compose service `qdrant/qdrant:v1.18.0`. The old Compose `neo4j:5.22-community` container is stopped with its volume preserved; final graph verification uses the exact user-supplied Neo4j Desktop Enterprise 2026.07.0 instance on port 7687.
 
 Qdrant collections are non-destructively versioned by embedding profile and dimension. For example, BGE-M3 uses `vision_evidence_chunks__bge_m3__d1024_v1`; it never rewrites an existing 768-dimensional collection. An existing versioned collection with an incompatible cosine/dimension schema is preserved and reported as an explicit migration error.
 

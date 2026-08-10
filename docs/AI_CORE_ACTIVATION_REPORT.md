@@ -1,6 +1,6 @@
 # AI Core Activation Report
 
-This report records measured runtime facts. It deliberately distinguishes a passed live smoke from an installed dependency, a partial download, or a pending test.
+This report records measured runtime facts through 2026-08-10. It deliberately distinguishes a passed live smoke from an installed dependency or a currently enabled deployment flag.
 
 ## Environment and dependencies
 
@@ -22,7 +22,7 @@ This report records measured runtime facts. It deliberately distinguishes a pass
 | `qdrant-client` | 1.19.0 |
 | `neo4j` driver | 6.2.0 |
 | Qdrant service | `qdrant/qdrant:v1.18.0` |
-| Neo4j service | `neo4j:5.22-community` |
+| Neo4j service | Desktop Enterprise `2026.07.0`, instance `22201bd7-b52f-473a-a809-0c14666764e2` |
 
 No credential values are part of this report.
 
@@ -32,21 +32,23 @@ No credential values are part of this report.
 | --- | --- |
 | Core-local runtime | 11 of 11 isolated model probes passed, including `deterministic-schema-extractor-v3`. |
 | `BAAI/bge-m3` | The exact BAAI checkpoint completed a CPU hybrid smoke with dense and sparse output. |
+| `BAAI/bge-reranker-v2-m3` | Exact 2.27-GB weights completed; real offline CPU reranking passed with the relevant passage ranked above the irrelevant passage and a valid `reranker-scores-v1` contract. |
 | `PP-OCRv5_mobile` | A real CPU OCR smoke passed. |
+| `PP-StructureV3 / PP-DocLayoutV3` | The complete multi-model asset set passed real offline CPU inference with measured regions and a valid `layout-v1` contract. |
 | `google/flan-t5-small` | Cached checkpoint passed real CPU generation; free-text output was admitted only after deterministic evidence-coverage/citation validation, and the no-evidence case returned `not_found`. |
 | Qdrant | Real replacement, metadata-filter, and delete behavior passed. BGE-M3 used `vision_evidence_chunks__bge_m3__d1024_v1`; the existing 768-dimensional `vision_evidence_chunks` collection and its 16,310 points were unchanged. |
-| Neo4j | A real evidence path and tenant-isolation behavior passed at 06:21 UTC against Neo4j 5.22.0. A later download-free audit found the regenerated environment credential no longer matched the persisted volume password; current connectivity is blocked with `Unauthorized` until credentials are reconciled without deleting the volume. |
+| Neo4j | The ignored environment credential was reconciled with the exact Desktop instance without deleting data. A strict live smoke passed against Enterprise 2026.07.0, followed by two 22-document rebuilds with zero duplicate IDs and no second-run changes. The reference graph is 16 nodes/21 edges with an evidence-backed `REQUESTED_BY` path and tenant isolation. |
 
-## Attempted, incomplete, or pending
+## Conditional or deployment-disabled targets
 
 | Target | Truthful status |
 | --- | --- |
-| `BAAI/bge-reranker-v2-m3` | Download incomplete/stalled; not active. |
-| `BAAI/bge-reranker-base` | Download incomplete/stalled; not active. |
-| PP-Structure | Dependency issues were fixed, but multi-model download exceeded the bounded smoke window. Partial assets only; not active. |
-| Neo4j current connection | Historical inference smoke passed, but the final audit returned `Neo.ClientError.Security.Unauthorized`; do not treat the service as currently active. Preserve the existing volume while reconciling its password. |
+| `BAAI/bge-reranker-base` | Superseded by the exact v2-m3 pass; no fallback download is required. |
+| Heavy BGE/PP-Structure flags | Assets and real inference are verified, but long-running deployment activation remains opt-in on the 16-GiB CPU host. Disabled flags are not described as loaded models. |
+| LayoutLMv3, Donut, DINOv2, YOLO, DeBERTa/CUAD, SegFormer, XGBoost | Correctly unconfigured until a project-trained checkpoint is supplied. |
+| External LLM | Correctly unconfigured without a provider credential; local grounded generation is verified. |
 
-Partial cache files do not satisfy checkpoint availability, and neither a bootstrap attempt nor a package import substitutes for inference and output validation.
+There are no partial BGE-reranker or PP-Structure assets remaining. A package import still does not substitute for inference and output validation; the passes above all include real initialization, inference, and schema checks. Exact optional-model commands and timings are recorded in [the 2026-08-10 asset verification](MODEL_ASSET_VERIFICATION_2026-08-10.md).
 
 ## Recheck protocol
 

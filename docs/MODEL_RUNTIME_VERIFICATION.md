@@ -56,16 +56,21 @@ The core-local suite passed **11/11**:
 Additional measured passes are:
 
 - `BAAI/bge-m3`: exact checkpoint, CPU inference, hybrid dense/sparse output smoke passed.
+- `BAAI/bge-reranker-v2-m3`: exact checkpoint, offline CPU initialization/inference and `reranker-scores-v1` validation passed; the relevant passage ranked above the irrelevant passage.
 - `PP-OCRv5_mobile`: CPU OCR inference smoke passed.
+- `PP-StructureV3 / PP-DocLayoutV3`: the complete asset set passed offline CPU layout inference and `layout-v1` validation.
 - `google/flan-t5-small`: cached checkpoint passed real CPU generation, strict evidence coverage/citation normalization, and the unsupported-answer gate.
 - Qdrant: real collection replacement, filter, and delete behavior passed against `qdrant/qdrant:v1.18.0` using `qdrant-client` 1.19.0. Collections are embedding/dimension-versioned; exact BGE-M3 used `vision_evidence_chunks__bge_m3__d1024_v1`, while the legacy 768-dimensional collection and all 16,310 existing points were preserved.
-- Neo4j: real evidence-path creation/query behavior and tenant-isolation behavior passed at 06:21 UTC against Neo4j 5.22.0 (`neo4j:5.22-community`) using the `neo4j` 6.2.0 driver. The final 06:33 UTC audit then returned `Neo.ClientError.Security.Unauthorized` after environment credential regeneration; current service status is unavailable until the persisted-volume password is reconciled non-destructively.
+- Neo4j: the configured credential authenticates against the exact Desktop instance `22201bd7-b52f-473a-a809-0c14666764e2`, Neo4j Enterprise 2026.07.0, using driver 6.2.0. Strict evidence-path/tenant-isolation smoke passed. Two full 22-document graph rebuilds produced zero duplicate IDs and no second-run changes; the reference record is 16 nodes/21 edges with a cited `REQUESTED_BY` path. The old Docker 5.22 container is stopped and its volume is preserved.
 
-The following were attempted but are **not active**:
+The following activation boundaries remain intentional:
 
-- `BAAI/bge-reranker-v2-m3`: checkpoint download was incomplete/stalled; no activation pass.
-- `BAAI/bge-reranker-base`: checkpoint download was incomplete/stalled; no activation pass.
-- PP-Structure: dependencies were repaired, but the multi-model asset download exceeded the bounded smoke window. Only partial assets are present, so PP-Structure has no activation pass.
+- `BAAI/bge-reranker-base` is superseded by the exact v2-m3 pass and was not downloaded.
+- The complete BGE and PP-Structure weights remain controlled by ignored heavy-model flags. A passed smoke means the adapter is verified and ready; it is reported as deployment-disabled whenever its current flag is off.
+- LayoutLMv3, Donut, DINOv2, YOLO, DeBERTa/CUAD, SegFormer, and XGBoost remain unconfigured until project-trained checkpoints are supplied.
+- The external generator remains unconfigured without provider credentials; verified local grounded generation remains available.
+
+The exact resumed-download commands, byte counts, inference timings, and isolated 2/2 strict audit are recorded in [Optional model asset verification — 2026-08-10](MODEL_ASSET_VERIFICATION_2026-08-10.md).
 
 The precise measured package versions and service images are recorded in [AI core activation report](AI_CORE_ACTIVATION_REPORT.md).
 
