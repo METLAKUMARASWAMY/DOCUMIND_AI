@@ -864,6 +864,19 @@ class VisionAskCalculationTrace(BaseModel):
     calculation_version: str = "deterministic-calculation-v1"
 
 
+class VisionAnswerDegradation(BaseModel):
+    """One disclosed reduction in answer quality.
+
+    Fallbacks are allowed; undisclosed fallbacks are not. Every place that
+    silently substituted a weaker result now records why it did so.
+    """
+
+    component: str
+    stage: str
+    detail: str
+    impact: str = "reduced_quality"
+
+
 class VisionAskResponse(BaseModel):
     question_id: str | None = None
     answer: str
@@ -887,11 +900,20 @@ class VisionAskResponse(BaseModel):
     reranker: str = "not_used"
     graph_paths: list[dict[str, Any]] = Field(default_factory=list)
     calculation_trace: VisionAskCalculationTrace | None = None
+    #: Disclosed degradations that shaped this answer. A fallback is never silent:
+    #: if a generator, reranker or vector backend was skipped or rejected, it is
+    #: named here and surfaced in the UI. Empty means nothing was degraded.
+    degradations: list[VisionAnswerDegradation] = Field(default_factory=list)
 
     @computed_field
     @property
     def generator(self) -> str:
         return f"{self.generator_name}:{self.generator_version}"
+
+    @computed_field
+    @property
+    def degraded(self) -> bool:
+        return bool(self.degradations)
 
 
 class VisionCalculationTrace(BaseModel):

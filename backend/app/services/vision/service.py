@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import threading
 import time
@@ -22,6 +23,7 @@ from app.models.vision import (
     ReviewerStatus,
     TypedVisionEntity,
     VerifiedVisionFact,
+    VisionAnswerDegradation,
     VisionAskCalculationInput,
     VisionAskCalculationOperation,
     VisionAskCalculationTrace,
@@ -118,6 +120,8 @@ from app.services.vision.visual_adapters import (
     OpenCVVisualDetectionAdapter,
     Yolo26VisualDetectionAdapter,
 )
+
+LOGGER = logging.getLogger("documind.vision")
 
 CONTRACT_CLAUSE_FIELDS = {
     "parties",
@@ -2411,7 +2415,32 @@ class VisionAIService:
         ]
         try:
             generated = generator.generate(question, evidence)
-        except Exception:
+        except Exception as exc:
+            # A generator failure is a real degradation, not a no-op. The composed
+            # evidence answer is still correct and cited, but the user is told that
+            # the richer generator did not run.
+            LOGGER.warning(
+                "grounded generator failed; serving the composed evidence answer",
+                extra={
+                    "context": {
+                        "component": "grounded_generator",
+                        "generator": generator.adapter_id,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                },
+            )
+            fallback.degradations.append(
+                VisionAnswerDegradation(
+                    component=generator.adapter_id,
+                    stage="answer_generation",
+                    detail=(
+                        f"The grounded generator raised {type(exc).__name__} and was "
+                        "skipped. The answer below is composed directly from retrieved "
+                        "evidence and remains fully cited."
+                    ),
+                    impact="generator_skipped",
+                )
+            )
             return fallback
         citation_by_id = {
             citation.chunk_id: citation
@@ -2422,6 +2451,34 @@ class VisionAIService:
             citation_by_id[item] for item in generated["citation_ids"] if item in citation_by_id
         ]
         if generated["answer_status"] != "not_found" and not selected:
+            # The generator claimed support but cited nothing that resolves to
+            # retrieved evidence. Rejecting it is the grounding contract working;
+            # discarding it silently is not. This is also the signal that would fire
+            # on a prompt-injection attempt from document content.
+            LOGGER.warning(
+                "generated answer rejected: no citation resolved to retrieved evidence",
+                extra={
+                    "context": {
+                        "component": "grounding_validator",
+                        "generator": generator.adapter_id,
+                        "claimed_status": generated["answer_status"],
+                        "claimed_citation_count": len(generated["citation_ids"]),
+                        "resolved_citation_count": 0,
+                    }
+                },
+            )
+            fallback.degradations.append(
+                VisionAnswerDegradation(
+                    component="grounding_validator",
+                    stage="grounding_validation",
+                    detail=(
+                        "The generated answer cited no evidence that resolves to the "
+                        "retrieved set, so it was rejected. The answer below is composed "
+                        "directly from retrieved evidence."
+                    ),
+                    impact="generated_answer_rejected",
+                )
+            )
             return fallback
         return VisionAskResponse(
             answer=generated["answer"]
