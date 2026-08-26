@@ -12,7 +12,7 @@ import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from statistics import median
 from typing import Any
@@ -821,6 +821,31 @@ class GenericFieldDiscoveryEngine:
     ) -> float | None:
         return _mean_confidence(item.confidence for item in words) or line.confidence
 
+    def _corroborate_mapping(self, mapping: LabelMapping, semantic: Any) -> LabelMapping:
+        """Refuse a *fuzzy* canonical label the value cannot support.
+
+        "Contract Number" is one edit away from the alias "contact number", so a
+        contract reference was being adopted as ``phone_number`` -- a field name
+        the value ("CTR-E2E-3300") can never satisfy. An exact alias hit is
+        trusted; a fuzzy one now has to be corroborated by the value's semantic
+        type, and otherwise degrades to the observed label rather than asserting
+        a wrong one.
+        """
+
+        if mapping.method == "exact_alias" or not mapping.expected_types:
+            return mapping
+        if semantic is not None and semantic.semantic_type in mapping.expected_types:
+            return mapping
+        return replace(
+            mapping,
+            normalized_label=_label_slug(mapping.raw_label) or "unnamed_field",
+            canonical_label=None,
+            confidence=0.0,
+            method="open_set_type_mismatch",
+            matched_alias=None,
+            expected_types=(),
+        )
+
     def _to_fields(
         self,
         candidates: tuple[_PairCandidate, ...],
@@ -841,6 +866,7 @@ class GenericFieldDiscoveryEngine:
                 preferred_types=mapping.expected_types,
                 minimum_confidence=0.5,
             )
+            mapping = self._corroborate_mapping(mapping, semantic)
             normalized_value = (
                 semantic.normalized_value
                 if semantic is not None and semantic.normalized_value is not None

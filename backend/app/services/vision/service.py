@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from uuid import uuid4
 
 from app.core.config import settings
@@ -1727,7 +1727,14 @@ class VisionAIService:
                 request.top_k,
                 resolved_tenant,
             )
-            if cascade_response.answer_status != "not_found":
+            # The cascade exists to find evidence the primary handler missed, not
+            # to substitute something loosely related for an answer. If the
+            # fallback does not actually address the question, abstaining is the
+            # honest outcome.
+            if cascade_response.answer_status != "not_found" and self._cascade_addresses_question(
+                question,
+                cascade_response,
+            ):
                 response = cascade_response
                 response.reasoning_summary = (
                     f"{response.reasoning_summary} The primary {query_type.replace('_', ' ')} "
@@ -2241,7 +2248,7 @@ class VisionAIService:
             question.lower(), self._documents_for_question(question, documents)
         )
         if requested_names:
-            matches = [field for field in matches if field.name in requested_names]
+            matches = self._filter_to_requested(matches, requested_names)
         matches.sort(
             key=lambda field: (
                 field.reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited},
@@ -2263,7 +2270,7 @@ class VisionAIService:
                     f"{field.name}: {self._mask_sensitive(field.name, field.reviewed_value or field.value)}"
                     for field in matches
                 )
-            return VisionAskResponse(
+            structured = VisionAskResponse(
                 answer=answer,
                 answer_status="supported",
                 citations=[self._field_citation(field) for field in matches],
@@ -2277,6 +2284,7 @@ class VisionAIService:
                 retriever="persisted-structured-field-store",
                 retrieval_path="structured_field_lookup",
             )
+            return self._qualify_against_corpus(question, structured, documents)
 
         ocr_matches = self._ocr_lookup(question, documents, top_k)
         if ocr_matches:
@@ -2362,6 +2370,7 @@ class VisionAIService:
         hits = self._relevant_semantic_hits(question, hits)
         if not hits:
             return self._not_found_answer(requires_review=False)
+        matched_tokens = self._matched_question_tokens(question, hits)
         citations = [
             VisionAskCitation(
                 document_id=hit.chunk.document_id,
@@ -2392,6 +2401,9 @@ class VisionAIService:
             ),
             retriever=hits[0].backend,
         )
+        response = self._apply_coverage_verdict(question, response, matched_tokens)
+        if response.answer_status == "not_found":
+            return response
         return self._apply_grounded_generator(question, hits, response)
 
     def _apply_grounded_generator(
@@ -5985,7 +5997,16 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
     def _extract_fields(self, document: VisionDocumentRecord) -> list[ExtractedVisionField]:
         fields = deterministic_schema_extractor.extract(document)
         if document.document_type == VisionDocumentType.contract:
-            fields.extend(self._clause_fields(document))
+            # Clause detection answers "is this clause present?". It must never
+            # displace or duplicate a field the deterministic extractor already
+            # located precisely -- doing so previously produced a second
+            # agreement_date whose value was 160 characters of raw document text.
+            already_extracted = {field.name for field in fields}
+            fields.extend(
+                clause
+                for clause in self._clause_fields(document)
+                if clause.name not in already_extracted
+            )
         return self._dedupe_fields(fields)
 
     def _discover_generic_intelligence(self, document: VisionDocumentRecord) -> None:
@@ -6660,9 +6681,14 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             for keyword in keywords:
                 index = lower.find(keyword)
                 if index >= 0:
+                    # The surrounding text is *evidence*; the value is the clause
+                    # phrase that was matched. Storing the snippet as the value
+                    # put raw multi-line document text into field values, which
+                    # then flowed into chunks, graph nodes and citations.
                     snippet = document.parsed_text[max(0, index - 90) : index + 180].strip()
+                    observed = document.parsed_text[index : index + len(keyword)].strip()
                     fields.append(
-                        self._field(document, name, snippet or keyword, snippet or keyword)
+                        self._field(document, name, observed or keyword, snippet or keyword)
                     )
                     break
         return fields
@@ -8192,6 +8218,36 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             evidence_type="structured_field",
         )
 
+    def _filter_to_requested(
+        self,
+        matches: list[ExtractedVisionField],
+        requested_names: set[str],
+    ) -> list[ExtractedVisionField]:
+        """Keep fields the question asked for, tolerating naming variants.
+
+        The requested name and the extracted name do not always agree on
+        qualifiers: "what is the bank account number" resolves to
+        ``bank_account_number`` while the extractor produced ``account_number``.
+        An exact-name filter dropped the field and the question fell through to a
+        not-found, even though the value was extracted correctly.
+
+        Exact names win. Only when none match does this fall back to comparing
+        the token sets, so a variant is accepted but an unrelated field is not.
+        """
+
+        exact = [field for field in matches if field.name in requested_names]
+        if exact:
+            return exact
+        requested_tokens = [set(name.split("_")) for name in requested_names]
+        variants = []
+        for field in matches:
+            tokens = set(field.name.split("_"))
+            if any(
+                tokens and (tokens <= wanted or wanted <= tokens) for wanted in requested_tokens
+            ):
+                variants.append(field)
+        return variants
+
     def _requested_field_names(self, question: str) -> set[str]:
         lower = question.lower()
         aliases = {
@@ -8426,8 +8482,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         except InvalidOperation:
             return None
 
-    def _relevant_semantic_hits(self, question: str, hits: list[Any]) -> list[Any]:
-        stopwords = {
+    #: Words that carry no retrieval signal. Kept small on purpose: an
+    #: over-eager stopword list silently removes the terms that make a question
+    #: specific.
+    question_stopwords: ClassVar[frozenset[str]] = frozenset(
+        {
             "about",
             "and",
             "are",
@@ -8438,29 +8497,178 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             "have",
             "how",
             "is",
+            "many",
+            "much",
             "of",
             "the",
             "this",
             "to",
+            "was",
+            "were",
             "what",
             "which",
             "who",
         }
-        query_tokens = {
+    )
+
+    def _question_content_tokens(self, question: str) -> set[str]:
+        return {
             token
             for token in re.findall(r"[a-z0-9]+", question.lower())
-            if len(token) >= 3 and token not in stopwords
+            if len(token) >= 3 and token not in self.question_stopwords
         }
+
+    def _relevant_semantic_hits(self, question: str, hits: list[Any]) -> list[Any]:
+        query_tokens = self._question_content_tokens(question)
         advanced_embedding = self.retrieval_index.embedding.adapter_id != "local-hashing-embedding"
         retained = []
+        matched_tokens: set[str] = set()
         for hit in hits:
             chunk_tokens = set(re.findall(r"[a-z0-9]+", hit.chunk.text.lower()))
-            lexical_match = bool(query_tokens & chunk_tokens)
+            overlap = query_tokens & chunk_tokens
             if hit.score < 0.12:
                 continue
-            if lexical_match or (advanced_embedding and hit.score >= 0.25):
+            if overlap or (advanced_embedding and hit.score >= 0.25):
                 retained.append(hit)
+                matched_tokens |= overlap
+        if self._coverage_verdict(query_tokens, matched_tokens) == "insufficient":
+            return []
         return retained
+
+    #: A chunk sharing one incidental word with the question is related context,
+    #: not an answer. Below this share of the question's content words the
+    #: evidence is treated as insufficient and the system abstains.
+    semantic_coverage_threshold: float = 0.5
+
+    def _cascade_addresses_question(
+        self,
+        question: str,
+        response: VisionAskResponse,
+    ) -> bool:
+        """Does the cascade result actually answer what was asked?
+
+        "How many employees does the contractor have" has no employee evidence
+        anywhere in the corpus. The cascade nonetheless matched a field literally
+        named ``contractor`` and returned "contractor: Kestrel Instrumentation"
+        as a *supported* answer. Sharing one word with the question is not
+        answering it.
+        """
+
+        query_tokens = self._question_content_tokens(question)
+        if not query_tokens:
+            return True
+        answer_tokens = set(re.findall(r"[a-z0-9]+", response.answer.lower()))
+        for citation in response.citations:
+            answer_tokens |= set(re.findall(r"[a-z0-9]+", (citation.source_text or "").lower()))
+        matched = query_tokens & answer_tokens
+        if not matched:
+            return False
+        if self._coverage_verdict(query_tokens, matched) == "insufficient":
+            return False
+        self._apply_coverage_verdict(question, response, matched)
+        return True
+
+    def _qualify_against_corpus(
+        self,
+        question: str,
+        response: VisionAskResponse,
+        documents: list[VisionDocumentRecord],
+    ) -> VisionAskResponse:
+        """Downgrade when the question is partly about things the corpus lacks.
+
+        A field lookup can match on one part of a question while the rest asks
+        about a subject the documents never mention: "what was the share price on
+        the invoice date" matched ``invoice_date`` and was returned as *fully
+        supported*, even though nothing in the corpus concerns share prices.
+
+        The check is corpus-grounded rather than heuristic: a content word that
+        appears in no field, no field name and no evidence chunk of the documents
+        in scope is a subject this corpus cannot speak to. Presence is measured,
+        not guessed.
+        """
+
+        query_tokens = self._question_content_tokens(question)
+        if not query_tokens:
+            return response
+        vocabulary: set[str] = set()
+        for document in documents:
+            for field in document.extracted_fields:
+                vocabulary |= set(re.findall(r"[a-z0-9]+", field.name.lower()))
+                vocabulary |= set(re.findall(r"[a-z0-9]+", str(field.value).lower()))
+            for chunk in document.evidence_chunks:
+                vocabulary |= set(re.findall(r"[a-z0-9]+", chunk.text.lower()))
+        absent = {token for token in query_tokens if token not in vocabulary}
+        if len(absent) < 2 or len(absent) == len(query_tokens):
+            # One unmatched word is usually phrasing ("which vendor *issued*
+            # this"); two or more suggests the question is partly about a
+            # subject the corpus does not cover. Nothing matched at all is a
+            # different case, handled by the coverage verdict.
+            return response
+        response.answer_status = "partially_supported"
+        response.reasoning_summary = (
+            f"{response.reasoning_summary} The documents in scope contain no "
+            f"evidence about {', '.join(sorted(absent))}."
+        ).strip()
+        return response
+
+    def _coverage_verdict(self, query_tokens: set[str], matched_tokens: set[str]) -> str:
+        """How well does the evidence account for what was asked?
+
+        Returns ``"full"``, ``"partial"`` or ``"insufficient"``.
+
+        This exists because of a real defect: "how many employees does the
+        contractor have" retained a contract clause purely because the clause
+        contains the word "contractor", and that clause was then returned as a
+        *supported* answer. Sharing one word with a question is not answering it.
+
+        Lexical coverage cannot decide this perfectly -- a legitimate paraphrase
+        ("describe the arrangement") also leaves words unmatched -- so the middle
+        case is reported as ``partially_supported`` rather than discarded.
+        Overclaiming is the failure mode worth preventing.
+        """
+
+        if not query_tokens:
+            # Nothing distinctive was asked; the score filter alone governs.
+            return "full"
+        if not matched_tokens:
+            # Retained purely on dense similarity by an advanced embedding model.
+            return "full"
+        coverage = len(matched_tokens) / len(query_tokens)
+        if coverage < self.semantic_coverage_threshold:
+            return "insufficient"
+        # One matched word out of three or more is a coincidence, not a topic.
+        if len(query_tokens) >= 3 and len(matched_tokens) < 2:
+            return "insufficient"
+        return "full" if coverage >= 1.0 else "partial"
+
+    def _apply_coverage_verdict(
+        self,
+        question: str,
+        response: VisionAskResponse,
+        matched_tokens: set[str],
+    ) -> VisionAskResponse:
+        """Downgrade an answer that does not account for the whole question."""
+
+        query_tokens = self._question_content_tokens(question)
+        verdict = self._coverage_verdict(query_tokens, matched_tokens)
+        if verdict == "insufficient":
+            return self._not_found_answer(requires_review=False)
+        if verdict == "partial":
+            response.answer_status = "partially_supported"
+            unmatched = ", ".join(sorted(query_tokens - matched_tokens))
+            response.reasoning_summary = (
+                f"{response.reasoning_summary} The retrieved evidence does not "
+                f"cover every part of the question ({unmatched})."
+            ).strip()
+        return response
+
+    def _matched_question_tokens(self, question: str, hits: list[Any]) -> set[str]:
+        query_tokens = self._question_content_tokens(question)
+        matched: set[str] = set()
+        for hit in hits:
+            matched |= query_tokens & set(re.findall(r"[a-z0-9]+", hit.chunk.text.lower()))
+        return matched
+
 
     def _not_found_answer(self, *, requires_review: bool) -> VisionAskResponse:
         return VisionAskResponse(
