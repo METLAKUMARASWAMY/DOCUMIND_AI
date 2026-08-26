@@ -73,6 +73,14 @@ services:
       - -Q
       - vision-processing
       - --pool=solo
+    # The worker shares the backend image and would otherwise inherit its
+    # uvicorn HEALTHCHECK, which a Celery process can never pass. Ask Celery.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.vision_tasks:celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     environment:
       DOCUMIND_AUTH_SECRET: ${DOCUMIND_AUTH_SECRET:?Run python scripts/generate_local_env.py}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?Run python scripts/generate_local_env.py}:${POSTGRES_PASSWORD:?Run python scripts/generate_local_env.py}@postgres:5432/${POSTGRES_DB:?Run python scripts/generate_local_env.py}

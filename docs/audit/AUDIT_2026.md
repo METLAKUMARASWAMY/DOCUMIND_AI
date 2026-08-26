@@ -753,3 +753,96 @@ return.
 | **D-19b** | P2 | **OPEN.** Cold-cache suite runtime is ~7 min; warm ~3.5 min. Fixture-level OCR caching would fix it. The CI timeout bounds the damage. |
 | — | — | **Playwright has not been run.** No claim here covers browser runtime behaviour. |
 | — | — | **No LLM.** No local checkpoint and no approved endpoint, so the grounded template generator is the shipping path; the LLM path is exercised only through stubs. |
+
+---
+
+# Phase 3 — Full-stack boot and the Playwright suite
+
+## The stack runs
+
+`docker compose up -d --build` brings up the whole system in the intended order:
+
+```
+postgres(healthy) -> migrate(completed) -> backend(healthy) -> frontend
+                                        -> worker(healthy)
+```
+
+All seven services report healthy. Migrations 001–004 execute on every start, so
+**004 now applies to an existing volume** — the D-11 defect, proven fixed.
+
+```
+GET /health/ready -> {"status":"ready","persistence":{"initialized":true,
+   "enabled":{"postgresql":true,"redis":true,"neo4j":true,"qdrant":true},
+   "errors":{}}}
+GET :5174/        -> 200
+```
+
+End to end through the running containers, on a document the stack had never
+seen:
+
+| Step | Result |
+|---|---|
+| unauthenticated `GET /documents` | **401** |
+| ingest | 7 fields · 36 chunks · 14 graph nodes / 18 edges · `REVIEW_REQUIRED` |
+| "what is the total amount" | `supported`, `total_amount: EUR 91,400.00`, cited |
+| "which documents are related to this vendor" | `partially_supported`, **`retriever=neo4j-evidence-path-v1`** |
+| unanswerable question | `not_found`, **zero citations** |
+
+**Queued path measured** (Celery via Redis, not inline):
+upload → `dispatch: {mode: celery, queue: vision-processing}` →
+`OCR_COMPLETED` at 12 s → `REVIEW_REQUIRED` at 25 s. The API reflects
+worker-written state correctly.
+
+## D-28 · The worker inherited a healthcheck it could never pass — **CLOSED**
+
+Self-inflicted: adding `HEALTHCHECK` to the backend Dockerfile gave the worker —
+which shares the image — a uvicorn probe against a port it does not serve, so it
+reported `unhealthy` forever. The worker now has its own `celery inspect ping`
+healthcheck and reports healthy.
+
+## Playwright: 1 passed, 1 failed — and the failure is understood
+
+`e2e/remediation.spec.ts` **passes** against the containerised stack.
+
+`e2e/core-intelligence-v4.spec.ts` **fails**, and the cause was isolated
+precisely rather than papered over:
+
+```
+Required matched:  expected 6, received 5
+host container:    tesseract 5.5.3
+backend image:     tesseract 5.5.0   (Debian trixie)
+```
+
+On the low-quality 1976 scan `00093726.png`, Tesseract 5.5.0 reads
+`sample_number` as `"No"`, which fails validation; 5.5.3 reads it correctly. The
+two engines also disagree by one on the number of discovered labels (7 vs 8).
+
+Confirmed **not** a code regression: with corroboration enabled and disabled, a
+local run produces an identical 7 fields. The difference is the OCR engine.
+
+Two assertions in that spec were genuinely bad practice and were fixed —
+`extracted_fields.length === 7` and the optional/total completeness counts pinned
+OCR-engine-version equality, which is not a property worth asserting. They now
+assert that the expected fields are present.
+
+**The required-field assertions were deliberately left exact and must not be
+weakened to make a run green.** The spec now carries a note stating the toolchain
+it targets. The real fix is pinning Tesseract 5.5.3 in the image; Debian ships
+5.5.0, so that needs a source build and is not attempted here.
+
+*A note on running this suite: `vite preview` does not proxy `/api`, unlike the
+nginx frontend container. A host-served frontend is not a valid environment for
+these tests — the browser's API calls 404. Run them against the compose stack.*
+
+## Final verified status
+
+| Check | Result |
+|---|---|
+| Backend tests | **372 passed** (218 at audit start) |
+| Frontend tests | **55 passed** (23 at audit start) |
+| ruff · eslint · prettier · tsc+vite build · npm audit | clean |
+| `kubectl apply --dry-run=client -f infra/k8s/` | valid |
+| `docker compose config` | valid |
+| Full stack boot | 7/7 services healthy, migrations 001–004 applied |
+| Evaluation harness | extraction/answer/citation/grounding/abstention **100 %**, **0 overclaims** |
+| Playwright | 1/2 (remaining failure = OCR engine version, cause proven) |
