@@ -1,12 +1,36 @@
-import { Box, Button, FormControlLabel, IconButton, Slider, Switch, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from "@mui/material";
-import { ChevronLeft, ChevronRight, Layers2, Maximize2, MoveHorizontal, RotateCw, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  Box,
+  Button,
+  FormControlLabel,
+  IconButton,
+  Slider,
+  Switch,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Layers2,
+  Maximize2,
+  MoveHorizontal,
+  RotateCw,
+  RotateCcw,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 
 import { pdfRequest, protectedBlob } from "../api/client";
 import type { BoundingBox, VisionDocument } from "../types/api";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).toString();
 
 export interface FocusRegion {
   page: number;
@@ -23,7 +47,8 @@ interface Props {
 }
 
 export type BaseMode = "original" | "enhanced" | "grayscale" | "binary" | "forensic" | "pdf";
-export type Layer = "ocr" | "layout" | "fields" | "tables" | "visual" | "lowConfidence" | "risk" | "tamper";
+export type Layer =
+  "ocr" | "layout" | "fields" | "tables" | "visual" | "lowConfidence" | "risk" | "tamper";
 
 export interface CanvasOverlay {
   id: string;
@@ -73,7 +98,9 @@ export function DocumentCanvas({ document, page, onPageChange, focus, onRegionCl
   const [overlayOpacity, setOverlayOpacity] = useState(0.8);
   const [layers, setLayers] = useState<Record<Layer, boolean>>(DEFAULT_LAYERS);
   const artifact = document.page_artifacts.find((item) => item.page_number === page);
-  const heatmap = document.tamper_analysis.find((item) => item.page_number === page && item.heatmap_path);
+  const heatmap = document.tamper_analysis.find(
+    (item) => item.page_number === page && item.heatmap_path,
+  );
   const isPdf = document.filename.toLowerCase().endsWith(".pdf");
   const isNativePdfMode = baseMode === "pdf" && isPdf;
   const imageUrl = useProtectedImage(
@@ -84,10 +111,7 @@ export function DocumentCanvas({ document, page, onPageChange, focus, onRegionCl
   const heatmapUrl = useProtectedImage(
     heatmap ? `/documents/${document.document_id}/artifacts/heatmap/${heatmap.analysis_id}` : null,
   );
-  const overlays = useMemo(
-    () => buildOverlays(document, page, layers),
-    [document, page, layers],
-  );
+  const overlays = useMemo(() => buildOverlays(document, page, layers), [document, page, layers]);
   const width = artifact?.width || 1000;
   const height = artifact?.height || 1400;
   const baseWidth = Math.min(1000, width);
@@ -121,23 +145,88 @@ export function DocumentCanvas({ document, page, onPageChange, focus, onRegionCl
     <Box className="document-canvas-shell">
       <Box className="viewer-toolbar">
         <Box className="viewer-tool-group">
-          <Tooltip title="Previous page"><span><IconButton disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Previous page"><ChevronLeft size={18} /></IconButton></span></Tooltip>
-          <Typography variant="body2" className="page-counter">{page} / {document.page_count}</Typography>
-          <Tooltip title="Next page"><span><IconButton disabled={page >= document.page_count} onClick={() => onPageChange(page + 1)} aria-label="Next page"><ChevronRight size={18} /></IconButton></span></Tooltip>
-          <Tooltip title="Zoom out"><IconButton onClick={() => setZoom((value) => clampZoom(value - 0.15))} aria-label="Zoom out"><ZoomOut size={18} /></IconButton></Tooltip>
-          <Typography variant="caption" className="zoom-value">{Math.round(zoom * 100)}%</Typography>
-          <Tooltip title="Zoom in"><IconButton onClick={() => setZoom((value) => clampZoom(value + 0.15))} aria-label="Zoom in"><ZoomIn size={18} /></IconButton></Tooltip>
-          <Tooltip title="Fit page"><IconButton onClick={fitPage} aria-label="Fit page"><Maximize2 size={18} /></IconButton></Tooltip>
-          <Tooltip title="Fit width"><IconButton onClick={fitWidth} aria-label="Fit width"><MoveHorizontal size={18} /></IconButton></Tooltip>
-          <Tooltip title="Rotate clockwise"><IconButton onClick={() => setRotation((value) => (value + 90) % 360)} aria-label="Rotate clockwise"><RotateCw size={18} /></IconButton></Tooltip>
-          <Tooltip title="Reset view"><IconButton onClick={resetView} aria-label="Reset view"><RotateCcw size={18} /></IconButton></Tooltip>
+          <Tooltip title="Previous page">
+            <span>
+              <IconButton
+                disabled={page <= 1}
+                onClick={() => onPageChange(page - 1)}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={18} />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Typography variant="body2" className="page-counter">
+            {page} / {document.page_count}
+          </Typography>
+          <Tooltip title="Next page">
+            <span>
+              <IconButton
+                disabled={page >= document.page_count}
+                onClick={() => onPageChange(page + 1)}
+                aria-label="Next page"
+              >
+                <ChevronRight size={18} />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Zoom out">
+            <IconButton
+              onClick={() => setZoom((value) => clampZoom(value - 0.15))}
+              aria-label="Zoom out"
+            >
+              <ZoomOut size={18} />
+            </IconButton>
+          </Tooltip>
+          <Typography variant="caption" className="zoom-value">
+            {Math.round(zoom * 100)}%
+          </Typography>
+          <Tooltip title="Zoom in">
+            <IconButton
+              onClick={() => setZoom((value) => clampZoom(value + 0.15))}
+              aria-label="Zoom in"
+            >
+              <ZoomIn size={18} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Fit page">
+            <IconButton onClick={fitPage} aria-label="Fit page">
+              <Maximize2 size={18} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Fit width">
+            <IconButton onClick={fitWidth} aria-label="Fit width">
+              <MoveHorizontal size={18} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Rotate clockwise">
+            <IconButton
+              onClick={() => setRotation((value) => (value + 90) % 360)}
+              aria-label="Rotate clockwise"
+            >
+              <RotateCw size={18} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Reset view">
+            <IconButton onClick={resetView} aria-label="Reset view">
+              <RotateCcw size={18} />
+            </IconButton>
+          </Tooltip>
         </Box>
-        <ToggleButtonGroup exclusive size="small" value={baseMode} onChange={(_, value: BaseMode | null) => value && setBaseMode(value)} aria-label="Base image mode">
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={baseMode}
+          onChange={(_, value: BaseMode | null) => value && setBaseMode(value)}
+          aria-label="Base image mode"
+        >
           <ToggleButton value="original">Original</ToggleButton>
           <ToggleButton value="enhanced">Enhanced</ToggleButton>
           <ToggleButton value="grayscale">Grayscale</ToggleButton>
           <ToggleButton value="binary">Binary</ToggleButton>
-          <ToggleButton value="forensic" disabled={!heatmap}>Forensic</ToggleButton>
+          <ToggleButton value="forensic" disabled={!heatmap}>
+            Forensic
+          </ToggleButton>
           {isPdf ? <ToggleButton value="pdf">PDF</ToggleButton> : null}
         </ToggleButtonGroup>
       </Box>
@@ -145,28 +234,82 @@ export function DocumentCanvas({ document, page, onPageChange, focus, onRegionCl
         {(Object.keys(LAYER_LABELS) as Layer[]).map((layer) => (
           <FormControlLabel
             key={layer}
-            control={<Switch size="small" checked={layers[layer]} onChange={() => updateLayer(layer)} />}
+            control={
+              <Switch size="small" checked={layers[layer]} onChange={() => updateLayer(layer)} />
+            }
             label={LAYER_LABELS[layer]}
           />
         ))}
         <Box className="overlay-opacity">
           <Typography variant="caption">Opacity</Typography>
-          <Slider size="small" min={0.15} max={1} step={0.05} value={overlayOpacity} onChange={(_, value) => setOverlayOpacity(value as number)} aria-label="Overlay opacity" />
+          <Slider
+            size="small"
+            min={0.15}
+            max={1}
+            step={0.05}
+            value={overlayOpacity}
+            onChange={(_, value) => setOverlayOpacity(value as number)}
+            aria-label="Overlay opacity"
+          />
         </Box>
-        <Button size="small" color="inherit" startIcon={<Layers2 size={15} />} onClick={clearLayers}>Clear all overlays</Button>
+        <Button
+          size="small"
+          color="inherit"
+          startIcon={<Layers2 size={15} />}
+          onClick={clearLayers}
+        >
+          Clear all overlays
+        </Button>
       </Box>
       <Box className="overlay-legend" aria-label="Overlay legend">
-        {LEGEND.map(([kind, label]) => <Box key={kind} className="legend-item"><span className={`legend-swatch legend-${kind}`} /><Typography variant="caption">{label}</Typography></Box>)}
+        {LEGEND.map(([kind, label]) => (
+          <Box key={kind} className="legend-item">
+            <span className={`legend-swatch legend-${kind}`} />
+            <Typography variant="caption">{label}</Typography>
+          </Box>
+        ))}
       </Box>
       <Box className="viewer-scroll" ref={viewportRef}>
         {artifact && (isNativePdfMode || imageUrl) ? (
-          <Box className="page-stage" style={{ width: `${stageWidth}px`, aspectRatio: `${width} / ${height}`, transform: `rotate(${rotation}deg)` }}>
+          <Box
+            className="page-stage"
+            style={{
+              width: `${stageWidth}px`,
+              aspectRatio: `${width} / ${height}`,
+              transform: `rotate(${rotation}deg)`,
+            }}
+          >
             {isNativePdfMode ? (
-              <Document file={pdfRequest(`/documents/${document.document_id}/source`)} loading={<Box className="viewer-loading"><Typography>Loading PDF page</Typography></Box>} error={<Typography color="error">PDF page could not be rendered.</Typography>}>
-                <Page pageNumber={page} width={stageWidth} renderTextLayer={false} renderAnnotationLayer={false} />
+              <Document
+                file={pdfRequest(`/documents/${document.document_id}/source`)}
+                loading={
+                  <Box className="viewer-loading">
+                    <Typography>Loading PDF page</Typography>
+                  </Box>
+                }
+                error={<Typography color="error">PDF page could not be rendered.</Typography>}
+              >
+                <Page
+                  pageNumber={page}
+                  width={stageWidth}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                />
               </Document>
-            ) : <img src={imageUrl || ""} alt={`${document.filename}, page ${page}, ${baseMode} mode`} />}
-            {layers.tamper && baseMode !== "forensic" && heatmapUrl ? <img className="tamper-heatmap" src={heatmapUrl} alt="Possible visual manipulation heatmap" style={{ opacity: overlayOpacity * 0.55 }} /> : null}
+            ) : (
+              <img
+                src={imageUrl || ""}
+                alt={`${document.filename}, page ${page}, ${baseMode} mode`}
+              />
+            )}
+            {layers.tamper && baseMode !== "forensic" && heatmapUrl ? (
+              <img
+                className="tamper-heatmap"
+                src={heatmapUrl}
+                alt="Possible visual manipulation heatmap"
+                style={{ opacity: overlayOpacity * 0.55 }}
+              />
+            ) : null}
             {overlays.map((overlay) => (
               <button
                 type="button"
@@ -178,13 +321,21 @@ export function DocumentCanvas({ document, page, onPageChange, focus, onRegionCl
                 onClick={() => onRegionClick?.({ page, box: overlay.box, id: overlay.id })}
               />
             ))}
-            {focus && focus.page === page ? <Box className="focus-overlay" style={boxStyle(focus.box, width, height)} /> : null}
+            {focus && focus.page === page ? (
+              <Box className="focus-overlay" style={boxStyle(focus.box, width, height)} />
+            ) : null}
           </Box>
         ) : (
-          <Box className="viewer-loading"><Typography>{artifact ? "Loading page image" : "Page artifact unavailable"}</Typography></Box>
+          <Box className="viewer-loading">
+            <Typography>{artifact ? "Loading page image" : "Page artifact unavailable"}</Typography>
+          </Box>
         )}
       </Box>
-      {!artifact ? <Button size="small" onClick={() => onPageChange(1)}>Return to first page</Button> : null}
+      {!artifact ? (
+        <Button size="small" onClick={() => onPageChange(1)}>
+          Return to first page
+        </Button>
+      ) : null}
     </Box>
   );
 }
@@ -212,30 +363,146 @@ function useProtectedImage(path: string | null): string | null {
   return path && result?.source === path ? result.url : null;
 }
 
-export function buildOverlays(document: VisionDocument, page: number, layers: Record<Layer, boolean>): CanvasOverlay[] {
+export function buildOverlays(
+  document: VisionDocument,
+  page: number,
+  layers: Record<Layer, boolean>,
+): CanvasOverlay[] {
   const rows: CanvasOverlay[] = [];
-  if (layers.ocr) document.ocr_words.filter((item) => item.page === page).forEach((item) => rows.push({ id: item.word_id, layer: "ocr", box: item.bounding_box, label: `OCR: ${item.text} (${Math.round(item.confidence * 100)}%)` }));
-  if (layers.layout) document.layout_regions.filter((item) => item.page_number === page).forEach((item) => rows.push({ id: item.region_id, layer: "layout", box: item.bounding_box, label: `${item.region_type}: ${item.text}` }));
-  if (layers.tables) document.tables.filter((item) => item.page_number === page).forEach((item) => rows.push({ id: item.table_id, layer: "tables", box: item.bounding_box, label: `Table: ${item.rows.length} row(s)` }));
+  if (layers.ocr)
+    document.ocr_words
+      .filter((item) => item.page === page)
+      .forEach((item) =>
+        rows.push({
+          id: item.word_id,
+          layer: "ocr",
+          box: item.bounding_box,
+          label: `OCR: ${item.text} (${Math.round(item.confidence * 100)}%)`,
+        }),
+      );
+  if (layers.layout)
+    document.layout_regions
+      .filter((item) => item.page_number === page)
+      .forEach((item) =>
+        rows.push({
+          id: item.region_id,
+          layer: "layout",
+          box: item.bounding_box,
+          label: `${item.region_type}: ${item.text}`,
+        }),
+      );
+  if (layers.tables)
+    document.tables
+      .filter((item) => item.page_number === page)
+      .forEach((item) =>
+        rows.push({
+          id: item.table_id,
+          layer: "tables",
+          box: item.bounding_box,
+          label: `Table: ${item.rows.length} row(s)`,
+        }),
+      );
   if (layers.fields) {
-    document.extracted_fields.filter((item) => item.evidence.page_number === page && item.evidence.bounding_box).forEach((item) => rows.push({ id: item.field_id, layer: "fields", variant: verified(item.reviewer_status) ? "verified" : "extracted", box: item.evidence.bounding_box!, label: `${item.display_name || item.name}: ${item.reviewed_value || item.value}` }));
-    const verifiedEvidenceIds = new Set((document.verified_facts ?? []).map((fact) => fact.evidence_id));
-    (document.generic_fields ?? []).filter((item) => item.page === page).forEach((item) => rows.push({
-      id: item.field_id,
-      layer: "fields",
-      variant: verifiedEvidenceIds.has(item.evidence.evidence_id) ? "verified" : "extracted",
-      box: item.evidence.bounding_box || item.value_bbox,
-      label: `${item.raw_label || item.normalized_label}: ${item.normalized_value || item.raw_value}`,
-    }));
+    document.extracted_fields
+      .filter((item) => item.evidence.page_number === page && item.evidence.bounding_box)
+      .forEach((item) =>
+        rows.push({
+          id: item.field_id,
+          layer: "fields",
+          variant: verified(item.reviewer_status) ? "verified" : "extracted",
+          box: item.evidence.bounding_box!,
+          label: `${item.display_name || item.name}: ${item.reviewed_value || item.value}`,
+        }),
+      );
+    const verifiedEvidenceIds = new Set(
+      (document.verified_facts ?? []).map((fact) => fact.evidence_id),
+    );
+    (document.generic_fields ?? [])
+      .filter((item) => item.page === page)
+      .forEach((item) =>
+        rows.push({
+          id: item.field_id,
+          layer: "fields",
+          variant: verifiedEvidenceIds.has(item.evidence.evidence_id) ? "verified" : "extracted",
+          box: item.evidence.bounding_box || item.value_bbox,
+          label: `${item.raw_label || item.normalized_label}: ${item.normalized_value || item.raw_value}`,
+        }),
+      );
   }
-  if (layers.visual) document.visual_detections.filter((item) => item.page_number === page).forEach((item) => rows.push({ id: item.detection_id, layer: "visual", box: item.bounding_box, label: `${item.detection_class} (${Math.round(item.confidence * 100)}%)` }));
+  if (layers.visual)
+    document.visual_detections
+      .filter((item) => item.page_number === page)
+      .forEach((item) =>
+        rows.push({
+          id: item.detection_id,
+          layer: "visual",
+          box: item.bounding_box,
+          label: `${item.detection_class} (${Math.round(item.confidence * 100)}%)`,
+        }),
+      );
   if (layers.lowConfidence) {
-    document.ocr_words.filter((item) => item.page === page && item.review_required).forEach((item) => rows.push({ id: `low-${item.word_id}`, layer: "lowConfidence", box: item.bounding_box, label: `Low-confidence OCR: ${item.text}` }));
-    document.extracted_fields.filter((item) => item.evidence.page_number === page && item.evidence.bounding_box && (item.confidence === null || item.confidence < 0.7)).forEach((item) => rows.push({ id: `low-${item.field_id}`, layer: "lowConfidence", box: item.evidence.bounding_box!, label: `Low-confidence field: ${item.display_name || item.name}` }));
-    (document.generic_fields ?? []).filter((item) => item.page === page && (item.review_required || item.confidence < 0.7)).forEach((item) => rows.push({ id: `low-${item.field_id}`, layer: "lowConfidence", box: item.evidence.bounding_box || item.value_bbox, label: `Low-confidence attribute: ${item.raw_label || item.normalized_label}` }));
+    document.ocr_words
+      .filter((item) => item.page === page && item.review_required)
+      .forEach((item) =>
+        rows.push({
+          id: `low-${item.word_id}`,
+          layer: "lowConfidence",
+          box: item.bounding_box,
+          label: `Low-confidence OCR: ${item.text}`,
+        }),
+      );
+    document.extracted_fields
+      .filter(
+        (item) =>
+          item.evidence.page_number === page &&
+          item.evidence.bounding_box &&
+          (item.confidence === null || item.confidence < 0.7),
+      )
+      .forEach((item) =>
+        rows.push({
+          id: `low-${item.field_id}`,
+          layer: "lowConfidence",
+          box: item.evidence.bounding_box!,
+          label: `Low-confidence field: ${item.display_name || item.name}`,
+        }),
+      );
+    (document.generic_fields ?? [])
+      .filter((item) => item.page === page && (item.review_required || item.confidence < 0.7))
+      .forEach((item) =>
+        rows.push({
+          id: `low-${item.field_id}`,
+          layer: "lowConfidence",
+          box: item.evidence.bounding_box || item.value_bbox,
+          label: `Low-confidence attribute: ${item.raw_label || item.normalized_label}`,
+        }),
+      );
   }
-  if (layers.risk) document.risk_indicators.forEach((risk) => risk.evidence.filter((item) => item.page_number === page && item.bounding_box).forEach((item) => rows.push({ id: `${risk.risk_id}-${item.evidence_id}`, layer: "risk", box: item.bounding_box!, label: `${risk.title}: ${risk.description}` })));
-  if (layers.tamper) document.tamper_analysis.filter((item) => item.page_number === page).forEach((analysis) => analysis.suspicious_regions.forEach((region) => rows.push({ id: region.region_id, layer: "tamper", box: region.bounding_box, label: `${region.manipulation_class} (${Math.round(region.screening_score * 100)} screening score)` })));
+  if (layers.risk)
+    document.risk_indicators.forEach((risk) =>
+      risk.evidence
+        .filter((item) => item.page_number === page && item.bounding_box)
+        .forEach((item) =>
+          rows.push({
+            id: `${risk.risk_id}-${item.evidence_id}`,
+            layer: "risk",
+            box: item.bounding_box!,
+            label: `${risk.title}: ${risk.description}`,
+          }),
+        ),
+    );
+  if (layers.tamper)
+    document.tamper_analysis
+      .filter((item) => item.page_number === page)
+      .forEach((analysis) =>
+        analysis.suspicious_regions.forEach((region) =>
+          rows.push({
+            id: region.region_id,
+            layer: "tamper",
+            box: region.bounding_box,
+            label: `${region.manipulation_class} (${Math.round(region.screening_score * 100)} screening score)`,
+          }),
+        ),
+      );
   return rows;
 }
 

@@ -39,6 +39,7 @@ import { useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "../router";
 
 import { useAuth } from "../auth/AuthContext";
+import { Breadcrumbs } from "./Breadcrumbs";
 import type { UserRole } from "../types/api";
 
 const drawerWidth = 238;
@@ -52,9 +53,19 @@ interface NavigationItem {
 
 const navigation: NavigationItem[] = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/upload", label: "Upload", icon: Upload, roles: ["ADMIN", "PROCESSOR", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"] },
+  {
+    path: "/upload",
+    label: "Upload",
+    icon: Upload,
+    roles: ["ADMIN", "PROCESSOR", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"],
+  },
   { path: "/documents", label: "Documents", icon: Files },
-  { path: "/reviews", label: "Review queue", icon: ClipboardCheck, roles: ["ADMIN", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"] },
+  {
+    path: "/reviews",
+    label: "Review queue",
+    icon: ClipboardCheck,
+    roles: ["ADMIN", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"],
+  },
   { path: "/ask", label: "Ask documents", icon: MessageSquareText },
   { path: "/graph", label: "Knowledge graph", icon: Network },
   { path: "/analytics", label: "Analytics", icon: BarChart3 },
@@ -127,8 +138,15 @@ export function AppShell() {
 
   return (
     <Box className="app-frame">
+      <a className="skip-to-content" href="#main-content">
+        Skip to main content
+      </a>
       {mobile ? (
-        <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} PaperProps={{ sx: { width: drawerWidth } }}>
+        <Drawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          PaperProps={{ sx: { width: drawerWidth } }}
+        >
           {drawer}
         </Drawer>
       ) : (
@@ -136,7 +154,13 @@ export function AppShell() {
           {drawer}
         </Drawer>
       )}
-      <AppBar position="fixed" color="inherit" elevation={0} className="topbar" sx={{ left: mobile ? 0 : drawerWidth }}>
+      <AppBar
+        position="fixed"
+        color="inherit"
+        elevation={0}
+        className="topbar"
+        sx={{ left: mobile ? 0 : drawerWidth }}
+      >
         <Toolbar>
           {mobile ? (
             <Tooltip title="Open navigation">
@@ -145,9 +169,13 @@ export function AppShell() {
               </IconButton>
             </Tooltip>
           ) : null}
+          <Breadcrumbs />
           <Box sx={{ flex: 1 }} />
           <Tooltip title="Account menu">
-            <IconButton onClick={(event) => setAnchor(event.currentTarget)} aria-label="Account menu">
+            <IconButton
+              onClick={(event) => setAnchor(event.currentTarget)}
+              aria-label="Account menu"
+            >
               <Avatar sx={{ width: 32, height: 32, bgcolor: "secondary.main", fontSize: 13 }}>
                 {user?.name
                   .split(" ")
@@ -176,7 +204,13 @@ export function AppShell() {
           </Menu>
         </Toolbar>
       </AppBar>
-      <Box component="main" className="app-main" sx={{ marginLeft: mobile ? 0 : `${drawerWidth}px` }}>
+      <Box
+        component="main"
+        id="main-content"
+        tabIndex={-1}
+        className="app-main"
+        sx={{ marginLeft: mobile ? 0 : `${drawerWidth}px` }}
+      >
         <Outlet />
       </Box>
     </Box>

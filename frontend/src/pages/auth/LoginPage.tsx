@@ -42,7 +42,9 @@ export function LoginPage() {
       <Box component="form" className="auth-form" onSubmit={handleSubmit(submit)} noValidate>
         <Box>
           <Typography variant="h1">Sign in</Typography>
-          <Typography color="text.secondary">Access your organisation's document workspace.</Typography>
+          <Typography color="text.secondary">
+            Access your organisation's document workspace.
+          </Typography>
         </Box>
         {error ? <Alert severity="error">{error}</Alert> : null}
         <TextField
@@ -68,11 +70,20 @@ export function LoginPage() {
             Forgot password?
           </Link>
         </Box>
-        <Button type="submit" variant="contained" size="large" startIcon={<LogIn size={18} />} disabled={isSubmitting}>
+        <Button
+          type="submit"
+          variant="contained"
+          size="large"
+          startIcon={<LogIn size={18} />}
+          disabled={isSubmitting}
+        >
           {isSubmitting ? "Signing in" : "Sign in"}
         </Button>
         <Typography color="text.secondary" textAlign="center">
-          New to DocuMind? <Link component={RouterLink} to="/signup">Create an account</Link>
+          New to DocuMind?{" "}
+          <Link component={RouterLink} to="/signup">
+            Create an account
+          </Link>
         </Typography>
       </Box>
     </AuthLayout>

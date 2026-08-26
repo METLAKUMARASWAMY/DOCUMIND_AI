@@ -33,13 +33,17 @@ function response(overrides: Partial<AskResponse>): AskResponse {
     retrieval_path: "not_used",
     scope: { scope: "all_accessible", document_count: 0, documents: [] },
     broader_scope_available: false,
+    degradations: [],
+    degraded: false,
     conversation_id: "conversation-from-server",
-    clarification_options: [{
-      option_id: "risk_indicators",
-      label: "Check suspicious indicators",
-      resolved_question: "What suspicious indicators are present?",
-      query_type: "risk_question",
-    }],
+    clarification_options: [
+      {
+        option_id: "risk_indicators",
+        label: "Check suspicious indicators",
+        resolved_question: "What suspicious indicators are present?",
+        query_type: "risk_question",
+      },
+    ],
     reranker: "not_used",
     graph_paths: [],
     ...overrides,
@@ -56,13 +60,15 @@ describe("AskDocumentsPage clarification state", () => {
   it("posts the returned conversation id and selected option on the next turn", async () => {
     vi.mocked(api.ask)
       .mockResolvedValueOnce(response({}))
-      .mockResolvedValueOnce(response({
-        question_id: "question-2",
-        answer: "No confirmed fraud determination is available.",
-        answer_status: "supported",
-        query_type: "risk_question",
-        clarification_options: [],
-      }));
+      .mockResolvedValueOnce(
+        response({
+          question_id: "question-2",
+          answer: "No confirmed fraud determination is available.",
+          answer_status: "supported",
+          query_type: "risk_question",
+          clarification_options: [],
+        }),
+      );
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -83,42 +89,57 @@ describe("AskDocumentsPage clarification state", () => {
     await user.click(await screen.findByText("Check suspicious indicators"));
 
     await waitFor(() => expect(api.ask).toHaveBeenCalledTimes(2));
-    expect(api.ask).toHaveBeenNthCalledWith(1, "Is this safe?", expect.objectContaining({
-      conversationId: undefined,
-    }));
-    expect(api.ask).toHaveBeenNthCalledWith(2, "Check suspicious indicators", expect.objectContaining({
-      clarificationOption: "risk_indicators",
-      conversationId: "conversation-from-server",
-    }));
-    expect(screen.getByRole("button", { name: "Check suspicious indicators" })).toHaveAttribute("aria-disabled", "true");
+    expect(api.ask).toHaveBeenNthCalledWith(
+      1,
+      "Is this safe?",
+      expect.objectContaining({
+        conversationId: undefined,
+      }),
+    );
+    expect(api.ask).toHaveBeenNthCalledWith(
+      2,
+      "Check suspicious indicators",
+      expect.objectContaining({
+        clarificationOption: "risk_indicators",
+        conversationId: "conversation-from-server",
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Check suspicious indicators" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("shows deterministic calculation inputs and result", async () => {
-    vi.mocked(api.ask).mockResolvedValueOnce(response({
-      answer: "USD 310.50",
-      answer_status: "supported",
-      query_type: "arithmetic_question",
-      clarification_options: [],
-      calculation_trace: {
-        operation: "sum",
-        inputs: [{
-          document_id: "invoice-1",
-          document_type: "invoice",
-          role: "addend",
-          field_name: "total_amount",
-          raw_value: "USD 310.50",
-          normalized_value: "310.50",
-          value_type: "decimal",
+    vi.mocked(api.ask).mockResolvedValueOnce(
+      response({
+        answer: "USD 310.50",
+        answer_status: "supported",
+        query_type: "arithmetic_question",
+        clarification_options: [],
+        calculation_trace: {
+          operation: "sum",
+          inputs: [
+            {
+              document_id: "invoice-1",
+              document_type: "invoice",
+              role: "addend",
+              field_name: "total_amount",
+              raw_value: "USD 310.50",
+              normalized_value: "310.50",
+              value_type: "decimal",
+              currency: "USD",
+              reviewer_status: "accepted",
+            },
+          ],
+          result: "310.50",
+          result_type: "decimal",
           currency: "USD",
-          reviewer_status: "accepted",
-        }],
-        result: "310.50",
-        result_type: "decimal",
-        currency: "USD",
-        formula: "sum(Decimal(verified input))",
-        calculation_version: "deterministic-calculation-v1",
-      },
-    }));
+          formula: "sum(Decimal(verified input))",
+          calculation_version: "deterministic-calculation-v1",
+        },
+      }),
+    );
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -137,7 +158,9 @@ describe("AskDocumentsPage clarification state", () => {
     );
     await user.click(screen.getByRole("button", { name: "Ask" }));
 
-    expect(await screen.findByLabelText("Calculation trace")).toHaveTextContent("addend=310.50 USD");
+    expect(await screen.findByLabelText("Calculation trace")).toHaveTextContent(
+      "addend=310.50 USD",
+    );
     expect(screen.getByLabelText("Calculation trace")).toHaveTextContent("Result: 310.50");
   });
 });

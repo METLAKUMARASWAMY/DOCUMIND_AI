@@ -1,4 +1,17 @@
-import { Alert, Box, Button, Checkbox, FormControlLabel, LinearProgress, MenuItem, Step, StepLabel, Stepper, TextField, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  Checkbox,
+  FormControlLabel,
+  LinearProgress,
+  MenuItem,
+  Step,
+  StepLabel,
+  Stepper,
+  TextField,
+  Typography,
+} from "@mui/material";
 import { FilePlus2, Play, UploadCloud, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useNavigate } from "../router";
@@ -47,13 +60,27 @@ export function UploadWizardPage() {
 
   return (
     <Box className="page-stack">
-      <PageHeader title="Upload documents" subtitle="Create an asynchronous visual intelligence job." />
+      <PageHeader
+        title="Upload documents"
+        subtitle="Create an asynchronous visual intelligence job."
+      />
       <Stepper activeStep={activeStep} className="compact-stepper">
-        {["Select files", "Configure", "Process"].map((label) => <Step key={label}><StepLabel>{label}</StepLabel></Step>)}
+        {["Select files", "Configure", "Process"].map((label) => (
+          <Step key={label}>
+            <StepLabel>{label}</StepLabel>
+          </Step>
+        ))}
       </Stepper>
       {error ? <Alert severity="error">{error}</Alert> : null}
       <Box className="upload-layout">
-        <Box className="surface upload-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); selectFiles(event.dataTransfer.files); }}>
+        <Box
+          className="surface upload-dropzone"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            selectFiles(event.dataTransfer.files);
+          }}
+        >
           <UploadCloud size={32} />
           <Typography variant="h3">Drop documents here</Typography>
           <Typography color="text.secondary">{accepted.join(", ")} up to 25 MB each</Typography>
@@ -65,22 +92,63 @@ export function UploadWizardPage() {
             accept=".pdf,.txt,.png,.jpg,.jpeg,.tif,.tiff"
             onChange={(event) => selectFiles(event.target.files)}
           />
-          <Button variant="outlined" startIcon={<FilePlus2 size={17} />} onClick={() => input.current?.click()}>
+          <Button
+            variant="outlined"
+            startIcon={<FilePlus2 size={17} />}
+            onClick={() => input.current?.click()}
+          >
             Browse files
           </Button>
         </Box>
         <Box className="surface config-panel">
           <Typography variant="h3">Processing profile</Typography>
-          <TextField select label="Document type" value={documentType} onChange={(event) => setDocumentType(event.target.value)} fullWidth>
+          <TextField
+            select
+            label="Document type"
+            value={documentType}
+            onChange={(event) => setDocumentType(event.target.value)}
+            fullWidth
+          >
             {[
-              ["auto", "Automatic classification"], ["invoice", "Invoice"], ["purchase_order", "Purchase order"],
-              ["contract", "Contract"], ["receipt", "Receipt"], ["bank_document", "Bank document"],
-              ["insurance_document", "Insurance document"], ["form", "Form"], ["report", "Report"],
-            ].map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}
+              ["auto", "Automatic classification"],
+              ["invoice", "Invoice"],
+              ["purchase_order", "Purchase order"],
+              ["contract", "Contract"],
+              ["receipt", "Receipt"],
+              ["bank_document", "Bank document"],
+              ["insurance_document", "Insurance document"],
+              ["form", "Form"],
+              ["report", "Report"],
+            ].map(([value, label]) => (
+              <MenuItem key={value} value={value}>
+                {label}
+              </MenuItem>
+            ))}
           </TextField>
-          <FormControlLabel control={<Checkbox checked={advanced} onChange={(event) => setAdvanced(event.target.checked)} />} label="Request advanced parser" />
-          <FormControlLabel control={<Checkbox checked={requiredSignature} onChange={(event) => setRequiredSignature(event.target.checked)} />} label="Signature required" />
-          <TextField label="Approved bank identifier" value={approvedBank} onChange={(event) => setApprovedBank(event.target.value)} fullWidth />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={advanced}
+                onChange={(event) => setAdvanced(event.target.checked)}
+              />
+            }
+            label="Request advanced parser"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={requiredSignature}
+                onChange={(event) => setRequiredSignature(event.target.checked)}
+              />
+            }
+            label="Signature required"
+          />
+          <TextField
+            label="Approved bank identifier"
+            value={approvedBank}
+            onChange={(event) => setApprovedBank(event.target.value)}
+            fullWidth
+          />
         </Box>
       </Box>
       {files.length ? (
@@ -88,13 +156,32 @@ export function UploadWizardPage() {
           <Typography variant="h3">Files ({files.length})</Typography>
           {files.map((file, index) => (
             <Box className="file-row" key={`${file.name}-${file.lastModified}`}>
-              <Box><Typography fontWeight={650}>{file.name}</Typography><Typography variant="caption" color="text.secondary">{(file.size / 1024 / 1024).toFixed(2)} MB</Typography></Box>
-              <Button color="inherit" size="small" startIcon={<X size={15} />} onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button>
+              <Box>
+                <Typography fontWeight={650}>{file.name}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                </Typography>
+              </Box>
+              <Button
+                color="inherit"
+                size="small"
+                startIcon={<X size={15} />}
+                onClick={() =>
+                  setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))
+                }
+              >
+                Remove
+              </Button>
             </Box>
           ))}
           {busy ? <LinearProgress /> : null}
           <Box className="form-actions">
-            <Button variant="contained" startIcon={<Play size={17} />} disabled={!files.length || busy} onClick={() => void upload()}>
+            <Button
+              variant="contained"
+              startIcon={<Play size={17} />}
+              disabled={!files.length || busy}
+              onClick={() => void upload()}
+            >
               {busy ? "Creating job" : "Start processing"}
             </Button>
           </Box>

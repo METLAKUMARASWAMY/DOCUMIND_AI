@@ -5,24 +5,66 @@ import { AppShell } from "./components/AppShell";
 import { LoadingState } from "./components/Feedback";
 import { Navigate, Route, Routes } from "./router";
 
-const AdminSettingsPage = lazy(() => import("./pages/AdminSettingsPage").then((module) => ({ default: module.AdminSettingsPage })));
-const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
-const AskDocumentsPage = lazy(() => import("./pages/AskDocumentsPage").then((module) => ({ default: module.AskDocumentsPage })));
-const AuditHistoryPage = lazy(() => import("./pages/AuditHistoryPage").then((module) => ({ default: module.AuditHistoryPage })));
-const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
-const DocumentLibraryPage = lazy(() => import("./pages/DocumentLibraryPage").then((module) => ({ default: module.DocumentLibraryPage })));
-const DocumentViewerPage = lazy(() => import("./pages/DocumentViewerPage").then((module) => ({ default: module.DocumentViewerPage })));
-const FinanceNarrativesPage = lazy(() => import("./pages/FinanceNarrativesPage").then((module) => ({ default: module.FinanceNarrativesPage })));
-const GraphExplorerPage = lazy(() => import("./pages/GraphExplorerPage").then((module) => ({ default: module.GraphExplorerPage })));
-const ModelLabPage = lazy(() => import("./pages/ModelLabPage").then((module) => ({ default: module.ModelLabPage })));
-const ProcessingStatusPage = lazy(() => import("./pages/ProcessingStatusPage").then((module) => ({ default: module.ProcessingStatusPage })));
-const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
-const ReviewQueuePage = lazy(() => import("./pages/ReviewQueuePage").then((module) => ({ default: module.ReviewQueuePage })));
-const ReviewWorkspacePage = lazy(() => import("./pages/ReviewWorkspacePage").then((module) => ({ default: module.ReviewWorkspacePage })));
-const UploadWizardPage = lazy(() => import("./pages/UploadWizardPage").then((module) => ({ default: module.UploadWizardPage })));
-const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPasswordPage").then((module) => ({ default: module.ForgotPasswordPage })));
-const LoginPage = lazy(() => import("./pages/auth/LoginPage").then((module) => ({ default: module.LoginPage })));
-const SignupPage = lazy(() => import("./pages/auth/SignupPage").then((module) => ({ default: module.SignupPage })));
+const AdminSettingsPage = lazy(() =>
+  import("./pages/AdminSettingsPage").then((module) => ({ default: module.AdminSettingsPage })),
+);
+const AnalyticsPage = lazy(() =>
+  import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })),
+);
+const AskDocumentsPage = lazy(() =>
+  import("./pages/AskDocumentsPage").then((module) => ({ default: module.AskDocumentsPage })),
+);
+const AuditHistoryPage = lazy(() =>
+  import("./pages/AuditHistoryPage").then((module) => ({ default: module.AuditHistoryPage })),
+);
+const DashboardPage = lazy(() =>
+  import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })),
+);
+const DocumentLibraryPage = lazy(() =>
+  import("./pages/DocumentLibraryPage").then((module) => ({ default: module.DocumentLibraryPage })),
+);
+const DocumentViewerPage = lazy(() =>
+  import("./pages/DocumentViewerPage").then((module) => ({ default: module.DocumentViewerPage })),
+);
+const FinanceNarrativesPage = lazy(() =>
+  import("./pages/FinanceNarrativesPage").then((module) => ({
+    default: module.FinanceNarrativesPage,
+  })),
+);
+const GraphExplorerPage = lazy(() =>
+  import("./pages/GraphExplorerPage").then((module) => ({ default: module.GraphExplorerPage })),
+);
+const ModelLabPage = lazy(() =>
+  import("./pages/ModelLabPage").then((module) => ({ default: module.ModelLabPage })),
+);
+const ProcessingStatusPage = lazy(() =>
+  import("./pages/ProcessingStatusPage").then((module) => ({
+    default: module.ProcessingStatusPage,
+  })),
+);
+const ReportsPage = lazy(() =>
+  import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })),
+);
+const ReviewQueuePage = lazy(() =>
+  import("./pages/ReviewQueuePage").then((module) => ({ default: module.ReviewQueuePage })),
+);
+const ReviewWorkspacePage = lazy(() =>
+  import("./pages/ReviewWorkspacePage").then((module) => ({ default: module.ReviewWorkspacePage })),
+);
+const UploadWizardPage = lazy(() =>
+  import("./pages/UploadWizardPage").then((module) => ({ default: module.UploadWizardPage })),
+);
+const ForgotPasswordPage = lazy(() =>
+  import("./pages/auth/ForgotPasswordPage").then((module) => ({
+    default: module.ForgotPasswordPage,
+  })),
+);
+const LoginPage = lazy(() =>
+  import("./pages/auth/LoginPage").then((module) => ({ default: module.LoginPage })),
+);
+const SignupPage = lazy(() =>
+  import("./pages/auth/SignupPage").then((module) => ({ default: module.SignupPage })),
+);
 
 export default function App() {
   return (

@@ -13,13 +13,18 @@ export function filterGraphProjection(
   relationshipType = "all",
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const statusEdges = graph.edges.filter(
-    (edge) => (edgeStatus === "all" || edge.status === edgeStatus)
-      && (relationshipType === "all" || edge.type === relationshipType),
+    (edge) =>
+      (edgeStatus === "all" || edge.status === edgeStatus) &&
+      (relationshipType === "all" || edge.type === relationshipType),
   );
   if (nodeType === "all") return { nodes: graph.nodes, edges: statusEdges };
 
-  const matchingIds = new Set(graph.nodes.filter((node) => node.type === nodeType).map((node) => node.id));
-  const edges = statusEdges.filter((edge) => matchingIds.has(edge.source) || matchingIds.has(edge.target));
+  const matchingIds = new Set(
+    graph.nodes.filter((node) => node.type === nodeType).map((node) => node.id),
+  );
+  const edges = statusEdges.filter(
+    (edge) => matchingIds.has(edge.source) || matchingIds.has(edge.target),
+  );
   const visibleIds = new Set(matchingIds);
   edges.forEach((edge) => {
     visibleIds.add(edge.source);

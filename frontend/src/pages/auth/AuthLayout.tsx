@@ -12,7 +12,11 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
             <Typography variant="h2">DocuMind Vision AI</Typography>
           </Box>
           <Box className="auth-proof-list">
-            {["Visual evidence retained", "Human-verified decisions", "Grounded document answers"].map((item) => (
+            {[
+              "Visual evidence retained",
+              "Human-verified decisions",
+              "Grounded document answers",
+            ].map((item) => (
               <Box key={item} className="auth-proof">
                 <CheckCircle2 size={17} />
                 <Typography>{item}</Typography>

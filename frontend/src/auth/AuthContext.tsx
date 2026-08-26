@@ -36,7 +36,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!accessToken()) return;
     let active = true;
-    void api.me()
+    void api
+      .me()
       .then((account) => {
         if (active) setUser(account);
       })

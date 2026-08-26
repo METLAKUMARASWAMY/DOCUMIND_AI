@@ -84,7 +84,9 @@ export function useNavigate(): NavigateFunction {
   return useRouter().navigate;
 }
 
-export function useParams<T extends Record<string, string | undefined> = Record<string, string>>(): T {
+export function useParams<
+  T extends Record<string, string | undefined> = Record<string, string>,
+>(): T {
   return useContext(ParamsContext) as T;
 }
 
@@ -118,7 +120,9 @@ function matchPattern(pattern: string, pathname: string): Record<string, string>
     .join("/");
   const matched = new RegExp(`^${source}/?$`).exec(pathname);
   if (!matched) return null;
-  return Object.fromEntries(names.map((name, index) => [name, decodeURIComponent(matched[index + 1])]));
+  return Object.fromEntries(
+    names.map((name, index) => [name, decodeURIComponent(matched[index + 1])]),
+  );
 }
 
 function findRoute(children: ReactNode, pathname: string): RouteMatch | null {
@@ -152,14 +156,26 @@ export function Routes({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const match = findRoute(children, pathname);
   if (!match) return null;
-  return <ParamsContext.Provider value={match.params}>{composeOutlets(match.elements)}</ParamsContext.Provider>;
+  return (
+    <ParamsContext.Provider value={match.params}>
+      {composeOutlets(match.elements)}
+    </ParamsContext.Provider>
+  );
 }
 
 export function Outlet() {
   return useContext(OutletContext);
 }
 
-export function Navigate({ to, replace = false, state }: { to: string; replace?: boolean; state?: unknown }) {
+export function Navigate({
+  to,
+  replace = false,
+  state,
+}: {
+  to: string;
+  replace?: boolean;
+  state?: unknown;
+}) {
   const navigate = useNavigate();
   useEffect(() => navigate(to, { replace, state }), [navigate, replace, state, to]);
   return null;
@@ -180,14 +196,15 @@ export const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(event);
     if (
-      event.defaultPrevented
-      || event.button !== 0
-      || event.metaKey
-      || event.ctrlKey
-      || event.shiftKey
-      || event.altKey
-      || (target && target !== "_self")
-    ) return;
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      (target && target !== "_self")
+    )
+      return;
     event.preventDefault();
     navigate(href, { replace, state });
   };

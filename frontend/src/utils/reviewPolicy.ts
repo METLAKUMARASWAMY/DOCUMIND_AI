@@ -25,17 +25,18 @@ export function reviewApprovalControl(input: ApprovalControlInput): ApprovalCont
     return {
       hardBlockers,
       ready: Boolean(
-        policy.manual_override_available
-        && input.manualVerification
-        && input.approvalReason.trim().length >= 10
-        && commentReady
-        && input.requiredFieldValuesComplete
+        policy.manual_override_available &&
+        input.manualVerification &&
+        input.approvalReason.trim().length >= 10 &&
+        commentReady &&
+        input.requiredFieldValuesComplete,
       ),
     };
   }
 
   const reviewed = policy.required_evidence_ids.every((id) =>
-    input.selectedEvidenceIds.includes(id));
+    input.selectedEvidenceIds.includes(id),
+  );
   return { hardBlockers, ready: commentReady && reviewed };
 }
 
@@ -47,8 +48,8 @@ export function secondReviewerReady(
   const normalizedReviewer = reviewerEmail.trim().toLowerCase();
   const normalizedActor = actorEmail?.trim().toLowerCase() || "";
   return Boolean(
-    approved
-    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedReviewer)
-    && normalizedReviewer !== normalizedActor
+    approved &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedReviewer) &&
+    normalizedReviewer !== normalizedActor,
   );
 }

@@ -14,7 +14,11 @@ const schema = z.object({ email: z.string().email("Enter a valid email address")
 export function ForgotPasswordPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<z.infer<typeof schema>>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
   });
 
@@ -35,15 +39,31 @@ export function ForgotPasswordPage() {
       >
         <Box>
           <Typography variant="h1">Reset password</Typography>
-          <Typography color="text.secondary">Enter the email associated with your account.</Typography>
+          <Typography color="text.secondary">
+            Enter the email associated with your account.
+          </Typography>
         </Box>
         {message ? <Alert severity="success">{message}</Alert> : null}
         {error ? <Alert severity="error">{error}</Alert> : null}
-        <TextField label="Work email" type="email" {...register("email")} error={Boolean(errors.email)} helperText={errors.email?.message} />
-        <Button type="submit" variant="contained" size="large" startIcon={<Send size={18} />} disabled={isSubmitting}>
+        <TextField
+          label="Work email"
+          type="email"
+          {...register("email")}
+          error={Boolean(errors.email)}
+          helperText={errors.email?.message}
+        />
+        <Button
+          type="submit"
+          variant="contained"
+          size="large"
+          startIcon={<Send size={18} />}
+          disabled={isSubmitting}
+        >
           Send reset request
         </Button>
-        <Link component={RouterLink} to="/login" textAlign="center">Return to sign in</Link>
+        <Link component={RouterLink} to="/login" textAlign="center">
+          Return to sign in
+        </Link>
       </Box>
     </AuthLayout>
   );

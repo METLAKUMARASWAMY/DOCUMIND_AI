@@ -21,7 +21,9 @@ export function FieldCompletenessSummary({
     <Box className="field-completeness-summary" aria-label="Field completeness">
       {items.map(([label, value]) => (
         <Box className="field-completeness-item" key={label}>
-          <Typography variant="caption" color="text.secondary">{label}</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {label}
+          </Typography>
           <Typography fontWeight={700}>{value ?? "Unavailable"}</Typography>
         </Box>
       ))}

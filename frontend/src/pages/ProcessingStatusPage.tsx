@@ -1,4 +1,14 @@
-import { Alert, Box, Button, LinearProgress, List, ListItem, ListItemIcon, ListItemText, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Typography,
+} from "@mui/material";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Circle, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -9,7 +19,15 @@ import { ErrorState } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
 import { StatusChip } from "../components/StatusChip";
 
-const stages = ["QUEUED", "PREPROCESSING", "OCR_COMPLETED", "EXTRACTION_COMPLETED", "VALIDATION_COMPLETED", "INDEXED", "COMPLETED"];
+const stages = [
+  "QUEUED",
+  "PREPROCESSING",
+  "OCR_COMPLETED",
+  "EXTRACTION_COMPLETED",
+  "VALIDATION_COMPLETED",
+  "INDEXED",
+  "COMPLETED",
+];
 
 export function ProcessingStatusPage() {
   const { jobId = "" } = useParams();
@@ -19,9 +37,11 @@ export function ProcessingStatusPage() {
   const job = useQuery({
     queryKey: ["job", jobId],
     queryFn: () => api.job(jobId),
-    refetchInterval: (query) => isTerminal(String(query.state.data?.status || "")) ? false : 1200,
+    refetchInterval: (query) => (isTerminal(String(query.state.data?.status || "")) ? false : 1200),
   });
-  const documentIds = ((location.state as { documentIds?: string[] } | null)?.documentIds || job.data?.document_ids || []) as string[];
+  const documentIds = ((location.state as { documentIds?: string[] } | null)?.documentIds ||
+    job.data?.document_ids ||
+    []) as string[];
   const firstDocumentId = documentIds[0] || "";
 
   useEffect(() => {
@@ -38,12 +58,35 @@ export function ProcessingStatusPage() {
   const pipelineStatus = String(job.data?.pipeline_status || status);
   const decisionStatus = String(job.data?.decision_status || "PENDING");
   const currentIndex = Math.max(0, stages.indexOf(pipelineStatus));
-  const extractionOutcomes = (job.data?.extraction_outcomes || []) as Array<Record<string, unknown>>;
+  const extractionOutcomes = (job.data?.extraction_outcomes || []) as Array<
+    Record<string, unknown>
+  >;
   return (
     <Box className="page-stack">
-      <PageHeader title="Processing status" subtitle={`${String(job.data?.status_summary || "Processing document")} | Job ${jobId}`} actions={<><Box><Typography variant="caption" display="block">Pipeline status</Typography><StatusChip value={pipelineStatus} size="medium" /></Box><Box><Typography variant="caption" display="block">Decision status</Typography><StatusChip value={decisionStatus} size="medium" /></Box></>} />
+      <PageHeader
+        title="Processing status"
+        subtitle={`${String(job.data?.status_summary || "Processing document")} | Job ${jobId}`}
+        actions={
+          <>
+            <Box>
+              <Typography variant="caption" display="block">
+                Pipeline status
+              </Typography>
+              <StatusChip value={pipelineStatus} size="medium" />
+            </Box>
+            <Box>
+              <Typography variant="caption" display="block">
+                Decision status
+              </Typography>
+              <StatusChip value={decisionStatus} size="medium" />
+            </Box>
+          </>
+        }
+      />
       {job.error ? <ErrorState error={job.error} retry={() => void job.refetch()} /> : null}
-      {decisionStatus === "REVIEW_REQUIRED" ? <Alert severity="warning">Processing completed - awaiting human review.</Alert> : null}
+      {decisionStatus === "REVIEW_REQUIRED" ? (
+        <Alert severity="warning">Processing completed - awaiting human review.</Alert>
+      ) : null}
       <Box className="processing-grid">
         <Box className="surface section-panel">
           <Typography variant="h3">Pipeline</Typography>
@@ -51,26 +94,64 @@ export function ProcessingStatusPage() {
           <List>
             {stages.map((stage, index) => (
               <ListItem key={stage} disableGutters>
-                <ListItemIcon>{index <= currentIndex ? <CheckCircle2 size={19} color="#087f78" /> : <Circle size={19} color="#97a2ab" />}</ListItemIcon>
+                <ListItemIcon>
+                  {index <= currentIndex ? (
+                    <CheckCircle2 size={19} color="#087f78" />
+                  ) : (
+                    <Circle size={19} color="#97a2ab" />
+                  )}
+                </ListItemIcon>
                 <ListItemText primary={stage.replaceAll("_", " ")} />
               </ListItem>
             ))}
           </List>
-          {extractionOutcomes.map((outcome) => <Alert key={String(outcome.document_id)} severity={number(outcome.fields_extracted) ? "success" : "info"}>{number(outcome.fields_extracted) ? `Extraction completed: ${number(outcome.fields_extracted)} fields extracted using ${String(outcome.schema || "generic")} schema.` : "Extraction completed with no fields. Generic schema fallback was attempted."}</Alert>)}
+          {extractionOutcomes.map((outcome) => (
+            <Alert
+              key={String(outcome.document_id)}
+              severity={number(outcome.fields_extracted) ? "success" : "info"}
+            >
+              {number(outcome.fields_extracted)
+                ? `Extraction completed: ${number(outcome.fields_extracted)} fields extracted using ${String(outcome.schema || "generic")} schema.`
+                : "Extraction completed with no fields. Generic schema fallback was attempted."}
+            </Alert>
+          ))}
           <Box className="form-actions">
-            {firstDocumentId && isTerminal(status) ? <Button component={Link} to={`/documents/${firstDocumentId}`} variant="contained">Open document</Button> : null}
-            {decisionStatus === "REVIEW_REQUIRED" ? <Button component={Link} to="/reviews" variant="outlined">Open review queue</Button> : null}
-            {(job.data?.errors as unknown[])?.length ? <Button startIcon={<RefreshCw size={16} />} onClick={() => void api.retryJob(jobId).then(() => job.refetch())}>Retry job</Button> : null}
+            {firstDocumentId && isTerminal(status) ? (
+              <Button component={Link} to={`/documents/${firstDocumentId}`} variant="contained">
+                Open document
+              </Button>
+            ) : null}
+            {decisionStatus === "REVIEW_REQUIRED" ? (
+              <Button component={Link} to="/reviews" variant="outlined">
+                Open review queue
+              </Button>
+            ) : null}
+            {(job.data?.errors as unknown[])?.length ? (
+              <Button
+                startIcon={<RefreshCw size={16} />}
+                onClick={() => void api.retryJob(jobId).then(() => job.refetch())}
+              >
+                Retry job
+              </Button>
+            ) : null}
           </Box>
         </Box>
         <Box className="surface section-panel live-events">
           <Typography variant="h3">Live events</Typography>
-          {events.length ? events.map((event, index) => (
-            <Box className="event-row" key={`${event.type}-${index}`}>
-              <Typography variant="caption" fontWeight={700}>{event.type.replaceAll("_", " ")}</Typography>
-              <Typography variant="body2" color="text.secondary">{String(event.data.message || event.data.status || "Updated")}</Typography>
-            </Box>
-          )) : <Typography color="text.secondary">Waiting for the first processing event.</Typography>}
+          {events.length ? (
+            events.map((event, index) => (
+              <Box className="event-row" key={`${event.type}-${index}`}>
+                <Typography variant="caption" fontWeight={700}>
+                  {event.type.replaceAll("_", " ")}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {String(event.data.message || event.data.status || "Updated")}
+                </Typography>
+              </Box>
+            ))
+          ) : (
+            <Typography color="text.secondary">Waiting for the first processing event.</Typography>
+          )}
         </Box>
       </Box>
     </Box>
@@ -82,5 +163,12 @@ function number(value: unknown) {
 }
 
 function isTerminal(status: string) {
-  return ["REVIEW_REQUIRED", "COMPLETED", "APPROVED", "REJECTED", "CONFIRMED_ERROR", "CONFIRMED_FRAUD"].includes(status);
+  return [
+    "REVIEW_REQUIRED",
+    "COMPLETED",
+    "APPROVED",
+    "REJECTED",
+    "CONFIRMED_ERROR",
+    "CONFIRMED_FRAUD",
+  ].includes(status);
 }

@@ -70,11 +70,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
     : await response.text();
   if (!response.ok) {
     const detail = typeof payload === "object" && payload ? payload.detail : null;
-    const message = typeof detail === "object" && detail
-      ? String(detail.message || "Request failed")
-      : typeof payload === "object" && payload
-        ? String(detail || payload.message || "Request failed")
-        : String(payload || `Request failed with ${response.status}`);
+    const message =
+      typeof detail === "object" && detail
+        ? String(detail.message || "Request failed")
+        : typeof payload === "object" && payload
+          ? String(detail || payload.message || "Request failed")
+          : String(payload || `Request failed with ${response.status}`);
     throw new ApiError(message, response.status, payload);
   }
   if (typeof payload === "object" && payload && "success" in payload && "data" in payload) {
@@ -136,12 +137,7 @@ export const api = {
     return data.user;
   },
 
-  register(payload: {
-    name: string;
-    email: string;
-    password: string;
-    organisation_name: string;
-  }) {
+  register(payload: { name: string; email: string; password: string; organisation_name: string }) {
     return apiRequest<{ user: AuthUser }>("/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -172,12 +168,10 @@ export const api = {
     }
   },
 
-  documents: () =>
-    apiRequest<{ total: number; documents: VisionDocument[] }>("/documents"),
+  documents: () => apiRequest<{ total: number; documents: VisionDocument[] }>("/documents"),
   document: (id: string) => apiRequest<VisionDocument>(`/documents/${id}`),
   deleteDocument: (id: string) => apiRequest(`/documents/${id}`, { method: "DELETE" }),
-  documentStatus: (id: string) =>
-    apiRequest<Record<string, unknown>>(`/documents/${id}/status`),
+  documentStatus: (id: string) => apiRequest<Record<string, unknown>>(`/documents/${id}/status`),
   reprocessDocument: (id: string) =>
     apiRequest<{
       case_id: string;
@@ -222,7 +216,9 @@ export const api = {
     return apiRequest<ReviewQueueResponse>(`/reviews${query ? `?${query}` : ""}`);
   },
   review: (id: string) =>
-    apiRequest<{ review: ReviewTask; document: VisionDocument; approval_policy: ApprovalPolicy }>(`/reviews/${id}`),
+    apiRequest<{ review: ReviewTask; document: VisionDocument; approval_policy: ApprovalPolicy }>(
+      `/reviews/${id}`,
+    ),
   patchField: (
     reviewId: string,
     fieldId: string,
@@ -245,13 +241,15 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        decision: ({
-          approve: "APPROVED",
-          reject: "REJECTED",
-          escalate: "UNDER_REVIEW",
-          "confirm-error": "CONFIRMED_ERROR",
-          "confirm-fraud": "CONFIRMED_FRAUD",
-        } as Record<string, string>)[action],
+        decision: (
+          {
+            approve: "APPROVED",
+            reject: "REJECTED",
+            escalate: "UNDER_REVIEW",
+            "confirm-error": "CONFIRMED_ERROR",
+            "confirm-fraud": "CONFIRMED_FRAUD",
+          } as Record<string, string>
+        )[action],
         ...payload,
       }),
     }),
@@ -267,7 +265,16 @@ export const api = {
       body: JSON.stringify({ password }),
     }),
 
-  ask: (question: string, options: { scope: string; documentId?: string; documentIds?: string[]; clarificationOption?: string; conversationId?: string }) =>
+  ask: (
+    question: string,
+    options: {
+      scope: string;
+      documentId?: string;
+      documentIds?: string[];
+      clarificationOption?: string;
+      conversationId?: string;
+    },
+  ) =>
     apiRequest<AskResponse>("/ai/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -290,7 +297,8 @@ export const api = {
     }),
 
   graphDocument: (id: string) => apiRequest<GraphProjection>(`/graph/document/${id}`),
-  graphEntity: (id: string) => apiRequest<Record<string, unknown>>(`/graph/entity/${encodeURIComponent(id)}`),
+  graphEntity: (id: string) =>
+    apiRequest<Record<string, unknown>>(`/graph/entity/${encodeURIComponent(id)}`),
   graphQuery: (question: string, documentId?: string) =>
     apiRequest<{ query_type: string; answer: AskResponse }>("/graph/query", {
       method: "POST",
@@ -304,11 +312,16 @@ export const api = {
       body: JSON.stringify({ comment, evidence_acknowledged: evidenceAcknowledged }),
     }),
 
-  analyticsOverview: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/overview${dateRangeQuery(dateFrom, dateTo)}`),
-  analyticsVendors: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/vendors${dateRangeQuery(dateFrom, dateTo)}`),
-  analyticsRisk: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/risk${dateRangeQuery(dateFrom, dateTo)}`),
-  analyticsReview: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/review${dateRangeQuery(dateFrom, dateTo)}`),
-  analyticsModels: (dateFrom?: string, dateTo?: string) => apiRequest<Record<string, unknown>>(`/analytics/models${dateRangeQuery(dateFrom, dateTo)}`),
+  analyticsOverview: (dateFrom?: string, dateTo?: string) =>
+    apiRequest<Record<string, unknown>>(`/analytics/overview${dateRangeQuery(dateFrom, dateTo)}`),
+  analyticsVendors: (dateFrom?: string, dateTo?: string) =>
+    apiRequest<Record<string, unknown>>(`/analytics/vendors${dateRangeQuery(dateFrom, dateTo)}`),
+  analyticsRisk: (dateFrom?: string, dateTo?: string) =>
+    apiRequest<Record<string, unknown>>(`/analytics/risk${dateRangeQuery(dateFrom, dateTo)}`),
+  analyticsReview: (dateFrom?: string, dateTo?: string) =>
+    apiRequest<Record<string, unknown>>(`/analytics/review${dateRangeQuery(dateFrom, dateTo)}`),
+  analyticsModels: (dateFrom?: string, dateTo?: string) =>
+    apiRequest<Record<string, unknown>>(`/analytics/models${dateRangeQuery(dateFrom, dateTo)}`),
 
   narratives: () =>
     apiRequest<{ total: number; narratives: FinanceNarrative[] }>("/finance-narratives"),
@@ -327,10 +340,10 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   report: (id: string) => apiRequest<ReportRecord>(`/reports/${id}`),
-  archiveReport: (id: string) => apiRequest<ReportRecord>(`/reports/${id}/archive`, { method: "POST" }),
+  archiveReport: (id: string) =>
+    apiRequest<ReportRecord>(`/reports/${id}/archive`, { method: "POST" }),
 
-  modelComparison: (id: string) =>
-    apiRequest<Record<string, unknown>>(`/models/comparison/${id}`),
+  modelComparison: (id: string) => apiRequest<Record<string, unknown>>(`/models/comparison/${id}`),
   models: () => apiRequest<Record<string, unknown>>("/admin/models"),
   patchModel: (id: string, payload: Record<string, unknown>) =>
     apiRequest(`/admin/models/${encodeURIComponent(id)}/requested-state`, {
@@ -349,7 +362,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
-  audit: () => apiRequest<{ total: number; events: Array<Record<string, unknown>> }>("/admin/audit"),
+  audit: () =>
+    apiRequest<{ total: number; events: Array<Record<string, unknown>> }>("/admin/audit"),
 };
 
 export async function protectedBlob(path: string): Promise<Blob> {

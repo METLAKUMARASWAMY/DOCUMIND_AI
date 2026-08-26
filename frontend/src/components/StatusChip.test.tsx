@@ -32,14 +32,7 @@ const BACKEND_VOCABULARY = {
     "COMPLETED",
   ],
   // ReviewerStatus
-  reviewer: [
-    "unverified",
-    "accepted",
-    "edited",
-    "rejected",
-    "confirmed_error",
-    "confirmed_fraud",
-  ],
+  reviewer: ["unverified", "accepted", "edited", "rejected", "confirmed_error", "confirmed_fraud"],
   // VisionRiskSeverity
   severity: ["info", "low", "medium", "high", "critical"],
   // model_registry runtime + health + smoke statuses

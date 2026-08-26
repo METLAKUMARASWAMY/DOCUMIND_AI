@@ -1,4 +1,11 @@
-export type UserRole = "ADMIN" | "PROCESSOR" | "REVIEWER" | "SENIOR_REVIEWER" | "COMPLIANCE_OFFICER" | "AUDITOR" | "VIEWER";
+export type UserRole =
+  | "ADMIN"
+  | "PROCESSOR"
+  | "REVIEWER"
+  | "SENIOR_REVIEWER"
+  | "COMPLIANCE_OFFICER"
+  | "AUDITOR"
+  | "VIEWER";
 
 export interface AuthUser {
   user_id: string;
@@ -548,7 +555,12 @@ export interface AskCalculationInput {
 }
 
 export interface AskCalculationTrace {
-  operation: "sum" | "count_verified_invoices" | "invoice_po_difference" | "percentage_variance" | "date_interval";
+  operation:
+    | "sum"
+    | "count_verified_invoices"
+    | "invoice_po_difference"
+    | "percentage_variance"
+    | "date_interval";
   inputs: AskCalculationInput[];
   result?: string | null;
   result_type: string;
@@ -556,6 +568,14 @@ export interface AskCalculationTrace {
   unit?: string | null;
   formula: string;
   calculation_version: string;
+}
+
+/** One disclosed reduction in answer quality, from the backend. */
+export interface AnswerDegradation {
+  component: string;
+  stage: string;
+  detail: string;
+  impact: string;
 }
 
 export interface AskResponse {
@@ -585,6 +605,9 @@ export interface AskResponse {
     }>;
   };
   broader_scope_available: boolean;
+  /** Fallbacks the backend took. Empty means nothing was degraded. */
+  degradations: AnswerDegradation[];
+  degraded: boolean;
   calculation_trace?: AskCalculationTrace | null;
   conversation_id?: string | null;
   resolved_question?: string | null;

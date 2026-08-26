@@ -26,16 +26,15 @@ import { useNavigate } from "../router";
 import type { Citation, GraphEdge, GraphNode } from "../types/api";
 import { filterGraphProjection, truncateGraphLabel } from "../utils/graphProjection";
 
-type GraphSelection =
-  | { kind: "node"; data: GraphNode }
-  | { kind: "edge"; data: GraphEdge }
-  | null;
+type GraphSelection = { kind: "node"; data: GraphNode } | { kind: "edge"; data: GraphEdge } | null;
 
 export function GraphExplorerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const canVerify = ["ADMIN", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"].includes(user?.role || "");
+  const canVerify = ["ADMIN", "REVIEWER", "SENIOR_REVIEWER", "COMPLIANCE_OFFICER"].includes(
+    user?.role || "",
+  );
   const documents = useQuery({ queryKey: ["documents"], queryFn: api.documents });
   const [documentId, setDocumentId] = useState("");
   const [question, setQuestion] = useState("");
@@ -47,7 +46,9 @@ export function GraphExplorerPage() {
   const [pathEnd, setPathEnd] = useState("");
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [cy, setCy] = useState<Core | null>(null);
-  const [hoveredNode, setHoveredNode] = useState<{ label: string; x: number; y: number } | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<{ label: string; x: number; y: number } | null>(
+    null,
+  );
   const [verifyComment, setVerifyComment] = useState("");
   const [evidenceAcknowledged, setEvidenceAcknowledged] = useState(false);
 
@@ -83,7 +84,10 @@ export function GraphExplorerPage() {
     [graph.data],
   );
   const projection = useMemo(
-    () => (graph.data ? filterGraphProjection(graph.data, nodeType, edgeStatus, relationshipType) : { nodes: [], edges: [] }),
+    () =>
+      graph.data
+        ? filterGraphProjection(graph.data, nodeType, edgeStatus, relationshipType)
+        : { nodes: [], edges: [] },
     [edgeStatus, graph.data, nodeType, relationshipType],
   );
   const elements = useMemo(() => {
@@ -152,7 +156,11 @@ export function GraphExplorerPage() {
     const needle = search.trim().toLowerCase();
     if (!needle) return;
     cy.nodes()
-      .filter((node) => String(node.data("fullLabel") || "").toLowerCase().includes(needle))
+      .filter((node) =>
+        String(node.data("fullLabel") || "")
+          .toLowerCase()
+          .includes(needle),
+      )
       .addClass("search-match");
   }, [cy, search, elements]);
 
@@ -214,30 +222,60 @@ export function GraphExplorerPage() {
     <Box className="page-stack graph-page">
       <PageHeader title="Knowledge graph" />
       <Box className="graph-query-bar surface">
-        <TextField select label="Document graph" value={activeDocumentId} onChange={(event) => setDocumentId(event.target.value)} size="small">
+        <TextField
+          select
+          label="Document graph"
+          value={activeDocumentId}
+          onChange={(event) => setDocumentId(event.target.value)}
+          size="small"
+        >
           <MenuItem value="">Select document</MenuItem>
-          {documents.data?.documents.map((document) => <MenuItem key={document.document_id} value={document.document_id}>{document.filename}</MenuItem>)}
+          {documents.data?.documents.map((document) => (
+            <MenuItem key={document.document_id} value={document.document_id}>
+              {document.filename}
+            </MenuItem>
+          ))}
         </TextField>
-        <TextField placeholder="Ask a relationship question" value={question} onChange={(event) => setQuestion(event.target.value)} size="small" />
-        <Button variant="contained" startIcon={<Search size={16} />} disabled={!question.trim() || relationshipQuery.isPending} onClick={() => relationshipQuery.mutate()}>Query graph</Button>
+        <TextField
+          placeholder="Ask a relationship question"
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          size="small"
+        />
+        <Button
+          variant="contained"
+          startIcon={<Search size={16} />}
+          disabled={!question.trim() || relationshipQuery.isPending}
+          onClick={() => relationshipQuery.mutate()}
+        >
+          Query graph
+        </Button>
       </Box>
       {graph.error ? <ErrorState error={graph.error} /> : null}
-      {relationshipQuery.error ? <Alert severity="error">{relationshipQuery.error.message}</Alert> : null}
+      {relationshipQuery.error ? (
+        <Alert severity="error">{relationshipQuery.error.message}</Alert>
+      ) : null}
       {queryAnswer ? (
         <Alert severity="info">
           {queryAnswer}
           {queryResponse?.graph_paths.map((path) => (
             <Typography display="block" variant="caption" key={path.path_id}>
               {path.display_path} | {path.verification_status} | page {path.source_page}
-              {path.source_field ? ` | source field: ${path.source_field.replaceAll("_", " ")}` : ""}
+              {path.source_field
+                ? ` | source field: ${path.source_field.replaceAll("_", " ")}`
+                : ""}
             </Typography>
           ))}
           {queryResponse?.citations.map((citation, index) => (
             <Button
-              key={citation.evidence_id || `${citation.document_id}-${citation.page_number}-${index}`}
+              key={
+                citation.evidence_id || `${citation.document_id}-${citation.page_number}-${index}`
+              }
               size="small"
               startIcon={<ExternalLink size={14} />}
-              onClick={() => navigate(`/documents/${citation.document_id}`, { state: { citation } })}
+              onClick={() =>
+                navigate(`/documents/${citation.document_id}`, { state: { citation } })
+              }
             >
               Open citation {index + 1}
             </Button>
@@ -251,36 +289,105 @@ export function GraphExplorerPage() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             size="small"
-            slotProps={{ input: { startAdornment: <InputAdornment position="start"><Search size={16} /></InputAdornment> } }}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={16} />
+                  </InputAdornment>
+                ),
+              },
+            }}
           />
-          <TextField select label="Node type" value={nodeType} onChange={(event) => setNodeType(event.target.value)} size="small">
+          <TextField
+            select
+            label="Node type"
+            value={nodeType}
+            onChange={(event) => setNodeType(event.target.value)}
+            size="small"
+          >
             <MenuItem value="all">All types</MenuItem>
-            {nodeTypes.map((type) => <MenuItem value={type} key={type}>{type}</MenuItem>)}
+            {nodeTypes.map((type) => (
+              <MenuItem value={type} key={type}>
+                {type}
+              </MenuItem>
+            ))}
           </TextField>
-          <TextField select label="Status" value={edgeStatus} onChange={(event) => setEdgeStatus(event.target.value)} size="small">
+          <TextField
+            select
+            label="Status"
+            value={edgeStatus}
+            onChange={(event) => setEdgeStatus(event.target.value)}
+            size="small"
+          >
             <MenuItem value="all">All statuses</MenuItem>
             <MenuItem value="verified">Verified</MenuItem>
             <MenuItem value="proposed">Proposed</MenuItem>
           </TextField>
-          <TextField select label="Relationship" value={relationshipType} onChange={(event) => setRelationshipType(event.target.value)} size="small">
+          <TextField
+            select
+            label="Relationship"
+            value={relationshipType}
+            onChange={(event) => setRelationshipType(event.target.value)}
+            size="small"
+          >
             <MenuItem value="all">All relationships</MenuItem>
-            {relationshipTypes.map((type) => <MenuItem value={type} key={type}>{type.replaceAll("_", " ")}</MenuItem>)}
+            {relationshipTypes.map((type) => (
+              <MenuItem value={type} key={type}>
+                {type.replaceAll("_", " ")}
+              </MenuItem>
+            ))}
           </TextField>
           <Box className="graph-icon-actions">
-            <Tooltip title="Fit graph"><IconButton onClick={fitGraph}><Maximize2 size={18} /></IconButton></Tooltip>
-            <Tooltip title="Reset layout"><IconButton onClick={resetLayout}><RotateCcw size={18} /></IconButton></Tooltip>
+            <Tooltip title="Fit graph">
+              <IconButton onClick={fitGraph}>
+                <Maximize2 size={18} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Reset layout">
+              <IconButton onClick={resetLayout}>
+                <RotateCcw size={18} />
+              </IconButton>
+            </Tooltip>
           </Box>
         </Box>
         <Box className="graph-path-controls">
-          <TextField select label="Path from" value={pathStart} onChange={(event) => setPathStart(event.target.value)} size="small">
+          <TextField
+            select
+            label="Path from"
+            value={pathStart}
+            onChange={(event) => setPathStart(event.target.value)}
+            size="small"
+          >
             <MenuItem value="">Select node</MenuItem>
-            {projection.nodes.map((node) => <MenuItem value={node.id} key={node.id}>{truncateGraphLabel(node.label, 42)}</MenuItem>)}
+            {projection.nodes.map((node) => (
+              <MenuItem value={node.id} key={node.id}>
+                {truncateGraphLabel(node.label, 42)}
+              </MenuItem>
+            ))}
           </TextField>
-          <TextField select label="Path to" value={pathEnd} onChange={(event) => setPathEnd(event.target.value)} size="small">
+          <TextField
+            select
+            label="Path to"
+            value={pathEnd}
+            onChange={(event) => setPathEnd(event.target.value)}
+            size="small"
+          >
             <MenuItem value="">Select node</MenuItem>
-            {projection.nodes.map((node) => <MenuItem value={node.id} key={node.id}>{truncateGraphLabel(node.label, 42)}</MenuItem>)}
+            {projection.nodes.map((node) => (
+              <MenuItem value={node.id} key={node.id}>
+                {truncateGraphLabel(node.label, 42)}
+              </MenuItem>
+            ))}
           </TextField>
-          <Button variant="outlined" startIcon={<Route size={16} />} disabled={!pathStart || !pathEnd} onClick={highlightPath}>Highlight path</Button>
+          <Button
+            variant="outlined"
+            startIcon={<Route size={16} />}
+            disabled={!pathStart || !pathEnd}
+            onClick={highlightPath}
+          >
+            Highlight path
+          </Button>
         </Box>
         <Box className="graph-main">
           <Box className="graph-canvas">
@@ -294,7 +401,11 @@ export function GraphExplorerPage() {
                 maxZoom={2.5}
                 cy={setCy}
               />
-            ) : <Box className="graph-empty"><Typography variant="h3">Select a document</Typography></Box>}
+            ) : (
+              <Box className="graph-empty">
+                <Typography variant="h3">Select a document</Typography>
+              </Box>
+            )}
             {hoveredNode ? (
               <Box
                 className="graph-hover-label"
@@ -307,7 +418,13 @@ export function GraphExplorerPage() {
           {selection ? (
             <Box className="graph-details">
               {selection.kind === "node" ? (
-                <NodeDetails node={selection.data} onOpen={() => selection.data.document_id && navigate(`/documents/${selection.data.document_id}`)} />
+                <NodeDetails
+                  node={selection.data}
+                  onOpen={() =>
+                    selection.data.document_id &&
+                    navigate(`/documents/${selection.data.document_id}`)
+                  }
+                />
               ) : (
                 <EdgeDetails
                   edge={selection.data}
@@ -337,11 +454,32 @@ function NodeDetails({ node, onOpen }: { node: GraphNode; onOpen: () => void }) 
       <Typography variant="overline">{node.type}</Typography>
       <Typography variant="h3">{node.label}</Typography>
       {node.status ? <StatusChip value={String(node.status)} /> : null}
-      {node.source_page ? <Typography variant="body2" color="text.secondary">Page {node.source_page}</Typography> : null}
-      {node.source_text ? <Typography variant="body2">{String(node.source_text)}</Typography> : null}
-      {node.source_field_id ? <Typography variant="caption" color="text.secondary">Source field {String(node.source_field_id)}</Typography> : null}
-      {typeof node.confidence === "number" ? <Typography variant="caption" color="text.secondary">Confidence {Math.round(node.confidence * 100)}%</Typography> : null}
-      <Button variant="outlined" startIcon={<ExternalLink size={16} />} disabled={!node.document_id} onClick={onOpen}>Open source</Button>
+      {node.source_page ? (
+        <Typography variant="body2" color="text.secondary">
+          Page {node.source_page}
+        </Typography>
+      ) : null}
+      {node.source_text ? (
+        <Typography variant="body2">{String(node.source_text)}</Typography>
+      ) : null}
+      {node.source_field_id ? (
+        <Typography variant="caption" color="text.secondary">
+          Source field {String(node.source_field_id)}
+        </Typography>
+      ) : null}
+      {typeof node.confidence === "number" ? (
+        <Typography variant="caption" color="text.secondary">
+          Confidence {Math.round(node.confidence * 100)}%
+        </Typography>
+      ) : null}
+      <Button
+        variant="outlined"
+        startIcon={<ExternalLink size={16} />}
+        disabled={!node.document_id}
+        onClick={onOpen}
+      >
+        Open source
+      </Button>
     </Box>
   );
 }
@@ -377,17 +515,56 @@ function EdgeDetails({
       <StatusChip value={edge.status || "proposed"} />
       <Typography variant="body2">{edge.evidence_text || "No evidence text available."}</Typography>
       <Typography variant="caption" color="text.secondary">
-        Page {edge.source_page || 1} | {typeof edge.confidence === "number" ? `${Math.round(edge.confidence * 100)}%` : "Confidence not available"}
+        Page {edge.source_page || 1} |{" "}
+        {typeof edge.confidence === "number"
+          ? `${Math.round(edge.confidence * 100)}%`
+          : "Confidence not available"}
       </Typography>
-      {edge.source_field ? <Typography variant="caption" color="text.secondary">Source field {String(edge.source_field).replaceAll("_", " ")}</Typography> : null}
-      {edge.evidence_id ? <Typography variant="caption" color="text.secondary">Evidence {edge.evidence_id}</Typography> : null}
-      <Button variant="outlined" startIcon={<ExternalLink size={16} />} disabled={!edge.document_id} onClick={onOpen}>Open evidence</Button>
+      {edge.source_field ? (
+        <Typography variant="caption" color="text.secondary">
+          Source field {String(edge.source_field).replaceAll("_", " ")}
+        </Typography>
+      ) : null}
+      {edge.evidence_id ? (
+        <Typography variant="caption" color="text.secondary">
+          Evidence {edge.evidence_id}
+        </Typography>
+      ) : null}
+      <Button
+        variant="outlined"
+        startIcon={<ExternalLink size={16} />}
+        disabled={!edge.document_id}
+        onClick={onOpen}
+      >
+        Open evidence
+      </Button>
       {proposed && canVerify ? (
         <Box className="graph-verification">
-          <TextField multiline minRows={2} label="Reviewer comment" value={comment} onChange={(event) => onComment(event.target.value)} />
-          <FormControlLabel control={<Checkbox checked={acknowledged} onChange={(event) => onAcknowledged(event.target.checked)} />} label="Evidence matches the source region" />
+          <TextField
+            multiline
+            minRows={2}
+            label="Reviewer comment"
+            value={comment}
+            onChange={(event) => onComment(event.target.value)}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={acknowledged}
+                onChange={(event) => onAcknowledged(event.target.checked)}
+              />
+            }
+            label="Evidence matches the source region"
+          />
           {error ? <Alert severity="error">{error}</Alert> : null}
-          <Button variant="contained" startIcon={<BadgeCheck size={16} />} disabled={!acknowledged || comment.trim().length < 10 || pending} onClick={onVerify}>Verify relationship</Button>
+          <Button
+            variant="contained"
+            startIcon={<BadgeCheck size={16} />}
+            disabled={!acknowledged || comment.trim().length < 10 || pending}
+            onClick={onVerify}
+          >
+            Verify relationship
+          </Button>
         </Box>
       ) : null}
     </Box>
@@ -397,36 +574,146 @@ function EdgeDetails({
 function GraphLegend({ nodeTypes }: { nodeTypes: string[] }) {
   return (
     <Box className="graph-legend" aria-label="Graph legend">
-      {nodeTypes.map((type) => <Box className="legend-item" key={type}><span className={`graph-swatch swatch-${type}`} />{type}</Box>)}
-      <Box className="legend-item"><span className="edge-swatch edge-verified" />Verified</Box>
-      <Box className="legend-item"><span className="edge-swatch edge-proposed" />Proposed</Box>
-      <Box className="legend-item"><span className="edge-swatch" style={{ backgroundColor: "#b42318" }} />Conflict</Box>
+      {nodeTypes.map((type) => (
+        <Box className="legend-item" key={type}>
+          <span className={`graph-swatch swatch-${type}`} />
+          {type}
+        </Box>
+      ))}
+      <Box className="legend-item">
+        <span className="edge-swatch edge-verified" />
+        Verified
+      </Box>
+      <Box className="legend-item">
+        <span className="edge-swatch edge-proposed" />
+        Proposed
+      </Box>
+      <Box className="legend-item">
+        <span className="edge-swatch" style={{ backgroundColor: "#b42318" }} />
+        Conflict
+      </Box>
     </Box>
   );
 }
 
 const graphStyles: StylesheetStyle[] = [
-  { selector: "node", style: { "background-color": "#46707c", label: "data(canvasLabel)", color: "#18232d", "font-size": 10, "font-weight": 600, "text-valign": "bottom", "text-margin-y": 7, "text-wrap": "ellipsis", "text-max-width": "100px", width: 28, height: 28, "border-width": 2, "border-color": "#ffffff" } },
-  { selector: "node[type = 'Document']", style: { "background-color": "#12324a", shape: "round-rectangle", width: 38, height: 32 } },
-  { selector: "node[type = 'Page']", style: { "background-color": "#8796a1", shape: "rectangle", width: 26, height: 32 } },
-  { selector: "node[type = 'Organisation'], node[type = 'Vendor'], node[type = 'Customer']", style: { "background-color": "#087f78", shape: "round-rectangle", width: 34, height: 30 } },
+  {
+    selector: "node",
+    style: {
+      "background-color": "#46707c",
+      label: "data(canvasLabel)",
+      color: "#18232d",
+      "font-size": 10,
+      "font-weight": 600,
+      "text-valign": "bottom",
+      "text-margin-y": 7,
+      "text-wrap": "ellipsis",
+      "text-max-width": "100px",
+      width: 28,
+      height: 28,
+      "border-width": 2,
+      "border-color": "#ffffff",
+    },
+  },
+  {
+    selector: "node[type = 'Document']",
+    style: { "background-color": "#12324a", shape: "round-rectangle", width: 38, height: 32 },
+  },
+  {
+    selector: "node[type = 'Page']",
+    style: { "background-color": "#8796a1", shape: "rectangle", width: 26, height: 32 },
+  },
+  {
+    selector: "node[type = 'Organisation'], node[type = 'Vendor'], node[type = 'Customer']",
+    style: { "background-color": "#087f78", shape: "round-rectangle", width: 34, height: 30 },
+  },
   { selector: "node[type = 'Person']", style: { "background-color": "#3568a8", shape: "ellipse" } },
-  { selector: "node[type = 'ContactMethod'], node[type = 'Address']", style: { "background-color": "#5b7f3b", shape: "diamond" } },
-  { selector: "node[type = 'Date'], node[type = 'Form'], node[type = 'Identifier']", style: { "background-color": "#6b7280", shape: "round-rectangle" } },
-  { selector: "node[type = 'Invoice'], node[type = 'PurchaseOrder'], node[type = 'Contract'], node[type = 'Amount']", style: { "background-color": "#c28a13", shape: "round-rectangle" } },
+  {
+    selector: "node[type = 'ContactMethod'], node[type = 'Address']",
+    style: { "background-color": "#5b7f3b", shape: "diamond" },
+  },
+  {
+    selector: "node[type = 'Date'], node[type = 'Form'], node[type = 'Identifier']",
+    style: { "background-color": "#6b7280", shape: "round-rectangle" },
+  },
+  {
+    selector:
+      "node[type = 'Invoice'], node[type = 'PurchaseOrder'], node[type = 'Contract'], node[type = 'Amount']",
+    style: { "background-color": "#c28a13", shape: "round-rectangle" },
+  },
   { selector: "node[type = 'Product']", style: { "background-color": "#8b6d1f", shape: "barrel" } },
-  { selector: "node[type = 'BankAccount'], node[type = 'TaxIdentifier']", style: { "background-color": "#7b5ca7", shape: "hexagon" } },
-  { selector: "node[type = 'Signature'], node[type = 'Stamp']", style: { "background-color": "#b45f83", shape: "star" } },
-  { selector: "node[type = 'RiskIndicator']", style: { "background-color": "#b42318", shape: "triangle" } },
-  { selector: "node[type = 'ExtractedField']", style: { "background-color": "#c5ccd1", shape: "round-tag", width: 22, height: 22 } },
+  {
+    selector: "node[type = 'BankAccount'], node[type = 'TaxIdentifier']",
+    style: { "background-color": "#7b5ca7", shape: "hexagon" },
+  },
+  {
+    selector: "node[type = 'Signature'], node[type = 'Stamp']",
+    style: { "background-color": "#b45f83", shape: "star" },
+  },
+  {
+    selector: "node[type = 'RiskIndicator']",
+    style: { "background-color": "#b42318", shape: "triangle" },
+  },
+  {
+    selector: "node[type = 'ExtractedField']",
+    style: { "background-color": "#c5ccd1", shape: "round-tag", width: 22, height: 22 },
+  },
   { selector: "node.search-match", style: { "border-width": 5, "border-color": "#f2b705" } },
-  { selector: "node:selected", style: { "border-width": 5, "border-color": "#18232d", label: "data(fullLabel)" } },
-  { selector: "edge", style: { width: 1.7, "line-color": "#70808c", "target-arrow-color": "#70808c", "target-arrow-shape": "triangle", "curve-style": "bezier", label: "data(label)", "font-size": 7, color: "#4d5b65", "text-background-color": "#ffffff", "text-background-opacity": 0.84, "text-background-padding": "1px", "text-rotation": "autorotate" } },
-  { selector: "edge:selected", style: { label: "data(label)", "font-size": 8, color: "#4d5b65", "text-background-color": "#ffffff", "text-background-opacity": 0.9, "text-background-padding": "2px" } },
-  { selector: "edge[status = 'verified']", style: { "line-color": "#287a54", "target-arrow-color": "#287a54" } },
-  { selector: "edge[status = 'proposed']", style: { "line-style": "dashed", "line-color": "#b54708", "target-arrow-color": "#b54708" } },
-  { selector: "edge[status = 'conflict']", style: { "line-color": "#b42318", "target-arrow-color": "#b42318", width: 3 } },
-  { selector: ".path-highlight", style: { "line-color": "#d4382d", "target-arrow-color": "#d4382d", "border-color": "#d4382d", "border-width": 5, width: 4, "z-index": 20 } },
+  {
+    selector: "node:selected",
+    style: { "border-width": 5, "border-color": "#18232d", label: "data(fullLabel)" },
+  },
+  {
+    selector: "edge",
+    style: {
+      width: 1.7,
+      "line-color": "#70808c",
+      "target-arrow-color": "#70808c",
+      "target-arrow-shape": "triangle",
+      "curve-style": "bezier",
+      label: "data(label)",
+      "font-size": 7,
+      color: "#4d5b65",
+      "text-background-color": "#ffffff",
+      "text-background-opacity": 0.84,
+      "text-background-padding": "1px",
+      "text-rotation": "autorotate",
+    },
+  },
+  {
+    selector: "edge:selected",
+    style: {
+      label: "data(label)",
+      "font-size": 8,
+      color: "#4d5b65",
+      "text-background-color": "#ffffff",
+      "text-background-opacity": 0.9,
+      "text-background-padding": "2px",
+    },
+  },
+  {
+    selector: "edge[status = 'verified']",
+    style: { "line-color": "#287a54", "target-arrow-color": "#287a54" },
+  },
+  {
+    selector: "edge[status = 'proposed']",
+    style: { "line-style": "dashed", "line-color": "#b54708", "target-arrow-color": "#b54708" },
+  },
+  {
+    selector: "edge[status = 'conflict']",
+    style: { "line-color": "#b42318", "target-arrow-color": "#b42318", width: 3 },
+  },
+  {
+    selector: ".path-highlight",
+    style: {
+      "line-color": "#d4382d",
+      "target-arrow-color": "#d4382d",
+      "border-color": "#d4382d",
+      "border-width": 5,
+      width: 4,
+      "z-index": 20,
+    },
+  },
 ];
 
 function primaryNodeType(type: string) {

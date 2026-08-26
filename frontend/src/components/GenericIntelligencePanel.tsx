@@ -26,12 +26,17 @@ export function GenericIntelligencePanel({
       {profile ? (
         <Box className="schema-profile-summary">
           <Box>
-            <Typography variant="overline" color="text.secondary">Schema profile</Typography>
-            <Typography variant="h4">Mode {profile.mode} · {humanize(profile.schema_status)}</Typography>
+            <Typography variant="overline" color="text.secondary">
+              Schema profile
+            </Typography>
+            <Typography variant="h4">
+              Mode {profile.mode} · {humanize(profile.schema_status)}
+            </Typography>
           </Box>
           <StatusChip value={profile.schema_status} />
           <Typography variant="caption" color="text.secondary">
-            {profile.schema_id ? `${profile.schema_id} · ` : ""}{profile.schema_version} · selected by {humanize(profile.selection_source)}
+            {profile.schema_id ? `${profile.schema_id} · ` : ""}
+            {profile.schema_version} · selected by {humanize(profile.selection_source)}
           </Typography>
         </Box>
       ) : null}
@@ -48,7 +53,11 @@ export function GenericIntelligencePanel({
           <Typography variant="h4">Semantic entities</Typography>
           <Typography variant="caption">{typedEntities.length}</Typography>
         </Box>
-        {!typedEntities.length ? <Typography color="text.secondary">No reusable semantic entities were identified.</Typography> : null}
+        {!typedEntities.length ? (
+          <Typography color="text.secondary">
+            No reusable semantic entities were identified.
+          </Typography>
+        ) : null}
         {typedEntities.map((entity) => {
           const evidence = resolveEvidence(document, entity.evidence_ids);
           return (
@@ -57,13 +66,32 @@ export function GenericIntelligencePanel({
               className="semantic-row"
               key={entity.entity_id}
               disabled={!evidence?.bounding_box}
-              onClick={() => evidence?.bounding_box && onFocus?.(evidence.page_number, evidence.bounding_box, entity.entity_id)}
+              onClick={() =>
+                evidence?.bounding_box &&
+                onFocus?.(evidence.page_number, evidence.bounding_box, entity.entity_id)
+              }
             >
               <Box>
-                <Typography fontWeight={650}>{maskedSemanticValue(entity.semantic_type, entity.normalized_value || entity.raw_value)}</Typography>
-                <Typography variant="caption" color="text.secondary">{humanize(entity.semantic_type)} · {Math.round(entity.confidence * 100)}% confidence</Typography>
+                <Typography fontWeight={650}>
+                  {maskedSemanticValue(
+                    entity.semantic_type,
+                    entity.normalized_value || entity.raw_value,
+                  )}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {humanize(entity.semantic_type)} · {Math.round(entity.confidence * 100)}%
+                  confidence
+                </Typography>
               </Box>
-              <StatusChip value={entity.validator_valid ? (entity.review_required ? "review required" : "validated") : "invalid"} />
+              <StatusChip
+                value={
+                  entity.validator_valid
+                    ? entity.review_required
+                      ? "review required"
+                      : "validated"
+                    : "invalid"
+                }
+              />
             </button>
           );
         })}
@@ -74,7 +102,11 @@ export function GenericIntelligencePanel({
           <Typography variant="h4">Verified facts</Typography>
           <Typography variant="caption">{verifiedFacts.length}</Typography>
         </Box>
-        {!verifiedFacts.length ? <Typography color="text.secondary">No reviewer-verified facts have been recorded.</Typography> : null}
+        {!verifiedFacts.length ? (
+          <Typography color="text.secondary">
+            No reviewer-verified facts have been recorded.
+          </Typography>
+        ) : null}
         {verifiedFacts.map((fact) => {
           const evidence = resolveEvidence(document, [fact.evidence_id]);
           return (
@@ -83,11 +115,18 @@ export function GenericIntelligencePanel({
               className="semantic-row"
               key={fact.fact_id}
               disabled={!evidence?.bounding_box}
-              onClick={() => evidence?.bounding_box && onFocus?.(evidence.page_number, evidence.bounding_box, fact.fact_id)}
+              onClick={() =>
+                evidence?.bounding_box &&
+                onFocus?.(evidence.page_number, evidence.bounding_box, fact.fact_id)
+              }
             >
               <Box>
-                <Typography variant="caption" color="text.secondary">{humanize(fact.name)}</Typography>
-                <Typography fontWeight={650}>{maskedSemanticValue(fact.semantic_type, fact.normalized_value || fact.value)}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {humanize(fact.name)}
+                </Typography>
+                <Typography fontWeight={650}>
+                  {maskedSemanticValue(fact.semantic_type, fact.normalized_value || fact.value)}
+                </Typography>
               </Box>
               <Box className="field-meta">
                 <StatusChip value={fact.reviewer_status} />
@@ -118,7 +157,9 @@ function GenericFields({
         <Typography variant="h4">Discovered attributes</Typography>
         <Typography variant="caption">{fields.length}</Typography>
       </Box>
-      {!fields.length ? <Alert severity="info">No schema-independent label/value observations were found.</Alert> : null}
+      {!fields.length ? (
+        <Alert severity="info">No schema-independent label/value observations were found.</Alert>
+      ) : null}
       {fields.map((field) => {
         const box = field.evidence.bounding_box || field.value_bbox;
         return (
@@ -126,22 +167,43 @@ function GenericFields({
             <button
               type="button"
               className="generic-field-main"
-              onClick={() => onFocus?.(field.evidence.page_number || field.page, box, field.field_id)}
+              onClick={() =>
+                onFocus?.(field.evidence.page_number || field.page, box, field.field_id)
+              }
             >
               <Box>
-                <Typography variant="caption" color="text.secondary">{field.raw_label || humanize(field.normalized_label)}</Typography>
-                <Typography fontWeight={650} className="field-value">{maskedGenericValue(field)}</Typography>
-                {field.normalized_value && field.normalized_value !== field.raw_value ? <Typography variant="caption" color="text.secondary">Normalized: {maskedGenericValue(field, true)}</Typography> : null}
+                <Typography variant="caption" color="text.secondary">
+                  {field.raw_label || humanize(field.normalized_label)}
+                </Typography>
+                <Typography fontWeight={650} className="field-value">
+                  {maskedGenericValue(field)}
+                </Typography>
+                {field.normalized_value && field.normalized_value !== field.raw_value ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Normalized: {maskedGenericValue(field, true)}
+                  </Typography>
+                ) : null}
               </Box>
               <Box className="field-meta">
                 <Typography variant="caption">{Math.round(field.confidence * 100)}%</Typography>
-                <StatusChip value={field.semantic_type_if_known || (field.review_required ? "review required" : "untyped")} />
+                <StatusChip
+                  value={
+                    field.semantic_type_if_known ||
+                    (field.review_required ? "review required" : "untyped")
+                  }
+                />
               </Box>
             </button>
             {onToggleEvidence ? (
               <FormControlLabel
                 className="generic-evidence-control"
-                control={<Checkbox size="small" checked={selectedEvidenceIds.includes(field.evidence.evidence_id)} onChange={() => onToggleEvidence(field.evidence.evidence_id)} />}
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={selectedEvidenceIds.includes(field.evidence.evidence_id)}
+                    onChange={() => onToggleEvidence(field.evidence.evidence_id)}
+                  />
+                }
                 label="Evidence reviewed"
               />
             ) : null}
@@ -161,11 +223,17 @@ function resolveEvidence(document: VisionDocument, evidenceIds: string[]): Evide
 }
 
 export function humanize(value: string): string {
-  return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (character) => character.toUpperCase());
+  return value
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function maskedGenericValue(field: GenericDiscoveredField, normalized = false): string {
-  return maskedSemanticValue(field.semantic_type_if_known, normalized ? field.normalized_value : field.raw_value);
+  return maskedSemanticValue(
+    field.semantic_type_if_known,
+    normalized ? field.normalized_value : field.raw_value,
+  );
 }
 
 function maskedSemanticValue(semanticType: string | null | undefined, value: string): string {

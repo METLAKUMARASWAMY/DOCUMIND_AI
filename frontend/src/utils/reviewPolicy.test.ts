@@ -66,13 +66,15 @@ describe("review approval controls", () => {
     const result = reviewApprovalControl({
       policy: {
         ...basePolicy,
-        observed_conditions: [{
-          code: "bank_account_mismatch",
-          message: "Resolve mismatch",
-          overrideable: false,
-          affected_fields: [],
-          evidence_ids: [],
-        }],
+        observed_conditions: [
+          {
+            code: "bank_account_mismatch",
+            message: "Resolve mismatch",
+            overrideable: false,
+            affected_fields: [],
+            evidence_ids: [],
+          },
+        ],
       },
       comment: "Checked source evidence.",
       selectedEvidenceIds: ["evidence-1"],
