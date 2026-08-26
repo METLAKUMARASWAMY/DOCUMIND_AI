@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import shutil
 from collections import defaultdict
 from pathlib import Path
@@ -52,10 +53,87 @@ class TesseractOCRAdapter(OCRAdapter):
                     words.append(self._native_word(item, reading_order))
                     reading_order += 1
                 continue
-            page_words = self._tesseract_page(
-                Path(artifact.processed_image_path),
-                artifact.page_number,
-                reading_order,
+            primary_paths = [
+                ("original", Path(artifact.original_image_path), 3),
+                ("processed", Path(artifact.processed_image_path), 3),
+            ]
+            page_candidates = [
+                (
+                    variant,
+                    psm,
+                    self._tesseract_page(
+                        image_path,
+                        artifact.page_number,
+                        reading_order,
+                        variant=variant,
+                        psm=psm,
+                    ),
+                )
+                for variant, image_path, psm in self._unique_paths(primary_paths)
+                if image_path.is_file()
+            ]
+            if not page_candidates:
+                page_candidates = [
+                    (
+                        "processed",
+                        3,
+                        self._tesseract_page(
+                            Path(artifact.processed_image_path),
+                            artifact.page_number,
+                            reading_order,
+                            variant="processed",
+                            psm=3,
+                        ),
+                    )
+                ]
+            best_score = max((self._candidate_score(item[2]) for item in page_candidates), default=0.0)
+            if best_score < 0.74:
+                retry_paths = [
+                    ("grayscale", Path(artifact.grayscale_image_path or ""), 6),
+                    ("enhanced", Path(artifact.enhanced_image_path or ""), 6),
+                ]
+                seen = {str(Path(artifact.original_image_path).resolve()), str(Path(artifact.processed_image_path).resolve())}
+                for variant, image_path, psm in self._unique_paths(retry_paths):
+                    if not image_path.is_file() or str(image_path.resolve()) in seen:
+                        continue
+                    page_candidates.append(
+                        (
+                            variant,
+                            psm,
+                            self._tesseract_page(
+                                image_path,
+                                artifact.page_number,
+                                reading_order,
+                                variant=variant,
+                                psm=psm,
+                                ocr_pass="adaptive_retry",
+                            ),
+                        )
+                    )
+            selected_variant, selected_psm, page_words = max(
+                page_candidates,
+                key=lambda item: self._candidate_score(item[2]),
+            )
+            document.metadata.setdefault("ocr_consensus", []).append(
+                {
+                    "page": artifact.page_number,
+                    "selected_variant": selected_variant,
+                    "selected_psm": selected_psm,
+                    "selection_method": "confidence_character_semantic_consensus_v1",
+                    "candidates": [
+                        {
+                            "variant": variant,
+                            "psm": psm,
+                            "word_count": len(candidate_words),
+                            "mean_confidence": self._mean_confidence(candidate_words),
+                            "selection_score": self._candidate_score(candidate_words),
+                            "text_preview": " ".join(
+                                word.text for word in candidate_words[:80]
+                            )[:1000],
+                        }
+                        for variant, psm, candidate_words in page_candidates
+                    ],
+                }
             )
             words.extend(page_words)
             reading_order += len(page_words)
@@ -66,6 +144,10 @@ class TesseractOCRAdapter(OCRAdapter):
         image_path: Path,
         page_number: int,
         reading_order_start: int,
+        *,
+        variant: str = "processed",
+        psm: int = 3,
+        ocr_pass: str = "primary",
     ) -> list[OCRWord]:
         self.ensure_ready()
         import pytesseract
@@ -76,7 +158,7 @@ class TesseractOCRAdapter(OCRAdapter):
         data = pytesseract.image_to_data(
             Image.open(image_path),
             lang=settings.tesseract_languages,
-            config="--oem 3 --psm 3",
+            config=f"--oem 3 --psm {psm}",
             output_type=Output.DICT,
         )
         words: list[OCRWord] = []
@@ -108,6 +190,8 @@ class TesseractOCRAdapter(OCRAdapter):
                     review_required=confidence < settings.ocr_low_confidence_threshold,
                     model_name="Tesseract",
                     model_version=self._tesseract_version(pytesseract),
+                    preprocessing_variant=variant,
+                    ocr_pass=ocr_pass,
                 )
             )
         return words
@@ -130,7 +214,49 @@ class TesseractOCRAdapter(OCRAdapter):
             review_required=confidence < settings.ocr_low_confidence_threshold,
             model_name=str(item.get("model_name", "native-text-parser")),
             model_version=str(item.get("model_version", "v1")),
+            preprocessing_variant=str(item.get("preprocessing_variant", "native_text")),
+            ocr_pass="native_text",
         )
+
+    def _candidate_score(self, words: list[OCRWord]) -> float:
+        if not words:
+            return 0.0
+        mean_confidence = self._mean_confidence(words) or 0.0
+        text = " ".join(word.text for word in words)
+        visible = [character for character in text if not character.isspace()]
+        plausible = (
+            sum(character.isalnum() or character in ".,:;#@%/+_()-'&" for character in visible)
+            / len(visible)
+            if visible
+            else 0.0
+        )
+        semantic_cues = len(
+            re.findall(
+                r"(?i)\b(?:date|invoice|purchase\s+order|sample|batch|requested|"
+                r"specifications?|account|amount|total|phone|email|address|subject|"
+                r"prepared|approved|reference|contract|statement)\b",
+                text,
+            )
+        )
+        cue_score = min(1.0, semantic_cues / 8)
+        return round(mean_confidence * 0.68 + plausible * 0.17 + cue_score * 0.15, 4)
+
+    def _mean_confidence(self, words: list[OCRWord]) -> float | None:
+        return round(sum(word.confidence for word in words) / len(words), 4) if words else None
+
+    def _unique_paths(
+        self,
+        candidates: list[tuple[str, Path, int]],
+    ) -> list[tuple[str, Path, int]]:
+        retained: list[tuple[str, Path, int]] = []
+        seen: set[str] = set()
+        for item in candidates:
+            key = str(item[1].resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            retained.append(item)
+        return retained
 
     def _tesseract_version(self, pytesseract: Any) -> str:
         try:

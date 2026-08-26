@@ -47,7 +47,7 @@ const DEFAULT_LAYERS: Record<Layer, boolean> = {
 const LAYER_LABELS: Record<Layer, string> = {
   ocr: "OCR",
   layout: "Layout",
-  fields: "Extracted fields",
+  fields: "Fields & attributes",
   tables: "Tables",
   visual: "Visual objects",
   lowConfidence: "Low confidence",
@@ -59,7 +59,7 @@ const LEGEND = [
   ["ocr", "OCR"],
   ["layout", "Layout"],
   ["verified", "Verified field"],
-  ["fields", "Extracted field"],
+  ["fields", "Extracted/discovered field"],
   ["lowConfidence", "Low confidence"],
   ["risk", "Risk indicator"],
   ["tamper", "Possible visual manipulation"],
@@ -217,11 +217,22 @@ export function buildOverlays(document: VisionDocument, page: number, layers: Re
   if (layers.ocr) document.ocr_words.filter((item) => item.page === page).forEach((item) => rows.push({ id: item.word_id, layer: "ocr", box: item.bounding_box, label: `OCR: ${item.text} (${Math.round(item.confidence * 100)}%)` }));
   if (layers.layout) document.layout_regions.filter((item) => item.page_number === page).forEach((item) => rows.push({ id: item.region_id, layer: "layout", box: item.bounding_box, label: `${item.region_type}: ${item.text}` }));
   if (layers.tables) document.tables.filter((item) => item.page_number === page).forEach((item) => rows.push({ id: item.table_id, layer: "tables", box: item.bounding_box, label: `Table: ${item.rows.length} row(s)` }));
-  if (layers.fields) document.extracted_fields.filter((item) => item.evidence.page_number === page && item.evidence.bounding_box).forEach((item) => rows.push({ id: item.field_id, layer: "fields", variant: verified(item.reviewer_status) ? "verified" : "extracted", box: item.evidence.bounding_box!, label: `${item.display_name || item.name}: ${item.reviewed_value || item.value}` }));
+  if (layers.fields) {
+    document.extracted_fields.filter((item) => item.evidence.page_number === page && item.evidence.bounding_box).forEach((item) => rows.push({ id: item.field_id, layer: "fields", variant: verified(item.reviewer_status) ? "verified" : "extracted", box: item.evidence.bounding_box!, label: `${item.display_name || item.name}: ${item.reviewed_value || item.value}` }));
+    const verifiedEvidenceIds = new Set((document.verified_facts ?? []).map((fact) => fact.evidence_id));
+    (document.generic_fields ?? []).filter((item) => item.page === page).forEach((item) => rows.push({
+      id: item.field_id,
+      layer: "fields",
+      variant: verifiedEvidenceIds.has(item.evidence.evidence_id) ? "verified" : "extracted",
+      box: item.evidence.bounding_box || item.value_bbox,
+      label: `${item.raw_label || item.normalized_label}: ${item.normalized_value || item.raw_value}`,
+    }));
+  }
   if (layers.visual) document.visual_detections.filter((item) => item.page_number === page).forEach((item) => rows.push({ id: item.detection_id, layer: "visual", box: item.bounding_box, label: `${item.detection_class} (${Math.round(item.confidence * 100)}%)` }));
   if (layers.lowConfidence) {
     document.ocr_words.filter((item) => item.page === page && item.review_required).forEach((item) => rows.push({ id: `low-${item.word_id}`, layer: "lowConfidence", box: item.bounding_box, label: `Low-confidence OCR: ${item.text}` }));
     document.extracted_fields.filter((item) => item.evidence.page_number === page && item.evidence.bounding_box && (item.confidence === null || item.confidence < 0.7)).forEach((item) => rows.push({ id: `low-${item.field_id}`, layer: "lowConfidence", box: item.evidence.bounding_box!, label: `Low-confidence field: ${item.display_name || item.name}` }));
+    (document.generic_fields ?? []).filter((item) => item.page === page && (item.review_required || item.confidence < 0.7)).forEach((item) => rows.push({ id: `low-${item.field_id}`, layer: "lowConfidence", box: item.evidence.bounding_box || item.value_bbox, label: `Low-confidence attribute: ${item.raw_label || item.normalized_label}` }));
   }
   if (layers.risk) document.risk_indicators.forEach((risk) => risk.evidence.filter((item) => item.page_number === page && item.bounding_box).forEach((item) => rows.push({ id: `${risk.risk_id}-${item.evidence_id}`, layer: "risk", box: item.bounding_box!, label: `${risk.title}: ${risk.description}` })));
   if (layers.tamper) document.tamper_analysis.filter((item) => item.page_number === page).forEach((analysis) => analysis.suspicious_regions.forEach((region) => rows.push({ id: region.region_id, layer: "tamper", box: region.bounding_box, label: `${region.manipulation_class} (${Math.round(region.screening_score * 100)} screening score)` })));

@@ -47,6 +47,7 @@ GRAPH_NODE_LABELS = frozenset(
         "Stamp",
         "RiskIndicator",
         "ExtractedField",
+        "Attribute",
     }
 )
 GRAPH_RELATIONSHIP_TYPES = frozenset(
@@ -65,7 +66,10 @@ GRAPH_RELATIONSHIP_TYPES = frozenset(
         "LOCATED_AT",
         "HAS_CONTACT",
         "HAS_FIELD",
+        "HAS_ATTRIBUTE",
         "HAS_DATE",
+        "HAS_REQUEST_DATE",
+        "HAS_PURPOSE",
         "HAS_TITLE",
         "HAS_SAMPLE_NUMBER",
         "HAS_PRODUCT_TYPE",
@@ -87,6 +91,23 @@ GRAPH_RELATIONSHIP_TYPES = frozenset(
         "AMENDS",
     }
 )
+
+GRAPH_QUERY_INTENTS: dict[str, tuple[str, ...]] = {
+    "REQUESTED_BY": ("who requested", "requested by", "requester"),
+    "SPECIFICATIONS_WRITTEN_BY": ("who wrote", "specifications written by"),
+    "HAS_SAMPLE_NUMBER": ("sample number", "sample no", "sample id"),
+    "HAS_PRODUCT_TYPE": ("product type", "type of product", "type of cigarette"),
+    "HAS_BATCH_SIZE": ("batch size", "lot size", "quantity"),
+    "HAS_DATE": ("what date", "document date", "form date"),
+    "HAS_REQUEST_DATE": ("request date", "when was the request", "request made"),
+    "HAS_PURPOSE": ("purpose", "what was the purpose"),
+    "HAS_BANK_ACCOUNT": ("bank account", "paid to", "payment account"),
+    "ISSUED_BY": ("issued by", "vendor", "supplier"),
+    "ISSUED_TO": ("issued to", "buyer", "customer"),
+    "REFERENCES": ("references", "linked", "related"),
+    "HAS_RISK": ("risk", "suspicious", "warning"),
+    "HAS_ATTRIBUTE": ("attribute", "property", "field"),
+}
 
 
 class VisionPersistenceCoordinator:
@@ -595,6 +616,59 @@ class VisionPersistenceCoordinator:
         except Exception as exc:
             self._record_error("neo4j", exc)
 
+    def query_graph_paths(
+        self,
+        tenant_id: str,
+        question: str,
+        document_ids: list[str],
+        *,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Execute a controlled tenant-scoped Neo4j path query.
+
+        Only relationships selected from a static allowlist can reach Cypher;
+        user text is never interpolated into the query.
+        """
+        if not settings.enable_neo4j or not tenant_id or not document_ids:
+            return []
+        normalized = " ".join(question.casefold().split())
+        relationships = [
+            relationship
+            for relationship, aliases in GRAPH_QUERY_INTENTS.items()
+            if any(alias in normalized for alias in aliases)
+        ]
+        if not relationships:
+            return []
+        try:
+            with self._neo4j_driver().session(database=settings.neo4j_database) as session:
+                rows = session.run(
+                    """
+                    MATCH (document:VisionEntity:Document)-[relationship]->(target:VisionEntity)
+                    WHERE document.tenant_id = $tenant_id
+                      AND document.entity_id IN $document_ids
+                      AND type(relationship) IN $relationship_types
+                    RETURN document.entity_id AS document_id,
+                           document.display_label AS source_label,
+                           target.entity_id AS target_id,
+                           target.display_label AS target_label,
+                           type(relationship) AS relationship_type,
+                           properties(relationship) AS relationship_properties,
+                           properties(target) AS target_properties
+                    ORDER BY coalesce(relationship.confidence, 0.0) DESC
+                    LIMIT $limit
+                    """,
+                    tenant_id=tenant_id,
+                    document_ids=document_ids,
+                    relationship_types=relationships,
+                    limit=max(1, min(int(limit), 20)),
+                )
+                result = [dict(row) for row in rows]
+            self._errors.pop("neo4j", None)
+            return result
+        except Exception as exc:
+            self._record_error("neo4j", exc)
+            return []
+
     def health(self) -> dict[str, Any]:
         return {
             "initialized": self._initialized,
@@ -844,6 +918,7 @@ class VisionPersistenceCoordinator:
             raise ValueError("Conversation tenant, user and conversation identifiers are required")
         selected_scope = self._protect(conversation.get("selected_scope") or {})
         pending = self._protect(conversation.get("pending_clarification") or {})
+        last_answer = self._protect(conversation.get("last_answer") or {})
         turns = self._protect(conversation.get("turns") or [])
         updated_at = _optional_utc_datetime(conversation.get("updated_at")) or datetime.now(UTC)
         expires_at = _optional_utc_datetime(conversation.get("expires_at"))
@@ -853,16 +928,21 @@ class VisionPersistenceCoordinator:
             """
             INSERT INTO vision_conversations (
                 tenant_id, user_id, conversation_id, selected_scope,
-                pending_clarification, last_query_type, turns, expires_at, updated_at
-            ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7::jsonb, $8, $9)
-            ON CONFLICT (tenant_id, conversation_id) DO UPDATE SET
+                pending_clarification, last_query_type, last_resolved_question,
+                last_answer, turns, expires_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4::jsonb, $5::jsonb, $6, $7,
+                $8::jsonb, $9::jsonb, $10, $11
+            )
+            ON CONFLICT (tenant_id, user_id, conversation_id) DO UPDATE SET
                 selected_scope = EXCLUDED.selected_scope,
                 pending_clarification = EXCLUDED.pending_clarification,
                 last_query_type = EXCLUDED.last_query_type,
+                last_resolved_question = EXCLUDED.last_resolved_question,
+                last_answer = EXCLUDED.last_answer,
                 turns = EXCLUDED.turns,
                 expires_at = EXCLUDED.expires_at,
                 updated_at = EXCLUDED.updated_at
-            WHERE vision_conversations.user_id = EXCLUDED.user_id
             """,
             tenant_id,
             user_id,
@@ -870,6 +950,8 @@ class VisionPersistenceCoordinator:
             _json_parameter(selected_scope),
             _json_parameter(pending),
             _optional_text(conversation.get("last_query_type")),
+            _optional_text(conversation.get("last_resolved_question")) or "",
+            _json_parameter(last_answer),
             _json_parameter(turns),
             expires_at,
             updated_at,
@@ -885,7 +967,8 @@ class VisionPersistenceCoordinator:
         row = await connection.fetchrow(
             """
             SELECT tenant_id, user_id, conversation_id, selected_scope,
-                   pending_clarification, last_query_type, turns, expires_at, updated_at
+                   pending_clarification, last_query_type, last_resolved_question,
+                   last_answer, turns, expires_at, updated_at
             FROM vision_conversations
             WHERE tenant_id = $1
               AND user_id = $2
@@ -912,6 +995,12 @@ class VisionPersistenceCoordinator:
                 _decoded_json(payload.get("pending_clarification"), {})
             ),
             "last_query_type": str(payload.get("last_query_type") or ""),
+            "last_resolved_question": str(
+                payload.get("last_resolved_question") or ""
+            ),
+            "last_answer": self._unprotect(
+                _decoded_json(payload.get("last_answer"), {})
+            ),
             "turns": self._unprotect(_decoded_json(payload.get("turns"), [])),
             "expires_at": (
                 expires_at.isoformat() if isinstance(expires_at, datetime) else str(expires_at)

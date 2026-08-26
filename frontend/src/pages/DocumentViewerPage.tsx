@@ -8,6 +8,7 @@ import { api } from "../api/client";
 import { DocumentCanvas, type FocusRegion } from "../components/DocumentCanvas";
 import { ErrorState, LoadingRows } from "../components/Feedback";
 import { FieldCompletenessSummary } from "../components/FieldCompletenessSummary";
+import { GenericIntelligencePanel } from "../components/GenericIntelligencePanel";
 import { PageHeader } from "../components/PageHeader";
 import { StatusChip } from "../components/StatusChip";
 import type { Citation, Evidence, ExtractedField, RiskIndicator, VisionDocument } from "../types/api";
@@ -43,12 +44,15 @@ export function DocumentViewerPage() {
   const confidenceLabel = confidence === null
     ? "field confidence not available"
     : `${Math.round(confidence * 100)}% across ${document.confidence_summary.field_count} fields`;
+  const schemaLabel = document.schema_profile
+    ? `schema mode ${document.schema_profile.mode} (${document.schema_profile.schema_status})`
+    : "schema profile unavailable";
 
   return (
     <Box className="page-stack viewer-page">
       <PageHeader
         title={document.filename}
-        subtitle={`${document.document_type.replaceAll("_", " ")} | ${document.page_count} page(s) | ${confidenceLabel}`}
+        subtitle={`${document.document_type.replaceAll("_", " ")} | ${document.page_count} page(s) | ${confidenceLabel} | ${schemaLabel}`}
         actions={<><StatusChip value={document.status} size="medium" />{document.review_task ? <Button component={Link} to={`/reviews/${document.review_task.review_id}`} variant="contained">Open review</Button> : null}<Button startIcon={<RefreshCw size={16} />} disabled={reprocess.isPending} onClick={() => reprocess.mutate(document.document_id)}>{reprocess.isPending ? "Reprocessing" : "Reprocess"}</Button></>}
       />
       {citation ? <Alert severity="info">Opened from answer citation on page {citation.page_number}.</Alert> : null}
@@ -61,6 +65,7 @@ export function DocumentViewerPage() {
         <Box className="intelligence-panel surface">
           <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto">
             <Tab label={`Fields ${document.extracted_fields.length}`} />
+            <Tab label={`Discovered ${(document.generic_fields ?? []).length}`} />
             <Tab label={`Tables ${document.tables.length}`} />
             <Tab label={`Warnings ${document.processing_warnings.length}`} />
             <Tab label={`Risk ${document.risk_indicators.length}`} />
@@ -75,8 +80,8 @@ export function DocumentViewerPage() {
                   <Alert severity="info">
                     {document.field_completeness.schema_available
                       ? `No structured fields were extracted. ${document.field_completeness.missing_required_fields.length} required fields remain unresolved.`
-                      : document.field_completeness.selected_schema === "generic_key_value_form"
-                        ? "No structured fields were extracted. Generic key-value schema fallback was attempted."
+                      : document.schema_profile?.mode === "C"
+                        ? "No registered schema fields were extracted. Schema-independent discovery results are available in the Discovered tab."
                         : "No structured fields were extracted. Expected schema unavailable for this document type."}
                   </Alert>
                 ) : null}
@@ -88,13 +93,23 @@ export function DocumentViewerPage() {
                 ))}
               </Box>
             ) : null}
-            {tab === 1 ? document.tables.length ? document.tables.map((table) => (
+            {tab === 1 ? (
+              <GenericIntelligencePanel
+                document={document}
+                onFocus={(focusPage, box, id) => {
+                  setPage(focusPage);
+                  setFocus({ page: focusPage, box, id });
+                }}
+              />
+            ) : null}
+            {tab === 2 ? document.tables.length ? document.tables.map((table) => (
               <Box key={table.table_id} className="table-result">
-                <Box className="section-heading"><Typography variant="h4">Page {table.page_number}</Typography><Typography variant="caption">{Math.round(table.confidence * 100)}% | {table.model_name}</Typography></Box>
+                <Box className="section-heading"><Typography variant="h4">Page {table.page_number}</Typography><Typography variant="caption">{Math.round(table.confidence * 100)}% | {table.model_name} | {table.structure_status.replaceAll("_", " ")}</Typography></Box>
+                {table.structure_status === "table_uncertain" ? <Alert severity="warning">Table structure needs review: {table.uncertainty_reasons.map((reason) => reason.replaceAll("_", " ")).join(", ")}.</Alert> : null}
                 <Table size="small"><TableBody>{table.rows.map((row, rowIndex) => <TableRow key={rowIndex}>{row.map((cell, cellIndex) => <TableCell key={cellIndex}>{cell}</TableCell>)}</TableRow>)}</TableBody></Table>
               </Box>
             )) : <Typography color="text.secondary">No structural tables were detected.</Typography> : null}
-            {tab === 2 ? (
+            {tab === 3 ? (
               <Box className="indicator-stack">
                 <LanguageEvidence analysis={document.language_analysis} />
                 <IndicatorList
@@ -107,7 +122,7 @@ export function DocumentViewerPage() {
                 />
               </Box>
             ) : null}
-            {tab === 3 ? (
+            {tab === 4 ? (
               <IndicatorList
                 indicators={document.risk_indicators}
                 empty="No business or visual risk indicators were generated."
@@ -117,7 +132,7 @@ export function DocumentViewerPage() {
                 }}
               />
             ) : null}
-            {tab === 4 ? (
+            {tab === 5 ? (
               <Table size="small"><TableHead><TableRow><TableCell>Stage</TableCell><TableCell>Model</TableCell><TableCell>Status</TableCell><TableCell>Confidence</TableCell></TableRow></TableHead><TableBody>{document.model_runs.map((run) => <TableRow key={String(run.run_id)}><TableCell>{String(run.stage)}</TableCell><TableCell>{String(run.model_name)} <Typography variant="caption">{String(run.model_version)}</Typography></TableCell><TableCell><StatusChip value={String(run.status)} /></TableCell><TableCell>{typeof run.confidence === "number" ? `${Math.round(run.confidence * 100)}%` : "Not reported"}</TableCell></TableRow>)}</TableBody></Table>
             ) : null}
           </Box>

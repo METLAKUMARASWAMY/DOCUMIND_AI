@@ -4,7 +4,10 @@ import html
 import importlib.util
 import re
 from collections import defaultdict
+from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 from app.core.config import settings
@@ -17,6 +20,13 @@ from app.models.vision import (
     VisionDocumentRecord,
 )
 from app.services.vision.adapters import AdapterStatus, LayoutAdapter
+
+
+@dataclass(frozen=True)
+class _GeometryTableRow:
+    line_key: tuple[int, str]
+    cells: tuple[tuple[OCRWord, ...], ...]
+    bounding_box: VisionBoundingBox
 
 
 class GeometryLayoutAdapter(LayoutAdapter):
@@ -39,17 +49,26 @@ class GeometryLayoutAdapter(LayoutAdapter):
         document: VisionDocumentRecord,
     ) -> tuple[list[LayoutRegion], list[TableResult]]:
         lines = self._lines(document.ocr_words)
+        geometry_table_groups = self._geometry_table_groups(lines)
+        geometry_table_line_keys = {
+            row.line_key for group in geometry_table_groups for row in group
+        }
         artifacts = {item.page_number: item for item in document.page_artifacts}
         regions: list[LayoutRegion] = []
         table_lines: dict[int, list[tuple[str, VisionBoundingBox]]] = defaultdict(list)
-        for reading_order, ((page_number, _), words) in enumerate(lines.items(), start=1):
+        for reading_order, (line_key, words) in enumerate(lines.items(), start=1):
+            page_number, _ = line_key
             text = " ".join(word.text for word in words).strip()
             box = self._union([word.bounding_box for word in words])
             if not text or not box:
                 continue
             artifact = artifacts.get(page_number)
             page_height = artifact.height if artifact else max(box.y2, 1)
-            region_type = self._region_type(text, box, page_height, reading_order)
+            region_type = (
+                "table"
+                if line_key in geometry_table_line_keys
+                else self._region_type(text, box, page_height, reading_order)
+            )
             confidence = sum(word.confidence for word in words) / len(words)
             regions.append(
                 LayoutRegion(
@@ -63,13 +82,14 @@ class GeometryLayoutAdapter(LayoutAdapter):
                     model_version=self.model_version,
                 )
             )
-            if region_type == "table":
+            if region_type == "table" and line_key not in geometry_table_line_keys:
                 table_lines[page_number].append((text, box))
         tables = [
             self._table(page_number, lines_for_page)
             for page_number, lines_for_page in table_lines.items()
             if lines_for_page
         ]
+        tables.extend(self._geometry_table(group) for group in geometry_table_groups)
         return regions, tables
 
     def _lines(self, words: list[OCRWord]) -> dict[tuple[int, str], list[OCRWord]]:
@@ -109,11 +129,260 @@ class GeometryLayoutAdapter(LayoutAdapter):
             return "formula"
         if ":" in text and len(text) < 180:
             return "form region"
-        if reading_order <= 2 or (len(text) < 90 and text.upper() == text and any(char.isalpha() for char in text)):
+        if reading_order <= 2 or (
+            len(text) < 90 and text.upper() == text and any(char.isalpha() for char in text)
+        ):
             return "document title" if reading_order == 1 else "paragraph title"
         if box.y1 > page_height * 0.82 and len(text) < 180:
             return "footnote"
         return "paragraph"
+
+    def _geometry_table_groups(
+        self,
+        lines: dict[tuple[int, str], list[OCRWord]],
+    ) -> list[list[_GeometryTableRow]]:
+        page_lines: dict[int, list[tuple[tuple[int, str], list[OCRWord]]]] = defaultdict(list)
+        for line_key, words in lines.items():
+            page_lines[line_key[0]].append((line_key, words))
+
+        groups: list[list[_GeometryTableRow]] = []
+        for lines_for_page in page_lines.values():
+            current: list[_GeometryTableRow] = []
+            for line_key, words in lines_for_page:
+                row = self._geometry_table_row(line_key, words)
+                if row is None:
+                    self._append_geometry_group(groups, current)
+                    current = []
+                    continue
+                if current and not self._geometry_rows_are_contiguous(current, row):
+                    self._append_geometry_group(groups, current)
+                    current = []
+                current.append(row)
+            self._append_geometry_group(groups, current)
+        return groups
+
+    def _geometry_table_row(
+        self,
+        line_key: tuple[int, str],
+        words: list[OCRWord],
+    ) -> _GeometryTableRow | None:
+        if len(words) < 2:
+            return None
+        text = " ".join(word.text for word in words)
+        if "|" in text or "\t" in text:
+            return None
+
+        word_heights = [
+            word.bounding_box.y2 - word.bounding_box.y1
+            for word in words
+            if word.bounding_box.y2 > word.bounding_box.y1
+        ]
+        character_widths = [
+            (word.bounding_box.x2 - word.bounding_box.x1) / max(len(word.text.strip()), 1)
+            for word in words
+            if word.bounding_box.x2 > word.bounding_box.x1
+        ]
+        if not word_heights or not character_widths:
+            return None
+        gap_threshold = max(median(word_heights) * 1.25, median(character_widths) * 2.0)
+
+        cells: list[list[OCRWord]] = [[words[0]]]
+        for previous, word in pairwise(words):
+            horizontal_gap = word.bounding_box.x1 - previous.bounding_box.x2
+            if horizontal_gap >= gap_threshold:
+                cells.append([])
+            cells[-1].append(word)
+        if len(cells) < 2:
+            return None
+
+        box = self._union([word.bounding_box for word in words])
+        if box is None:
+            return None
+        return _GeometryTableRow(
+            line_key=line_key,
+            cells=tuple(tuple(cell) for cell in cells),
+            bounding_box=box,
+        )
+
+    def _geometry_rows_are_contiguous(
+        self,
+        current: list[_GeometryTableRow],
+        candidate: _GeometryTableRow,
+    ) -> bool:
+        previous = current[-1]
+        previous_height = previous.bounding_box.y2 - previous.bounding_box.y1
+        candidate_height = candidate.bounding_box.y2 - candidate.bounding_box.y1
+        row_height = max(previous_height, candidate_height, 1.0)
+        vertical_gap = candidate.bounding_box.y1 - previous.bounding_box.y2
+        if vertical_gap < -row_height or vertical_gap > row_height * 2.5:
+            return False
+
+        reference = max(current, key=lambda row: len(row.cells))
+        return self._geometry_rows_align(reference, candidate)
+
+    def _geometry_rows_align(
+        self,
+        first: _GeometryTableRow,
+        second: _GeometryTableRow,
+    ) -> bool:
+        smaller, larger = (
+            (first, second) if len(first.cells) <= len(second.cells) else (second, first)
+        )
+        if len(smaller.cells) < 2:
+            return False
+
+        heights = [
+            row.bounding_box.y2 - row.bounding_box.y1
+            for row in (first, second)
+            if row.bounding_box.y2 > row.bounding_box.y1
+        ]
+        tolerance = max(median(heights) * 1.5, 1.0)
+        larger_boxes = [self._union([word.bounding_box for word in cell]) for cell in larger.cells]
+        next_larger_index = 0
+        for cell in smaller.cells:
+            cell_box = self._union([word.bounding_box for word in cell])
+            if cell_box is None:
+                return False
+            match_index = next(
+                (
+                    index
+                    for index in range(next_larger_index, len(larger_boxes))
+                    if larger_boxes[index]
+                    and self._geometry_columns_align(cell_box, larger_boxes[index], tolerance)
+                ),
+                None,
+            )
+            if match_index is None:
+                return False
+            next_larger_index = match_index + 1
+        return True
+
+    def _geometry_columns_align(
+        self,
+        first: VisionBoundingBox,
+        second: VisionBoundingBox,
+        tolerance: float,
+    ) -> bool:
+        first_center = (first.x1 + first.x2) / 2
+        second_center = (second.x1 + second.x2) / 2
+        return (
+            min(
+                abs(first.x1 - second.x1),
+                abs(first.x2 - second.x2),
+                abs(first_center - second_center),
+            )
+            <= tolerance
+        )
+
+    def _append_geometry_group(
+        self,
+        groups: list[list[_GeometryTableRow]],
+        candidate: list[_GeometryTableRow],
+    ) -> None:
+        if len(candidate) < 2:
+            return
+        column_count = max(len(row.cells) for row in candidate)
+        if column_count >= 3 or len(candidate) >= 3:
+            groups.append(candidate.copy())
+
+    def _geometry_table(self, rows: list[_GeometryTableRow]) -> TableResult:
+        page_number = rows[0].line_key[0]
+        column_count = max(len(row.cells) for row in rows)
+        template = next(row for row in rows if len(row.cells) == column_count)
+        template_boxes = [
+            self._union([word.bounding_box for word in cell]) for cell in template.cells
+        ]
+        values: list[list[str]] = []
+        cells: list[TableCell] = []
+        confidences: list[float] = []
+        for row_index, row in enumerate(rows):
+            row_values = [""] * column_count
+            next_column_index = 0
+            for cell in row.cells:
+                cell_box = self._union([word.bounding_box for word in cell])
+                if cell_box is None:
+                    continue
+                column_index = self._geometry_column_index(
+                    cell_box,
+                    template_boxes,
+                    next_column_index,
+                )
+                next_column_index = column_index + 1
+                value = " ".join(word.text for word in cell).strip()
+                row_values[column_index] = value
+                confidences.extend(word.confidence for word in cell)
+                cells.append(
+                    TableCell(
+                        row_index=row_index,
+                        column_index=column_index,
+                        text=value,
+                        bounding_box=cell_box,
+                    )
+                )
+            values.append(row_values)
+
+        uncertainty_reasons: list[str] = []
+        if any(len(row.cells) < column_count for row in rows):
+            uncertainty_reasons.append("sparse_or_merged_cell_geometry")
+        if any(
+            row_values[index] == ""
+            for row_values in values
+            for index in range(column_count)
+        ):
+            uncertainty_reasons.append("empty_cell_preserved")
+
+        table_box = self._union([row.bounding_box for row in rows]) or VisionBoundingBox(
+            x1=0,
+            y1=0,
+            x2=1,
+            y2=1,
+        )
+        html_value = (
+            "<table>"
+            + "".join(
+                "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
+                for row in values
+            )
+            + "</table>"
+        )
+        return TableResult(
+            page_number=page_number,
+            markdown=self._markdown(values),
+            html=html_value,
+            rows=values,
+            cells=cells,
+            bounding_box=table_box,
+            confidence=round(min(0.99, sum(confidences) / max(len(confidences), 1)), 4),
+            structure_status=(
+                "table_uncertain" if uncertainty_reasons else "structured"
+            ),
+            uncertainty_reasons=uncertainty_reasons,
+            model_name=self.adapter_id,
+            model_version=self.model_version,
+        )
+
+    def _geometry_column_index(
+        self,
+        cell_box: VisionBoundingBox,
+        template_boxes: list[VisionBoundingBox | None],
+        start_index: int,
+    ) -> int:
+        available = [
+            (index, template_box)
+            for index, template_box in enumerate(template_boxes[start_index:], start=start_index)
+            if template_box is not None
+        ]
+        if not available:
+            return len(template_boxes) - 1
+
+        def distance(template_box: VisionBoundingBox) -> float:
+            return min(
+                abs(cell_box.x1 - template_box.x1),
+                abs(cell_box.x2 - template_box.x2),
+                abs((cell_box.x1 + cell_box.x2) / 2 - (template_box.x1 + template_box.x2) / 2),
+            )
+
+        return min(available, key=lambda item: distance(item[1]))[0]
 
     def _table(
         self,
@@ -150,10 +419,14 @@ class GeometryLayoutAdapter(LayoutAdapter):
                     )
                 )
         markdown = self._markdown(rows)
-        html_value = "<table>" + "".join(
-            "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
-            for row in rows
-        ) + "</table>"
+        html_value = (
+            "<table>"
+            + "".join(
+                "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
+                for row in rows
+            )
+            + "</table>"
+        )
         return TableResult(
             page_number=page_number,
             markdown=markdown,
@@ -199,8 +472,7 @@ class PaddleStructureV3Adapter(LayoutAdapter):
 
     def status(self) -> AdapterStatus:
         installed = all(
-            importlib.util.find_spec(package) is not None
-            for package in ("paddle", "paddleocr")
+            importlib.util.find_spec(package) is not None for package in ("paddle", "paddleocr")
         )
         enabled = settings.enable_heavy_models and settings.enable_paddleocr_structure
         active = installed and enabled

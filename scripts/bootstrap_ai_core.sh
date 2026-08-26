@@ -11,6 +11,8 @@ START_SERVICES=true
 INSTALL_PADDLE=true
 ALLOW_PADDLE_MODEL_DOWNLOADS=false
 ALLOW_BGE_DOWNLOADS=false
+ENABLE_CACHED_PADDLE=false
+ENABLE_CACHED_BGE=false
 ALLOW_LOCAL_LLM_DOWNLOADS=false
 LOCAL_LLM_CHECKPOINT=""
 STRICT=false
@@ -31,7 +33,9 @@ usage() {
 #   --skip-install                    Audit the existing environment only
 #   --skip-services                   Do not start Qdrant or Neo4j
 #   --no-paddle                       Do not install the Paddle runtime/packages
+#   --enable-cached-paddle            Enable cached PP-OCR/PP-Structure assets without downloads
 #   --allow-paddle-model-downloads    Permit PP-OCR/PP-Structure asset downloads
+#   --enable-cached-bge               Enable cached BGE-M3/reranker assets without downloads
 #   --allow-bge-downloads             Permit the two named BGE checkpoint downloads
 #   --local-llm-checkpoint ID_OR_PATH Enable this explicitly selected local model
 #   --allow-local-llm-downloads       Permit download of the selected local model
@@ -64,8 +68,16 @@ while (($#)); do
       INSTALL_PADDLE=false
       shift
       ;;
+    --enable-cached-paddle)
+      ENABLE_CACHED_PADDLE=true
+      shift
+      ;;
     --allow-paddle-model-downloads)
       ALLOW_PADDLE_MODEL_DOWNLOADS=true
+      shift
+      ;;
+    --enable-cached-bge)
+      ENABLE_CACHED_BGE=true
       shift
       ;;
     --allow-bge-downloads)
@@ -159,6 +171,10 @@ fi
 AI_PYTHON="${AI_VENV}/bin/python"
 
 PADDLE_WHEEL_AVAILABLE=false
+PADDLE_RUNTIME_AVAILABLE=false
+if "$AI_PYTHON" -c 'import paddle, paddleocr' >>"$LOG_PATH" 2>&1; then
+  PADDLE_RUNTIME_AVAILABLE=true
+fi
 if [[ "$INSTALL_PADDLE" == true ]]; then
   if "$AI_PYTHON" -m pip install --dry-run --only-binary=:all: \
     'paddlepaddle>=3.2,<3.4' >>"$LOG_PATH" 2>&1; then
@@ -230,16 +246,33 @@ export NEO4J_URI="${NEO4J_URI:-bolt://127.0.0.1:7687}"
 export ENABLE_QDRANT=true
 export ENABLE_NEO4J=true
 
-if [[ "$ALLOW_PADDLE_MODEL_DOWNLOADS" == true && "$PADDLE_WHEEL_AVAILABLE" == true ]]; then
-  export ENABLE_HEAVY_MODELS=true
-  export ENABLE_PADDLEOCR=true
-  export ENABLE_PADDLEOCR_STRUCTURE=true
-  export PADDLEOCR_DEVICE=cpu
+if [[ "$ALLOW_PADDLE_MODEL_DOWNLOADS" == true || "$ENABLE_CACHED_PADDLE" == true ]]; then
+  if [[ "$PADDLE_RUNTIME_AVAILABLE" != true && "$PADDLE_WHEEL_AVAILABLE" != true ]]; then
+    log "Cached Paddle activation was requested, but no compatible installed runtime or wheel is available."
+    STAGE_FAILURES=$((STAGE_FAILURES + 1))
+  else
+    export ENABLE_HEAVY_MODELS=true
+    export ENABLE_PADDLEOCR=true
+    export ENABLE_PADDLEOCR_STRUCTURE=true
+    export PADDLEOCR_DEVICE=cpu
+    if [[ "$ALLOW_PADDLE_MODEL_DOWNLOADS" != true ]]; then
+      export PADDLE_PDX_MODEL_SOURCE=huggingface
+      export PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=true
+      export HF_HUB_OFFLINE=1
+      export TRANSFORMERS_OFFLINE=1
+    fi
+  fi
 fi
-if [[ "$ALLOW_BGE_DOWNLOADS" == true ]]; then
+if [[ "$ALLOW_BGE_DOWNLOADS" == true || "$ENABLE_CACHED_BGE" == true ]]; then
   export ENABLE_HEAVY_MODELS=true
   export ENABLE_BGE_M3=true
-  export BGE_ALLOW_DOWNLOAD=true
+  if [[ "$ALLOW_BGE_DOWNLOADS" == true ]]; then
+    export BGE_ALLOW_DOWNLOAD=true
+  else
+    export BGE_ALLOW_DOWNLOAD=false
+    export HF_HUB_OFFLINE=1
+    export TRANSFORMERS_OFFLINE=1
+  fi
 fi
 if [[ -n "$LOCAL_LLM_CHECKPOINT" ]]; then
   if [[ "$ALLOW_LOCAL_LLM_DOWNLOADS" != true && ! -e "$LOCAL_LLM_CHECKPOINT" ]]; then

@@ -30,6 +30,82 @@ export interface Evidence {
   metadata?: Record<string, unknown>;
 }
 
+export type VisionSemanticType =
+  | "DATE"
+  | "DATETIME"
+  | "PERSON"
+  | "ORGANISATION"
+  | "MONEY"
+  | "NUMBER"
+  | "QUANTITY"
+  | "PERCENTAGE"
+  | "PHONE"
+  | "EMAIL"
+  | "ADDRESS"
+  | "BANK_ACCOUNT"
+  | "IDENTIFIER"
+  | "DOCUMENT_REFERENCE"
+  | "CURRENCY"
+  | "PRODUCT"
+  | "TEXT"
+  | "BOOLEAN"
+  | "URL";
+
+export interface GenericDiscoveredField {
+  field_id: string;
+  raw_label: string;
+  normalized_label: string;
+  raw_value: string;
+  normalized_value: string;
+  page: number;
+  label_bbox: BoundingBox;
+  value_bbox: BoundingBox;
+  confidence: number;
+  source_engine: string;
+  semantic_type_if_known?: VisionSemanticType | null;
+  semantic_mapping_confidence?: number | null;
+  evidence: Evidence;
+  alternatives: Array<Record<string, unknown>>;
+  review_required: boolean;
+  metadata: Record<string, unknown>;
+}
+
+export interface TypedVisionEntity {
+  entity_id: string;
+  raw_value: string;
+  normalized_value: string;
+  semantic_type: VisionSemanticType;
+  confidence: number;
+  validator_valid: boolean;
+  validation_reasons: string[];
+  context: Record<string, unknown>;
+  evidence_ids: string[];
+  alternatives: Array<Record<string, unknown>>;
+  conflict_ids: string[];
+  review_required: boolean;
+}
+
+export interface VerifiedVisionFact {
+  fact_id: string;
+  field_id: string;
+  name: string;
+  value: string;
+  normalized_value?: string | null;
+  semantic_type?: VisionSemanticType | null;
+  evidence_id: string;
+  reviewer_status: string;
+  reviewer?: string | null;
+  verified_at?: string | null;
+}
+
+export interface VisionSchemaProfile {
+  mode: "A" | "B" | "C";
+  schema_status: "registered" | "inferred" | "generic";
+  schema_id?: string | null;
+  schema_version: string;
+  selection_source: string;
+}
+
 export interface OCRWord {
   word_id: string;
   text: string;
@@ -43,6 +119,8 @@ export interface OCRWord {
   review_required: boolean;
   model_name: string;
   model_version: string;
+  preprocessing_variant?: string;
+  ocr_pass?: string;
 }
 
 export interface LayoutRegion {
@@ -158,6 +236,8 @@ export interface TableResult {
   rows: string[][];
   bounding_box: BoundingBox;
   confidence: number;
+  structure_status: "structured" | "table_uncertain";
+  uncertainty_reasons: string[];
   model_name: string;
   model_version: string;
 }
@@ -345,6 +425,10 @@ export interface VisionDocument {
   visual_detections: VisualDetection[];
   tamper_analysis: TamperAnalysis[];
   extracted_fields: ExtractedField[];
+  generic_fields: GenericDiscoveredField[];
+  typed_entities: TypedVisionEntity[];
+  verified_facts: VerifiedVisionFact[];
+  schema_profile: VisionSchemaProfile;
   confidence_summary: {
     mean_ocr_confidence: number | null;
     mean_extraction_confidence: number | null;
@@ -449,6 +533,31 @@ export interface RetrievalTrace {
   retriever_versions: Record<string, string>;
 }
 
+export interface AskCalculationInput {
+  document_id: string;
+  document_type: string;
+  role: string;
+  field_name: string;
+  raw_value: string;
+  normalized_value: string;
+  value_type: string;
+  currency?: string | null;
+  evidence_id?: string | null;
+  page_number?: number | null;
+  reviewer_status: string;
+}
+
+export interface AskCalculationTrace {
+  operation: "sum" | "count_verified_invoices" | "invoice_po_difference" | "percentage_variance" | "date_interval";
+  inputs: AskCalculationInput[];
+  result?: string | null;
+  result_type: string;
+  currency?: string | null;
+  unit?: string | null;
+  formula: string;
+  calculation_version: string;
+}
+
 export interface AskResponse {
   question_id: string;
   answer: string;
@@ -476,6 +585,7 @@ export interface AskResponse {
     }>;
   };
   broader_scope_available: boolean;
+  calculation_trace?: AskCalculationTrace | null;
   conversation_id?: string | null;
   resolved_question?: string | null;
   clarification_options: ClarificationOption[];

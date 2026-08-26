@@ -1,5 +1,5 @@
 import { expect, request as playwrightRequest, test, type APIRequestContext, type Page } from "@playwright/test";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const apiBase = process.env.DOCUMIND_E2E_API_URL || "http://127.0.0.1:8000/api/v1";
@@ -19,19 +19,14 @@ test.beforeAll(async () => {
   expect(login.ok(), await login.text()).toBeTruthy();
   headers = { Authorization: `Bearer ${(await login.json()).data.access_token}` };
 
-  const uploadDir = resolve(process.cwd(), "../backend/var/uploads");
-  const fixtureName = readdirSync(uploadDir)
-    .filter((name) => name.endsWith("-00093726.png"))
-    .sort()
-    .at(-1);
-  expect(fixtureName, "The required 00093726.png fixture is missing").toBeTruthy();
+  const fixturePath = resolve(process.cwd(), "../backend/var/test_fixtures/00093726.png");
   const upload = await api.post(`${apiBase}/vision/documents/upload`, {
     headers: { ...headers, "Idempotency-Key": "core-intelligence-v4-00093726" },
     multipart: {
       files: {
         name: "00093726.png",
         mimeType: "image/png",
-        buffer: readFileSync(resolve(uploadDir, fixtureName!)),
+        buffer: readFileSync(fixturePath),
       },
       metadata: JSON.stringify({ acceptance_fixture: "00093726", requested_pipeline: "v4" }),
     },
@@ -73,8 +68,8 @@ test("00093726 core-intelligence walkthrough is grounded and readable", async ({
   await expectCount(page, "Required expected", "6");
   await expectCount(page, "Required matched", "6");
   await expectCount(page, "Required missing", "0");
-  await expectCount(page, "Optional extracted", "0");
-  await expectCount(page, "Total extracted", "6");
+  await expectCount(page, "Optional extracted", "1");
+  await expectCount(page, "Total extracted", "7");
   await expectCount(page, "Duplicates rejected", "0");
   await expectCount(page, "Disputed", "0");
   for (const value of [
@@ -87,13 +82,16 @@ test("00093726 core-intelligence walkthrough is grounded and readable", async ({
   ]) {
     await expect(page.getByText(value, { exact: true }).first()).toBeVisible();
   }
+  await expect(
+    page.getByRole("button", { name: /request date September 21, 1976/i }),
+  ).toBeVisible();
   await capture(page, "core-v4-00093726-fields.png");
 
   await page.goto("/ask");
   await selectDocument(page, "Scope", "00093726.png");
   await ask(page, "What is the sample number?");
   await expect(page.getByText("The sample number shown is 6030.", { exact: true })).toBeVisible();
-  await expect(page.locator(".citation-row").last()).toContainText("Sample No. 6030");
+  await expect(page.locator(".citation-row").last()).toContainText(/Sample No\._*\s*6030/);
 
   await ask(page, "Is this safe?");
   const options = page.locator(".clarification-options").last();
@@ -136,7 +134,7 @@ async function waitForProcessedDocument(api: APIRequestContext, id: string) {
         if (["FAILED", "REJECTED", "CONFIRMED_ERROR"].includes(document.status)) {
           throw new Error(`Fixture processing failed with ${document.status}`);
         }
-        return document.extracted_fields?.length === 6 ? document.status : "processing";
+        return document.extracted_fields?.length === 7 ? document.status : "processing";
       },
       { timeout: 60_000, intervals: [500, 1000, 2000] },
     )

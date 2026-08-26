@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import importlib.metadata
-from datetime import UTC, datetime
+import urllib.request
+from datetime import UTC, datetime, timedelta
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
@@ -613,6 +614,9 @@ class ModelRegistryService:
         fingerprint = model_configuration_fingerprint(item)
         smoke = model_smoke_store.latest(str(item["model_id"]))
         smoke_current = bool(smoke and smoke.get("configuration_fingerprint") == fingerprint)
+        smoke_expired = self._smoke_expired(smoke) if smoke_current else False
+        if smoke_expired:
+            smoke_current = False
         smoke_status = str(smoke.get("status")) if smoke_current and smoke else "not_run"
 
         health_status = "unknown"
@@ -622,6 +626,16 @@ class ModelRegistryService:
             if smoke_status == "passed":
                 runtime_status = "active"
                 health_status = "healthy"
+                if str(item.get("model_id")) in {"Neo4j", "Qdrant"}:
+                    live = self._external_service_live(str(item["model_id"]))
+                    if not live:
+                        runtime_status = "unavailable"
+                        health_status = "unhealthy"
+                        last_error = "Live runtime probe failed."
+                        item["reason"] = (
+                            "The last smoke passed, but the configured service is not "
+                            "reachable now. Re-run the smoke after restoring connectivity."
+                        )
             elif smoke_status == "failed":
                 runtime_status = "error"
                 health_status = "unhealthy"
@@ -665,8 +679,55 @@ class ModelRegistryService:
             item["stale_smoke_test"] = {
                 "completed_at": smoke.get("completed_at"),
                 "status": smoke.get("status"),
+                "reason": "expired" if smoke_expired else "configuration_changed",
             }
         return item
+
+    def _external_service_live(self, model_id: str) -> bool:
+        try:
+            if model_id == "Qdrant":
+                request = urllib.request.Request(
+                    f"{settings.qdrant_url.rstrip('/')}/readyz",
+                    method="GET",
+                )
+                with urllib.request.urlopen(request, timeout=1.5) as response:
+                    return 200 <= int(response.status) < 300
+            if model_id == "Neo4j":
+                from neo4j import GraphDatabase
+
+                auth = (
+                    (settings.neo4j_user, settings.neo4j_password)
+                    if settings.neo4j_user and settings.neo4j_password
+                    else None
+                )
+                driver = GraphDatabase.driver(
+                    settings.neo4j_uri,
+                    auth=auth,
+                    connection_timeout=1.5,
+                )
+                try:
+                    driver.verify_connectivity()
+                finally:
+                    driver.close()
+                return True
+        except Exception:
+            return False
+        return True
+
+    def _smoke_expired(self, smoke: dict[str, Any] | None) -> bool:
+        if not smoke or not smoke.get("completed_at"):
+            return True
+        try:
+            completed = datetime.fromisoformat(
+                str(smoke["completed_at"]).replace("Z", "+00:00")
+            )
+            if completed.tzinfo is None:
+                completed = completed.replace(tzinfo=UTC)
+        except (TypeError, ValueError):
+            return True
+        # Model smoke evidence is a bounded runtime observation, not a permanent
+        # deployment certificate. External services and model processes can stop.
+        return completed < datetime.now(UTC) - timedelta(hours=24)
 
     def _enrich_requirements(self, backend: dict[str, Any]) -> dict[str, Any]:
         item = dict(backend)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -106,13 +107,14 @@ def test_neo4j_deployment_changes_make_historical_smoke_stale(
             "model_id": "Neo4j",
             "configuration_fingerprint": first_fingerprint,
             "status": "passed",
-            "completed_at": "2026-08-06T00:00:00+00:00",
+            "completed_at": datetime.now(UTC).isoformat(),
         }
     )
     monkeypatch.setattr(runtime_health, "model_smoke_store", store)
 
     from app.services.model_registry import ModelRegistryService
 
+    monkeypatch.setattr(ModelRegistryService, "_external_service_live", lambda *_: True)
     current = ModelRegistryService()._attach_runtime_health(backend)
     assert current["status"] == "active"
     assert current["health_status"] == "healthy"
@@ -137,6 +139,86 @@ def test_neo4j_deployment_changes_make_historical_smoke_stale(
     monkeypatch.setattr(runtime_health.settings, "neo4j_database", "neo4j")
     monkeypatch.setattr(runtime_health.settings, "neo4j_instance_id", "instance-second")
     assert model_configuration_fingerprint(backend) != first_fingerprint
+
+
+def test_expired_historical_smoke_is_stale_and_cannot_report_active(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = {
+        "model_id": "Neo4j",
+        "adapter_id": "Neo4j",
+        "stage": "graph",
+        "provider": "Neo4j",
+        "enabled": True,
+        "installed": True,
+        "configured_status": "active",
+        "runtime": {},
+        "package_version": "6.2.0",
+    }
+    monkeypatch.setattr(runtime_health.settings, "neo4j_uri", "neo4j://first:7687")
+    monkeypatch.setattr(runtime_health.settings, "neo4j_database", "neo4j")
+    monkeypatch.setattr(runtime_health.settings, "neo4j_instance_id", "instance-first")
+    monkeypatch.setattr(runtime_health.settings, "neo4j_user", "neo4j")
+    monkeypatch.setattr(runtime_health.settings, "neo4j_password", "credential-first")
+    store = ModelSmokeStore(root=tmp_path)
+    store.record(
+        {
+            "model_id": "Neo4j",
+            "configuration_fingerprint": model_configuration_fingerprint(backend),
+            "status": "passed",
+            "completed_at": (datetime.now(UTC) - timedelta(hours=25)).isoformat(),
+        }
+    )
+    monkeypatch.setattr(runtime_health, "model_smoke_store", store)
+
+    from app.services.model_registry import ModelRegistryService
+
+    result = ModelRegistryService()._attach_runtime_health(backend)
+
+    assert result["status"] == "unavailable"
+    assert result["health_status"] == "unknown"
+    assert result["smoke_test_status"] == "not_run"
+    assert result["smoke_test"] is None
+    assert result["last_smoke_test"] is None
+    assert result["stale_smoke_test"]["status"] == "passed"
+    assert result["stale_smoke_test"]["reason"] == "expired"
+
+
+def test_fresh_smoke_cannot_hide_a_stopped_external_runtime(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = {
+        "model_id": "Neo4j",
+        "adapter_id": "Neo4j",
+        "stage": "graph",
+        "provider": "Neo4j",
+        "enabled": True,
+        "installed": True,
+        "configured_status": "active",
+        "runtime": {},
+    }
+    store = ModelSmokeStore(root=tmp_path)
+    store.record(
+        {
+            "model_id": "Neo4j",
+            "configuration_fingerprint": model_configuration_fingerprint(backend),
+            "status": "passed",
+            "completed_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    monkeypatch.setattr(runtime_health, "model_smoke_store", store)
+
+    from app.services.model_registry import ModelRegistryService
+
+    monkeypatch.setattr(ModelRegistryService, "_external_service_live", lambda *_: False)
+    result = ModelRegistryService()._attach_runtime_health(backend)
+
+    assert result["status"] == "unavailable"
+    assert result["health_status"] == "unhealthy"
+    assert result["smoke_test_status"] == "passed"
+    assert result["last_error"] == "Live runtime probe failed."
 
 
 def test_qdrant_endpoint_change_invalidates_fingerprint(

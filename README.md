@@ -52,11 +52,22 @@ Backend:
 
 ```bash
 python scripts/generate_local_env.py
-cd backend
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+pip install -r backend/requirements/base.txt -r backend/requirements/dev.txt
+cd backend
+../.venv/bin/uvicorn app.main:app --reload --port 8000
+```
+
+When `ENABLE_REDIS=true` (the generated local default), run the queue worker in
+a second terminal from the repository root. Uploads remain queued until a
+worker consumes them:
+
+```bash
+source .venv/bin/activate
+cd backend
+../.venv/bin/celery -A app.workers.vision_tasks:celery_app worker \
+  --loglevel=INFO -Q vision-processing --pool=solo
 ```
 
 Frontend:
@@ -83,7 +94,12 @@ python scripts/generate_local_env.py
 docker compose up --build
 ```
 
-The Compose profile starts `backend`, `worker`, `frontend`, Redis, MongoDB, Qdrant, MinIO, Neo4j, Chroma, and PostgreSQL. The backend and worker share `./var:/app/var`; Vision jobs use Celery/Redis in Compose and the local background-task fallback outside `ENABLE_REDIS=true`.
+The default Compose stack starts `backend`, `worker`, `frontend`, Redis,
+Qdrant, Neo4j, and PostgreSQL. MongoDB, MinIO, and Chroma are intentionally
+optional because they are not the active source-of-truth path; start them only
+when testing their adapters with `docker compose --profile optional up --build`.
+Host ports bind to loopback, and the backend and worker share `./var:/app/var`.
+Vision jobs use Celery/Redis in Compose.
 
 For a PostgreSQL server configured through `DATABASE_URL` in `backend/.env`, inspect connectivity and migration state without changing the database:
 
@@ -91,7 +107,7 @@ For a PostgreSQL server configured through `DATABASE_URL` in `backend/.env`, ins
 python scripts/migrate_postgres.py
 ```
 
-Apply the initial schema and migrations 002/003 explicitly with:
+Apply the initial schema and migrations 001 through 004 explicitly with:
 
 ```bash
 python scripts/migrate_postgres.py --execute
@@ -239,6 +255,8 @@ See [DOCUMIND VISION AI Migration Plan](docs/VISION_AI_MIGRATION_PLAN.md) for th
 - [Local Vision Pipeline Model Card](docs/model_cards/local_vision_pipeline.md)
 - [Target Model Stack Card](docs/model_cards/target_model_stack.md)
 - [Testing Strategy](docs/TESTING_STRATEGY.md)
+- [2026-08-12 remediation/generalization handoff](docs/REMAINING_WORK_2026-08-12.md)
+- [2026-08-13 final release verification](docs/FINAL_RELEASE_VERIFICATION_2026-08-13.md)
 - [Research Paper Structure](docs/RESEARCH_PAPER_STRUCTURE.md)
 - [Resume Description](docs/RESUME_DESCRIPTION.md)
 - [GitHub Portfolio Setup](docs/GITHUB_PORTFOLIO_SETUP.md)

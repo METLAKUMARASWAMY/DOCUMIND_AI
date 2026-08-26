@@ -3,7 +3,11 @@ from io import BytesIO
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from app.core.config import settings
 from app.main import create_app
+from app.models.schemas import TextAnalysisRequest
+from app.models.vision import ReviewerStatus
+from app.services.vision.service import VisionAIService
 from app.tests.auth_helpers import auth_headers
 
 client = TestClient(create_app())
@@ -72,6 +76,87 @@ def test_unknown_document_uses_unavailable_confidence_and_schema_message_contrac
     assert document["confidence_summary"]["confidence_available"] is False
     assert document["field_completeness"]["schema_available"] is False
     assert document["field_completeness"]["unresolved_required_count"] is None
+
+
+def test_open_set_fields_survive_in_mode_b_and_mode_c_downstream_contracts():
+    unknown = _analyse(
+        "renamed-unseen-record.txt",
+        "Arbitrary Record\nQuantum Tuning: 7.5 quux\nCustodian Code: ZX-88\n",
+    )
+    assert unknown["schema_profile"]["mode"] == "C"
+    assert {item["raw_label"] for item in unknown["generic_fields"]} >= {
+        "Quantum Tuning",
+        "Custodian Code",
+    }
+    assert {item["name"] for item in unknown["extracted_fields"]} >= {
+        "quantum_tuning",
+        "custodian_code",
+    }
+    assert any(
+        item["source_type"] == "generic_field" for item in unknown["evidence_chunks"]
+    )
+    assert any(item["type"] == "HAS_ATTRIBUTE" for item in unknown["graph"]["edges"])
+
+    invoice = _analyse(
+        "renamed-known-family.txt",
+        "Invoice INV-OPEN-1\nVendor: Contoso\nTotal Amount: USD 12.00\nWarehouse Zone: W-17\n",
+        "invoice",
+    )
+    assert invoice["schema_profile"]["mode"] == "B"
+    warehouse = next(
+        item for item in invoice["generic_fields"] if item["raw_label"] == "Warehouse Zone"
+    )
+    assert warehouse["normalized_label"] == "warehouse_zone"
+    assert any(
+        item["name"] == "warehouse_zone" and item["extractor"] == "generic-open-set"
+        for item in invoice["extracted_fields"]
+    )
+
+
+def test_reviewed_semantic_correction_becomes_tenant_scoped_feedback_alias(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    service = VisionAIService()
+    tenant_id = "tenant-feedback-alias"
+    first = service.process_text(
+        TextAnalysisRequest(
+            filename="unseen-a.txt",
+            text="Mystery Record\nSupplier Designation: Northwind Alpha\n",
+        ),
+        tenant_id=tenant_id,
+    )
+    field = next(
+        item for item in first.extracted_fields if item.name == "supplier_designation"
+    )
+    assert first.review_task is not None
+    service.patch_field(
+        first.review_task.review_id,
+        field.field_id,
+        reviewed_value=field.value,
+        reviewed_field_name="corporate_contact",
+        reviewer_status=ReviewerStatus.edited,
+        comment="Mapped this observed label to the reviewed semantic concept.",
+        actor="reviewer@example.test",
+        tenant_id=tenant_id,
+    )
+
+    second = service.process_text(
+        TextAnalysisRequest(
+            filename="unseen-b.txt",
+            text="Another Record\nSupplier Designation: Contoso Beta\n",
+        ),
+        tenant_id=tenant_id,
+    )
+    assert any(
+        item.raw_label == "Supplier Designation"
+        and item.normalized_label == "corporate_contact"
+        for item in second.generic_fields
+    )
+    assert any(item.name == "corporate_contact" for item in second.extracted_fields)
+    assert service._active_learning_path(tenant_id).is_file()
+    assert first.verified_facts[0].reviewer == "reviewer@example.test"
 
 
 def test_document_evidence_endpoints_expose_persisted_contracts():

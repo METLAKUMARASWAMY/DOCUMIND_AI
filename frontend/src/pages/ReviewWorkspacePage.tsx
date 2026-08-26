@@ -9,6 +9,7 @@ import { useAuth } from "../auth/AuthContext";
 import { DocumentCanvas, type FocusRegion } from "../components/DocumentCanvas";
 import { ErrorState, LoadingRows } from "../components/Feedback";
 import { FieldCompletenessSummary } from "../components/FieldCompletenessSummary";
+import { GenericIntelligencePanel } from "../components/GenericIntelligencePanel";
 import { PageHeader } from "../components/PageHeader";
 import { StatusChip } from "../components/StatusChip";
 import type { ExtractedField } from "../types/api";
@@ -34,7 +35,7 @@ export function ReviewWorkspacePage() {
   const [secondReviewerEmail, setSecondReviewerEmail] = useState("");
   const [secondReviewerApproved, setSecondReviewerApproved] = useState(false);
   const [dialogAction, setDialogAction] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, { value: string; status: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { value: string; name: string; status: string }>>({});
   const document = reviewQuery.data?.document;
   const review = reviewQuery.data?.review;
   const approvalPolicy = reviewQuery.data?.approval_policy;
@@ -42,7 +43,12 @@ export function ReviewWorkspacePage() {
   const signedInRole = (user?.role || "VIEWER").replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 
   const patch = useMutation({
-    mutationFn: ({ field, status }: { field: ExtractedField; status: string }) => api.patchField(reviewId, field.field_id, { reviewed_value: drafts[field.field_id]?.value, reviewer_status: status, comment }),
+    mutationFn: ({ field, status }: { field: ExtractedField; status: string }) => api.patchField(reviewId, field.field_id, {
+      reviewed_value: drafts[field.field_id]?.value,
+      reviewed_field_name: drafts[field.field_id]?.name,
+      reviewer_status: status,
+      comment,
+    }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["review", reviewId] }),
   });
   const decide = useMutation({
@@ -152,11 +158,12 @@ export function ReviewWorkspacePage() {
           <Box className="review-fields">
             {!document.extracted_fields.length ? <Alert severity="info">No structured fields were extracted from this document.</Alert> : null}
             {document.extracted_fields.map((field) => {
-              const draft = drafts[field.field_id] || { value: field.reviewed_value || field.value, status: field.reviewer_status };
+              const draft = drafts[field.field_id] || { value: field.reviewed_value || field.value, name: field.name, status: field.reviewer_status };
               return (
                 <Box className="review-field" key={field.field_id} onClick={() => field.evidence.bounding_box && setFocus({ page: field.evidence.page_number, box: field.evidence.bounding_box, id: field.field_id })}>
                   <Box className="review-field-heading"><Typography fontWeight={700}>{field.display_name || field.name.replaceAll("_", " ")}{field.required ? " *" : ""}</Typography><Box><Typography variant="caption">{field.confidence === null ? "Confidence not available" : `${Math.round(field.confidence * 100)}%`} | {field.model_name}</Typography><FormControlLabel onClick={(event) => event.stopPropagation()} control={<Checkbox size="small" checked={selectedEvidence.includes(field.evidence.evidence_id)} onChange={() => toggleEvidence(field.evidence.evidence_id)} />} label="Evidence reviewed" /></Box></Box>
                   <Typography variant="caption" color="text.secondary">Original: {mask(field.name, field.value)}</Typography>
+                  <TextField size="small" label="Semantic field name" value={draft.name} onChange={(event) => setDrafts((current) => ({ ...current, [field.field_id]: { ...draft, name: event.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, "_"), status: "edited" } }))} fullWidth />
                   <TextField size="small" value={draft.value} onChange={(event) => setDrafts((current) => ({ ...current, [field.field_id]: { ...draft, value: event.target.value, status: "edited" } }))} fullWidth />
                   <Box className="field-review-actions">
                     <ButtonGroup size="small" variant="outlined">
@@ -168,6 +175,15 @@ export function ReviewWorkspacePage() {
                 </Box>
               );
             })}
+            <GenericIntelligencePanel
+              document={document}
+              selectedEvidenceIds={selectedEvidence}
+              onToggleEvidence={toggleEvidence}
+              onFocus={(focusPage, box, id) => {
+                setPage(focusPage);
+                setFocus({ page: focusPage, box, id });
+              }}
+            />
             {approvalPolicy?.manual_override_required ? (
               <Box className="manual-verification-panel">
                 <Typography variant="h4">Complete manual verification</Typography>

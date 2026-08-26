@@ -21,6 +21,7 @@ from app.models.vision import (
     VisionBoundingBox,
     VisionDocumentRecord,
     VisionEvidence,
+    VisionSchemaProfile,
 )
 from app.services.vision.ocr_lines import ocr_line_reconstructor, union_boxes
 from app.services.vision.schema_registry import (
@@ -129,6 +130,12 @@ class FieldCandidateResolver:
         retained: list[FieldCandidate] = []
         retained_names: set[str] = set()
         rejected: list[dict[str, Any]] = []
+        # Resolve globally in score order. A field's highest-scoring candidate can
+        # conflict with a stronger assignment for another field; in that case the
+        # next non-conflicting candidate for the first field must remain eligible.
+        # Pre-collapsing to one candidate per name would incorrectly drop that
+        # fallback and is especially harmful for similar labels such as period
+        # start/end or sender/recipient.
         for candidate in ordered:
             candidate_score = score(candidate)
             if candidate.spec.name in retained_names:
@@ -194,6 +201,14 @@ class DeterministicSchemaExtractor:
             prefer_key_value=prefer_key_value,
         )
         document.metadata["schema_selection"] = selection.as_dict()
+        selection_payload = selection.as_dict()
+        document.schema_profile = VisionSchemaProfile(
+            mode=str(selection_payload["mode"]),
+            schema_status=str(selection_payload["schema_status"]),
+            schema_id=selection.selected_schema,
+            schema_version=selection.schema.version,
+            selection_source=selection.source,
+        )
 
         candidates: list[FieldCandidate] = []
         roi_cache: dict[tuple[int, float, float, float, float], tuple[RegionOCRCandidate, ...]] = {}
@@ -264,10 +279,22 @@ class DeterministicSchemaExtractor:
                 continue
             if not self._role_context_allows(spec.name, index, lines):
                 continue
+            direct_value_reliable = False
             if match.value:
                 raw_value = self._clean_candidate(match.value, schema)
                 value = self._coerce_candidate_value(spec, raw_value)
                 if value:
+                    resolved_value_words = (
+                        self._words_for_value(value, line.words) or match.value_words
+                    )
+                    direct_valid, direct_reason = vision_schema_registry.validate_value(
+                        spec,
+                        value,
+                    )
+                    direct_value_reliable = direct_valid and direct_reason not in {
+                        "ambiguous_numeric_date",
+                        "date_uncertain_needs_review",
+                    }
                     candidates.append(
                         self._candidate(
                             spec,
@@ -275,7 +302,7 @@ class DeterministicSchemaExtractor:
                             line.text,
                             line.page,
                             match.label_words,
-                            match.value_words,
+                            resolved_value_words,
                             match.strategy,
                             0.93 if match.similarity >= 0.98 else 0.84,
                             label_similarity=match.similarity,
@@ -284,10 +311,14 @@ class DeterministicSchemaExtractor:
                         )
                     )
 
-            roi_candidates = self._region_ocr_candidates(
-                line,
-                document,
-                roi_cache,
+            roi_candidates = (
+                ()
+                if direct_value_reliable
+                else self._region_ocr_candidates(
+                    line,
+                    document,
+                    roi_cache,
+                )
             )
             roi_provenance = tuple(item.provenance() for item in roi_candidates)
             parsed_roi: list[tuple[RegionOCRCandidate, LabelMatch, str]] = []
@@ -415,7 +446,15 @@ class DeterministicSchemaExtractor:
 
         candidates.extend(self._table_candidates(spec, document))
         candidates.extend(self._special_candidates(spec, document, lines))
-        return [item for item in candidates if self._valid_candidate(item)]
+        return [
+            item
+            for item in candidates
+            if self._valid_candidate(item)
+            and (
+                not spec.extraction_strategies
+                or item.strategy in spec.extraction_strategies
+            )
+        ]
 
     def _match_label(self, line: OCRLine, spec: SchemaFieldSpec) -> LabelMatch | None:
         text = line.text.strip()
@@ -430,13 +469,37 @@ class DeterministicSchemaExtractor:
             normalized_alias = self._normalize_label(alias)
             if not normalized_alias:
                 continue
-            exact = normalized_text == normalized_alias or normalized_text.startswith(
-                f"{normalized_alias} "
+            observed_delimited_label = (
+                self._normalize_label(text[: separators[0].start()])
+                if separators
+                else ""
+            )
+            exact = (
+                normalized_text == normalized_alias
+                or observed_delimited_label == normalized_alias
+                or (
+                    not separators
+                    and normalized_text.startswith(f"{normalized_alias} ")
+                )
             )
             selected_separator: re.Match[str] | None = None
             similarity = 1.0 if exact else 0.0
             fuzzy = False
             if not exact:
+                # OCR frequently damages one character in an otherwise clear label
+                # and may omit the delimiter. Compare the leading label-length token
+                # window before resorting to delimiter-based matching.
+                observed_tokens = normalized_text.split()[: len(normalized_alias.split())]
+                observed_prefix = " ".join(observed_tokens)
+                prefix_similarity = SequenceMatcher(
+                    None,
+                    observed_prefix,
+                    normalized_alias,
+                ).ratio()
+                prefix_threshold = 0.78 if len(normalized_alias) >= 8 else 0.84
+                if prefix_similarity >= prefix_threshold:
+                    similarity = prefix_similarity
+                    fuzzy = True
                 for separator in separators:
                     observed = self._normalize_label(text[: separator.start()])
                     if not observed:
@@ -472,10 +535,12 @@ class DeterministicSchemaExtractor:
         value = ""
         if fuzzy and fuzzy_separator is not None:
             value = text[fuzzy_separator.end() :].strip()
+        elif fuzzy:
+            value = " ".join(text.split()[alias_tokens:]).strip()
         else:
             alias_tokens_normalized = self._normalize_label(alias).split()
             alias_pattern = r"[\W_]+".join(re.escape(token) for token in alias_tokens_normalized)
-            direct = re.match(rf"(?i)^\s*{alias_pattern}\b", text)
+            direct = re.match(rf"(?i)^\s*[\W_]*{alias_pattern}\b", text)
             if direct:
                 value = re.sub(
                     r"^[\s.:;,#=_\-]+",
@@ -721,6 +786,7 @@ class DeterministicSchemaExtractor:
             "visible_dates": r"(?i)\b((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b",
             "visible_currency_amounts": r"(?i)(\b(?:USD|INR|EUR|GBP|AUD|CAD|JPY)\s*\d[\d,]*(?:\.\d+)?|[$€£₹]\s*\d[\d,]*(?:\.\d+)?)",
             "visible_reference_numbers": r"(?i)\b(?:ref(?:erence)?|client|account)\s*(?:no\.?|number|#)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,39})",
+            "request_date": r"(?i)\b(?:request(?:ed)?|requisition)\b[^\n]{0,100}?\bon\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b",
             "page_count": r"(?i)\bpages?(?:\s*\(including\s+cover\s+sheet\))?\s*[:;#-]?\s*_*(\d{1,4})_*",
             "hard_copy_follow_up": r"(?i)\bhard\s*copy\s+to\s+follow\s*[:;#-]?\s*_*(yes|no|y|n)_*",
         }
@@ -1009,15 +1075,40 @@ class DeterministicSchemaExtractor:
         value: str,
     ) -> tuple[str | None, str]:
         cleaned = re.sub(r"\s+", " ", value).strip()
-        if spec.value_kind == "name":
+        configured_normalizer = spec.normalizers[0] if spec.normalizers else None
+        if configured_normalizer == "preserve":
+            reason = {
+                "name": "person_name_preserved",
+                "title": "title_text_preserved",
+                "quantity": "quantity_and_unit_preserved",
+                "reference": "punctuation_preserved",
+                "reference_list": "punctuation_preserved",
+            }.get(spec.value_kind, "configured_value_preserved")
+            return cleaned, reason
+        if configured_normalizer == "casefold_whitespace":
+            return self._normalize(cleaned), "whitespace_normalized"
+        if configured_normalizer == "lowercase":
+            return cleaned.lower(), "lowercase_value"
+        if configured_normalizer == "integer":
+            return cleaned, "integer_preserved"
+        if configured_normalizer == "boolean":
+            return cleaned.lower(), "boolean_normalized"
+        kind = {
+            "phone": "phone",
+            "currency_code": "currency",
+            "decimal_amount": "money",
+            "iso_date": "date",
+            "sensitive_hash": "account",
+        }.get(configured_normalizer or "", spec.value_kind)
+        if kind == "name":
             return cleaned, "person_name_preserved"
-        if spec.value_kind == "title":
+        if kind == "title":
             return cleaned, "title_text_preserved"
-        if spec.value_kind == "quantity":
+        if kind == "quantity":
             return cleaned, "quantity_and_unit_preserved"
-        if spec.value_kind in {"email", "email_list"}:
+        if kind in {"email", "email_list"}:
             return cleaned.lower(), "lowercase_email"
-        if spec.value_kind in {"phone", "phone_list"}:
+        if kind in {"phone", "phone_list"}:
             digits = re.sub(r"\D", "", cleaned)
             if cleaned.startswith("+"):
                 return f"+{digits}", "explicit_international_prefix"
@@ -1026,14 +1117,14 @@ class DeterministicSchemaExtractor:
             if len(digits) == 10:
                 return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}", "country_not_assumed"
             return digits, "digits_only_country_unknown"
-        if spec.value_kind == "currency":
+        if kind == "currency":
             return (
                 {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR"}.get(
                     cleaned.upper(), cleaned.upper()
                 ),
                 "currency_code_normalized",
             )
-        if spec.value_kind in {"money", "money_list"}:
+        if kind in {"money", "money_list"}:
             match = re.search(r"-?\d[\d,]*(?:\.\d+)?", cleaned)
             if match:
                 try:
@@ -1042,7 +1133,7 @@ class DeterministicSchemaExtractor:
                 except InvalidOperation:
                     pass
             return cleaned, "amount_preserved_unparsed"
-        if spec.value_kind in {"date", "date_list"}:
+        if kind in {"date", "date_list"}:
             date_cleaned = cleaned.rstrip(" .,:;")
             numeric = re.fullmatch(r"(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})", date_cleaned)
             if numeric and int(numeric.group(1)) <= 12 and int(numeric.group(2)) <= 12:
@@ -1053,6 +1144,10 @@ class DeterministicSchemaExtractor:
                 "%m/%d/%Y",
                 "%d-%m-%Y",
                 "%m-%d-%Y",
+                "%d/%m/%y",
+                "%m/%d/%y",
+                "%d-%m-%y",
+                "%m-%d-%y",
                 "%b %d, %Y",
                 "%B %d, %Y",
                 "%b %d %Y",
@@ -1065,10 +1160,10 @@ class DeterministicSchemaExtractor:
                 except ValueError:
                     continue
             return None, "date_unresolved"
-        if spec.value_kind == "account":
+        if kind == "account":
             digest = hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
             return f"sha256:{digest}", "sensitive_identifier_hashed"
-        if spec.value_kind in {"reference", "reference_list"}:
+        if kind in {"reference", "reference_list"}:
             return cleaned, "punctuation_preserved"
         return self._normalize(cleaned), "whitespace_normalized"
 
@@ -1127,6 +1222,11 @@ class DeterministicSchemaExtractor:
             match = re.search(r"\b[A-Z0-9][A-Z0-9./-]{1,39}\b", cleaned, re.I)
             return match.group(0) if match else ""
         if spec.name == "product_type":
+            cleaned = re.sub(
+                r"(?i)\b(\d{2,3})\s*m\s+(?=[A-Za-z])",
+                r"\1 mm ",
+                cleaned,
+            )
             match = re.search(
                 r"(?i)\b\d{2,3}\s*mm\s+[A-Za-z][A-Za-z0-9 /-]{1,48}",
                 cleaned,
@@ -1135,6 +1235,7 @@ class DeterministicSchemaExtractor:
                 return ""
             return match.group(0).strip(" .,:;|_-")
         if spec.value_kind == "quantity":
+            cleaned = re.sub(r"(?i)\b[iI]bs?\.?", "lbs.", cleaned)
             match = re.search(
                 r"(?i)\b\d+(?:[.,]\d+)?\s*(?:lbs?\.?|pounds?|kg|kgs|g|grams?|"
                 r"mg|oz|ounces?|litres?|liters?|ml|units?|pcs?\.?)(?=\s|$)",
@@ -1357,10 +1458,15 @@ class DeterministicSchemaExtractor:
     ) -> bool:
         if left.page != right.page or left.spec.name == right.spec.name:
             return False
-        if (
+        declared_incompatible = (
+            right.spec.name in left.spec.incompatible_with
+            or left.spec.name in right.spec.incompatible_with
+        )
+        declared_compatible = (
             right.spec.name in left.spec.allow_evidence_sharing_with
             or left.spec.name in right.spec.allow_evidence_sharing_with
-        ):
+        )
+        if declared_compatible and not declared_incompatible:
             return False
         left_words = {word.word_id for word in left.words}
         right_words = {word.word_id for word in right.words}

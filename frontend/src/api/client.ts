@@ -226,7 +226,12 @@ export const api = {
   patchField: (
     reviewId: string,
     fieldId: string,
-    payload: { reviewed_value?: string | null; reviewer_status: string; comment: string },
+    payload: {
+      reviewed_value?: string | null;
+      reviewed_field_name?: string | null;
+      reviewer_status: string;
+      comment: string;
+    },
   ) =>
     apiRequest(`/reviews/${reviewId}/fields/${fieldId}`, {
       method: "PATCH",

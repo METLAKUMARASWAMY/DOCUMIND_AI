@@ -158,6 +158,7 @@ async def test_postgres_default_mode_is_read_only_and_reports_pending_migrations
         "pending",
         "pending",
         "pending",
+        "pending",
     ]
     assert state.executed_sql == []
     assert state.connections[0].closed is True
@@ -187,16 +188,18 @@ async def test_postgres_execute_is_idempotent_and_tracks_migration_checksums():
         "applied",
         "applied",
         "applied",
+        "applied",
     ]
     assert first["tables"]["missing_required"] == []
     assert [row["outcome"] for row in second["migrations"]] == [
         "already_applied",
         "already_applied",
         "already_applied",
+        "already_applied",
     ]
     second_run_sql = state.executed_sql[sql_count_after_first_run:]
     assert not any("CREATE EXTENSION IF NOT EXISTS" in query for query in second_run_sql)
-    assert len(state.tracked) == 3
+    assert len(state.tracked) == 4
     assert all(connection.closed for connection in state.connections)
 
 

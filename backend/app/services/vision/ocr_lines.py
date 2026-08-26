@@ -115,8 +115,18 @@ class OCRLineReconstructor:
         min_height = max(1.0, min(box.y2 - box.y1, word_box.y2 - word_box.y1))
         vertical_overlap = overlap / min_height
         baseline_delta = abs(cluster.baseline - word_box.y2)
-        height = max(1.0, word_box.y2 - word_box.y1, box.y2 - box.y1)
-        vertically_aligned = vertical_overlap >= 0.42 or baseline_delta <= max(3.0, height * 0.38)
+        word_height = max(1.0, word_box.y2 - word_box.y1)
+        cluster_height = max(1.0, box.y2 - box.y1)
+        height = max(word_height, cluster_height)
+        centre_delta = abs(
+            ((box.y1 + box.y2) / 2) - ((word_box.y1 + word_box.y2) / 2)
+        )
+        # A tall/low-confidence OCR box must not bridge adjacent form rows.
+        # Baseline and centre agreement make this robust to fonts and scale while
+        # remaining independent of any template coordinates.
+        vertically_aligned = baseline_delta <= max(4.0, min_height * 0.90) or (
+            vertical_overlap >= 0.65 and centre_delta <= max(3.0, min_height * 0.55)
+        )
         if not vertically_aligned:
             return False
 
@@ -156,7 +166,9 @@ class OCRLineReconstructor:
         return bool(
             re.search(r"^[A-Za-z][A-Za-z .'/#-]{1,40}:\s*\S", text)
             or re.search(
-                r"(?i)^(?:date|to|from|company|phone|fax|client|subject|reference|account)\b",
+                r"(?i)^(?:date|dates?|to|from|company|phone|fax|client|subject|reference|"
+                r"account|sample|batch|type|product|requested|original\s+request|purpose|"
+                r"specifications?|quantity|amount|total|currency|prepared|approved)\b",
                 text,
             )
         )

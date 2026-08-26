@@ -1,86 +1,364 @@
-You are the final responsible principal engineer for the EXISTING repository:
+=====================================================================
+DOCUMIND VISION AI — FINAL COMPLETE PROJECT REMEDIATION,
+MODEL ACTIVATION, SEMANTIC INTELLIGENCE, GRAPHRAG,
+RISK ANALYSIS, QA, VALIDATION AND RELEASE PROMPT
+=====================================================================
 
-DOCUMIND VISION AI
+PROJECT
+-------
+DocuMind Vision AI
 
-Project title:
+Full project title:
 
-“DocuMind Vision AI: An Explainable Multimodal Enterprise Document
-Intelligence System for Evidence-Grounded Analysis and Risk Detection”
+"DocuMind Vision AI: An Explainable Multimodal Enterprise Document
+Intelligence System for Evidence-Grounded Analysis and Risk Detection"
 
-Act simultaneously as:
+PROJECT ROOT
+------------
+/Users/kumar/Downloads/DocuMind AI
 
-- principal Document AI architect
-- OCR and layout-analysis engineer
-- NLP and information-extraction engineer
-- RAG and GraphRAG architect
-- knowledge-graph engineer
-- local-LLM integration engineer
-- FastAPI backend engineer
-- React frontend engineer
-- database and migration engineer
-- MLOps engineer
-- QA and security lead
+PRIMARY OBJECTIVE
+-----------------
+Take the EXISTING DocuMind Vision AI repository from its current partially
+working state to the strongest truthful, runnable, auditable capstone version
+possible on this machine.
 
-This is the final correction cycle.
+THIS IS AN EXECUTION TASK.
 
-Do not create another scaffold.
-Do not add decorative pages.
-Do not stop after repository analysis.
-Do not merely list commands for the user.
-Do not claim success because a pipeline stage executed.
-Do not mark models active by changing database flags.
-Do not fabricate fields, relationships, model outputs, confidence or metrics.
+Do not merely:
+- analyse the repository,
+- give suggestions,
+- write a plan,
+- produce a report,
+- describe possible code,
+- create placeholder files,
+- create another scaffold,
+- duplicate existing architecture,
+- stop after dependency installation,
+- stop after unit tests,
+- or stop after changing environment variables.
 
-Inspect, modify, run, debug, re-run and verify the existing application.
+You must inspect the actual repository, understand the existing implementation,
+modify the existing implementation, install/configure what is realistically
+supported, start required infrastructure, run migrations/initialisation,
+reprocess representative documents, run smoke tests, execute backend/frontend
+tests, verify UI/API behaviour, and fix discovered defects.
 
-Persist through package conflicts, migrations, test failures, Docker-service
-errors and adapter issues. Do not stop at the first failed installation.
-Find a compatible solution for the actual operating system and hardware.
+Continue iterating until either:
 
-The application must remain truthful, but “truthful” must not become an excuse
-for leaving every advanced component disabled without making a serious,
-verified activation attempt.
+A. the relevant feature is genuinely working and verified,
 
-=======================================================================
-1. VERIFIED CURRENT STATE FROM THE LATEST RUN
-=======================================================================
+OR
 
-The latest run shows real progress:
+B. a real external blocker exists, such as:
+   - unavailable labelled training data,
+   - unavailable trained checkpoint,
+   - incompatible platform dependency,
+   - external API key intentionally not supplied,
+   - insufficient system resources,
+   - missing source dataset.
 
-- 17 documents exist.
-- 8 of 17 documents have structured fields.
-- Structured-extraction coverage is 47%.
-- 9 documents still have no extracted fields.
-- Mean field confidence is 81% across 74 fields.
-- Fax documents can now be classified as fax_transmission.
-- The fax document produced 11 fields.
-- Review approval is blocked while required fields remain unresolved.
-- Ask Documents now recognises ambiguous questions.
-- Knowledge graph now displays multiple node types.
-- Report source lists are collapsed into “View sources”.
-- Narrative reuse appears improved.
-- Model registry distinguishes active, unavailable, disabled and blocked states.
-- Blocked models display “schema not evaluated” instead of fake schema failure.
+If blocked, DO NOT FAKE activation.
 
-However, the core system is not yet acceptable.
+Mark it truthfully with the exact reason and keep the strongest available
+fallback operational.
 
-Mandatory remaining defects are listed below.
+=====================================================================
+0. ABSOLUTE NON-NEGOTIABLE RULES
+=====================================================================
 
-=======================================================================
-2. EXACT OBSERVED DEFECTS — NO ITEM MAY BE SKIPPED
-=======================================================================
+RULE 1 — TRUTHFUL MODEL STATUS
+------------------------------
+Never display a model as ACTIVE merely because:
 
-DEFECT A — SEMANTICALLY WRONG FIELD EXTRACTION
+- an environment variable is true,
+- a package imports,
+- a checkbox is enabled,
+- a checkpoint path string exists,
+- a service is configured,
+- or the frontend requested it.
 
-Document:
+A model/runtime may be marked ACTIVE only when ALL applicable checks pass:
+
+1. feature requested/enabled,
+2. required package imports,
+3. required checkpoint/assets exist,
+4. adapter initializes,
+5. runtime health check succeeds,
+6. at least one real smoke inference succeeds,
+7. returned structure validates against expected schema,
+8. inference result is generated by that actual implementation,
+9. no silent fallback was used in place of that model.
+
+Otherwise use truthful states such as:
+
+DISABLED
+UNAVAILABLE
+BLOCKED_BY_PACKAGE
+BLOCKED_BY_CHECKPOINT
+BLOCKED_BY_LABELS
+BLOCKED_BY_PLATFORM
+BLOCKED_BY_CONFIGURATION
+FAILED_SMOKE_TEST
+FALLBACK_ACTIVE
+
+Never fabricate:
+- metrics,
+- model confidence,
+- field confidence,
+- extraction results,
+- graph edges,
+- citations,
+- risk signals,
+- OCR text,
+- training accuracy,
+- inference times,
+- completion status,
+- or checkpoint availability.
+
+---------------------------------------------------------------------
+
+RULE 2 — SOURCE-GROUNDED INTELLIGENCE
+-------------------------------------
+Every extracted field, answer, graph fact, narrative, report value, risk
+indicator and recommendation must trace to real evidence whenever evidence is
+required.
+
+Evidence objects should preserve as applicable:
+
+- document_id
+- tenant_id
+- page number
+- source file
+- OCR text/span
+- bounding box/polygon
+- region identifier
+- field key
+- extracted value
+- confidence
+- extraction method/model
+- reviewed/verified status
+- reviewer
+- timestamp
+- processing version
+- source snapshot/version
+
+Do not allow an LLM to invent missing fields.
+
+---------------------------------------------------------------------
+
+RULE 3 — FRAUD LANGUAGE
+-----------------------
+The automated system MUST NOT make unsupported final legal/business claims such
+as:
+
+"Fraud detected."
+
+Prefer:
+
+- suspicious indicator
+- possible inconsistency
+- possible visual manipulation
+- anomalous pattern
+- bank-account mismatch
+- duplicate/similarity concern
+- human verification required
+
+"Confirm fraud" must be a HUMAN reviewer action only, with strong backend
+authorisation, evidence gating, reason/comment requirement and audit history.
+
+---------------------------------------------------------------------
+
+RULE 4 — DO NOT REBUILD THE APP
+--------------------------------
+This application already has a working architecture and UI.
+
+DO NOT:
+- replace React with another frontend,
+- replace FastAPI,
+- create a separate demo application,
+- change the application into notebooks,
+- redesign every page,
+- remove currently working functionality,
+- discard existing datasets,
+- rename working APIs unnecessarily.
+
+Modify and strengthen the existing system.
+
+---------------------------------------------------------------------
+
+RULE 5 — NO SILENT FALLBACKS
+----------------------------
+Fallback is allowed, but it must be recorded.
+
+Example:
+
+requested_model = "PP-OCRv5"
+actual_model = "Tesseract-5"
+fallback_reason = "paddle runtime unavailable"
+
+The model registry, processing trace and audit records must distinguish them.
+
+---------------------------------------------------------------------
+
+RULE 6 — TENANT ISOLATION
+-------------------------
+All persistent and retrieval operations must preserve organisation/tenant
+isolation.
+
+A tenant must never retrieve another tenant's:
+- document,
+- chunk,
+- vector,
+- graph entity,
+- report,
+- narrative,
+- review,
+- risk indicator,
+- or audit event.
+
+=====================================================================
+1. FIRST INSPECT THE ACTUAL REPOSITORY
+=====================================================================
+
+Before making major edits:
+
+1. cd "/Users/kumar/Downloads/DocuMind AI"
+
+2. Inspect:
+   - docker-compose.yml
+   - root .env
+   - backend/.env
+   - backend requirements
+   - frontend package.json
+   - FastAPI routes
+   - services
+   - model registry
+   - processing pipeline
+   - OCR adapters
+   - schema/extraction code
+   - graph code
+   - RAG code
+   - risk services
+   - review services
+   - analytics
+   - reports
+   - finance narratives
+   - audit/auth
+   - tests
+   - scripts/bootstrap_ai_core.sh
+   - scripts/generate_local_env.py
+   - ML training modules
+   - README/docs
+
+3. Determine actual service names using:
+
+   docker compose config --services
+
+4. Inspect git status.
+
+5. Do NOT delete uncommitted user work.
+
+6. Create no destructive migrations without understanding current persisted data.
+
+7. Reuse existing implementation wherever reasonable.
+
+8. Search before creating new classes/services/helpers to avoid duplicate
+implementations.
+
+Produce a concise internal implementation map, then start editing immediately.
+
+=====================================================================
+2. CURRENT VERIFIED PROJECT STATE
+=====================================================================
+
+Treat the following as the current observed state unless the actual repository
+proves otherwise.
+
+WORKING / ACTIVE / SMOKE-PASSED
+--------------------------------
+- local-parser-v1
+- Tesseract-5
+- local-layout-adapter-v1
+- deterministic-schema-extractor-v3
+- OpenCV-visual-cues-v1
+- ELA-noise-forensics-v1
+- IsolationForest
+- local-hashing-v1
+- local-vector-store-v1
+- local-graph-projection-v1
+- Neo4j
+- grounded-template-generator-v1
+
+Neo4j is now confirmed operational:
+
+ENABLE_NEO4J=true
+NEO4J_URI=bolt://neo4j:7687
+
+The Neo4j runtime currently reports:
+- active
+- healthy
+- passed smoke test
+- schema neo4j-evidence-path-v1
+
+DO NOT break this working Neo4j integration.
+
+CURRENT ANALYTICS OBSERVED
+--------------------------
+Approximately:
+
+- documents: 24
+- structured extraction coverage: 75%
+- structured fields on 18/24
+- mean OCR confidence: ~64%
+- mean field confidence: ~79%
+- mean processing: ~4.8s
+- median processing: ~2.8s
+- P95 processing: ~12.8s
+- current processing outcome: approximately 23 success / 1 failure
+
+Do not hardcode these numbers.
+They are only current observations.
+
+The application must always calculate metrics from real persisted runs.
+
+CURRENT IMPORTANT DEFECTS
+-------------------------
+
+A. Semantic field extraction is still wrong on some documents.
+
+Example document:
+
+87093315_87093318.png
+
+Visible evidence includes approximately:
+
+Sample No.: 1194-90
+Date: 3/14/90
+Type of Cigarette: 100 mm Filter
+Batch Size: 47.5 lbs.
+Original Request Made By: J.H. Bell on 2/15/90
+Purpose of Sample: Cigarette Modification B-451
+Sample Specifications Written By: C.W. Lassiter
+
+Current system incorrectly produces a field similar to:
+
+visible_phone_numbers = "3/14/90 90"
+
+This is unacceptable.
+
+A date may NOT become a phone number.
+
+Current document type can remain "unknown" and generic schema fallback is
+sometimes used.
+
+This must be fixed.
+
+B. Another important regression document previously observed:
 
 00093726.png
 
-Detected type:
-
-business_form
-
-Visible source content contains approximately:
+Visible evidence includes approximately:
 
 Date: September 21, 1976
 Sample No.: 6030
@@ -89,1550 +367,2421 @@ Batch Size: 50 lbs.
 Original Request Made By: Dr. A. W. Spears
 Sample Specifications Written By: W. E. Routh
 
-The current extractor incorrectly produces:
+Historical bad output included assigning OCR-corrupted date text as both
+document_title and form_title.
 
-document_title = “bate: september 21, 11/6”
-form_title = “bate: september 21, 11/6”
+That behaviour must never regress.
 
-This is wrong because:
+C. Duplicate evidence must not populate incompatible fields.
 
-- “Date” was OCR-read as “bate”.
-- “1976” was misread as “11/6”.
-- A date line was mapped to document_title.
-- The same evidence was assigned to two fields.
-- Obvious fields such as sample number, product type and batch size were missed.
+D. Generic schema fallback currently prevents rich extraction on some business
+forms.
 
-DEFECT B — FIELD DEDUPLICATION FAILURE
+E. Ask Documents is still primarily driven by:
+- local hashing retrieval,
+- local vector store,
+- grounded template generator.
 
-One source line is being assigned to multiple incompatible schema fields.
+BGE-M3, BGE reranker, Qdrant and Qwen are currently not active.
 
-The extractor must not populate:
+F. Clarification handling improved, but conversational RAG still needs robust
+state.
+
+Example:
+
+User: "Is this safe?"
+System: clarification requested
+User chooses: "Check suspicious indicators"
+
+The second request must preserve context/document scope and must not be treated
+as an unrelated standalone search.
+
+G. Knowledge graph works technically but still contains overly generic entities
+and edges such as:
+
+HAS_FIELD
+MATCHES
+HAS_DATE
+CONTAINS_PAGE
+
+Need richer semantic business graph.
+
+H. Review UI metrics have improved, but schema routing must ensure meaningful
+required expected/matched/missing values.
+
+I. Several advanced models remain unavailable due to packages/checkpoints.
+
+This is acceptable ONLY when truthfully represented.
+
+=====================================================================
+3. TARGET SYSTEM ARCHITECTURE
+=====================================================================
+
+The strongest realistic architecture should be:
+
+DOCUMENT
+   |
+   v
+INGESTION / FILE VALIDATION
+   |
+   v
+IMAGE/PDF PREPROCESSING
+   |
+   +--> ORIGINAL
+   +--> ENHANCED
+   +--> GRAYSCALE
+   +--> BINARIZED / ADAPTIVE VARIANTS
+   |
+   v
+OCR ROUTER
+   |
+   +--> PP-OCRv5 if actually operational
+   |
+   +--> Tesseract fallback
+   |
+   v
+LAYOUT / STRUCTURE
+   |
+   +--> PP-StructureV3 / PP-DocLayoutV3 if operational
+   |
+   +--> local geometry adapter fallback
+   |
+   v
+DOCUMENT CLASSIFICATION
+   |
+   v
+SCHEMA ROUTER
+   |
+   v
+MULTI-PASS SEMANTIC FIELD / TABLE EXTRACTION
+   |
+   +--> deterministic schema extraction
+   +--> spatial key-value association
+   +--> LayoutLMv3 if genuinely fine-tuned and operational
+   +--> Donut fallback/comparison where appropriate
+   |
+   v
+EVIDENCE NORMALISATION + VALIDATION
+   |
+   v
+VISUAL OBJECT DETECTION
+   |
+   +--> OpenCV fallback
+   +--> YOLO if trained checkpoint exists
+   |
+   v
+FORENSICS / ANOMALY
+   |
+   +--> ELA/noise
+   +--> IsolationForest
+   +--> SegFormer if trained checkpoint exists
+   +--> XGBoost risk if labelled model exists
+   |
+   v
+REVIEW WORKFLOW
+   |
+   v
+SEMANTIC INDEXING
+   |
+   +--> BGE-M3
+   +--> Qdrant
+   +--> BGE reranker
+   |
+   v
+KNOWLEDGE GRAPH
+   |
+   +--> Neo4j
+   |
+   v
+HYBRID / GRAPHRAG RETRIEVAL
+   |
+   v
+QWEN OR GROUNDED FALLBACK GENERATION
+   |
+   v
+CITATION / NUMERIC / EVIDENCE VALIDATION
+   |
+   v
+ANSWER / NARRATIVE / REPORT / RISK EXPLANATION
+
+=====================================================================
+4. ENVIRONMENT AND INFRASTRUCTURE
+=====================================================================
+
+Current machine is macOS Apple Silicon/aarch64.
+
+Be platform-aware.
+
+DO NOT install CUDA-only packages.
+
+Prefer:
+- CPU
+- Apple Metal/MPS where genuinely supported
+- arm64 compatible wheels
+
+Infrastructure expected:
+
+- FastAPI backend
+- React/Vite frontend
+- Redis
+- Celery/worker if present
+- Neo4j
+- Qdrant
+- MongoDB
+- MinIO
+- existing project persistence
+- Docker Compose
+
+Do not enable infrastructure merely for appearance.
+
+For each service:
+
+1. inspect existing Compose configuration,
+2. confirm environment variables,
+3. start only if required,
+4. verify health,
+5. run a real read/write smoke test,
+6. wire the application,
+7. then mark active.
+
+NEO4J
+-----
+Neo4j is already working.
+
+Keep inside-Docker URI:
+
+bolt://neo4j:7687
+
+Never expose Neo4j credentials to the React frontend.
+
+Neo4j credentials remain backend-only.
+
+QDRANT
+------
+Enable Qdrant if project configuration supports it.
+
+Expected Docker-internal URL:
+
+http://qdrant:6333
+
+Perform a real smoke test:
+- create/use tenant-safe collection,
+- insert a small vector,
+- search it,
+- validate metadata filtering,
+- delete temporary test object if appropriate.
+
+Only then mark active.
+
+MONGODB
+-------
+Enable only if the current backend architecture actually uses MongoDB.
+
+Do not blindly introduce a second source of truth.
+
+Verify actual intended responsibilities first.
+
+MINIO
+-----
+Enable only if file/object storage paths are genuinely wired.
+
+Never mark active without real upload/read smoke test.
+
+REDIS
+-----
+Already likely active.
+
+Verify ping and worker/backend connectivity.
+
+=====================================================================
+5. CORE DEPENDENCY BOOTSTRAP
+=====================================================================
+
+Inspect:
+
+backend/requirements/
+scripts/bootstrap_ai_core.sh
+
+Improve bootstrap scripts so dependency installation is repeatable and
+platform-aware.
+
+Separate:
+
+CORE DEPENDENCIES
+from
+OPTIONAL/HEAVY MODEL DEPENDENCIES.
+
+Do not force installation of every heavy model into the default environment.
+
+Provide explicit optional feature installation.
+
+At minimum evaluate feasibility of:
+
+- paddleocr
+- paddlepaddle compatible with Apple Silicon/current Python
+- transformers
+- torch
+- sentence-transformers
+- FlagEmbedding
+- qdrant-client
+- neo4j
+- ultralytics
+- xgboost
+
+After installation, imports alone are NOT success.
+
+Run the model-specific smoke tests.
+
+=====================================================================
+6. OCR — FIX QUALITY FIRST
+=====================================================================
+
+The OCR layer must preserve:
+
+- text
+- confidence
+- page
+- word ID
+- line ID
+- block ID
+- polygon/bounding box
+- reading order
+- source OCR engine
+- preprocessing variant
+
+Implement multi-pass OCR intelligently rather than blindly OCRing every page
+many times.
+
+For low-confidence or critical regions:
+
+1. original
+2. grayscale
+3. contrast enhanced
+4. adaptive threshold/binarized
+5. deskewed if appropriate
+6. local crop at higher resolution
+
+Compare candidate recognition outputs.
+
+Critical semantic tokens such as:
+
+Date
+Sample No.
+Invoice No.
+PO No.
+Account No.
+Total
+Vendor
+Requested By
+Written By
+
+must receive targeted OCR retry when confidence is poor.
+
+Do not auto-correct a value unless evidence supports the correction.
+
+Store alternatives when needed.
+
+Example:
+
+OCR candidate:
+"3/14/90"
+
+must NOT be converted to:
+"3/14/90 90"
+
+unless the source region actually contains that text.
+
+=====================================================================
+7. PP-OCRv5 ACTIVATION
+=====================================================================
+
+Current state shows PP-OCRv5 disabled because paddle packages are absent.
+
+Attempt platform-compatible activation.
+
+Required conditions:
+
+ENABLE_HEAVY_MODELS=true
+ENABLE_PADDLEOCR=true
+
+Only mark PP-OCRv5 active after:
+
+- package available,
+- model assets available,
+- adapter initializes,
+- a real document image is processed,
+- OCR output includes usable text + geometry + confidence,
+- schema validates.
+
+If PaddleOCR cannot be made stable on current Apple Silicon environment,
+record:
+
+BLOCKED_BY_PLATFORM or BLOCKED_BY_PACKAGE
+
+and keep Tesseract as the active primary/fallback as appropriate.
+
+Do not damage current functioning pipeline attempting impossible installations.
+
+=====================================================================
+8. LAYOUT / STRUCTURE
+=====================================================================
+
+Maintain local-layout-adapter-v1 as reliable fallback.
+
+Improve it where possible using real OCR geometry:
+
+- line grouping
+- paragraph grouping
+- key/value adjacency
+- columns
+- table-like rows
+- headers
+- labels
+- section titles
+- reading order
+- merged regions
+- page regions
+
+Attempt PP-StructureV3 / PP-DocLayoutV3 activation only when compatible
+Paddle runtime is available.
+
+Output should include stable region IDs and evidence geometry.
+
+A layout model does NOT itself determine business field meaning.
+
+It supplies spatial/structural information used by downstream extraction.
+
+=====================================================================
+9. DOCUMENT CLASSIFICATION — HIGH PRIORITY
+=====================================================================
+
+This is one of the biggest remaining defects.
+
+Do not leave obviously structured documents as "unknown" merely because a
+specific learned classifier is unavailable.
+
+Implement a robust tiered classifier:
+
+TIER 1 — deterministic high-confidence signatures
+TIER 2 — keyword/layout scoring
+TIER 3 — learned classifier if genuinely available
+TIER 4 — generic/unknown only when evidence is insufficient
+
+Support at least relevant current categories:
+
+- invoice
+- purchase_order
+- contract
+- bank_document
+- business_form
+- sample_requisition
+- product_specification
+- email/correspondence where present
+- generic
+- unknown
+
+Use document evidence, not filename alone.
+
+Example:
+
+A document containing:
+
+Sample No.
+Type of Cigarette
+Batch Size
+Original Request Made By
+Purpose of Sample
+Sample Specifications Written By
+
+must route to a business/sample/product specification schema, not generic phone
+number extraction.
+
+Classification result must contain:
+
+document_type
+confidence
+evidence/reasons
+classifier source
+fallback status
+
+Allow review correction.
+
+A reviewer correction should affect future reprocessing through stored schema
+override or controlled classification rule, not by silently rewriting history.
+
+=====================================================================
+10. SCHEMA ROUTING AND SCHEMA REGISTRY
+=====================================================================
+
+Create/repair a central schema registry.
+
+Each schema should define:
+
+- field key
+- canonical label
+- aliases
+- required/optional
+- data type
+- validation rule
+- extraction strategy
+- potential multi-value flag
+- semantic entity type
+- graph relationship
+- normalisation function
+- incompatibility rules
+
+Example sample/product business-form schema should include:
+
+sample_number
+document_date
+product_type
+batch_size
+requested_by
+request_date
+purpose
+specifications_written_by
+
+Potential aliases:
+
+sample_number:
+- Sample No.
+- Sample Number
+- Sample #
+- Requisition No.
+
+document_date:
+- Date
+- Document Date
+- Form Date
+
+requested_by:
+- Original Request Made By
+- Requested By
+- Requester
+
+specifications_written_by:
+- Sample Specifications Written By
+- Specifications Written By
+- Prepared By
+
+product_type:
+- Type of Cigarette
+- Product Type
+- Type
+
+batch_size:
+- Batch Size
+- Quantity
+- Batch
+
+purpose:
+- Purpose of Sample
+- Purpose
+- Sample Purpose
+
+Do not indiscriminately map general words such as "Date" without spatial
+context.
+
+=====================================================================
+11. SEMANTIC EXTRACTION — CRITICAL
+=====================================================================
+
+The current deterministic extractor is working technically but semantic
+accuracy must be significantly improved.
+
+Implement a MULTI-STAGE FIELD EXTRACTOR.
+
+STAGE A — LABEL DETECTION
+-------------------------
+Detect known field labels using:
+- normalized OCR,
+- aliases,
+- fuzzy matching with safe threshold,
+- case-insensitive matching,
+- punctuation tolerance.
+
+STAGE B — SPATIAL VALUE ASSOCIATION
+-----------------------------------
+Find candidate values using geometry.
+
+Priority:
+1. same line, directly right of key
+2. same line after delimiter
+3. immediately below key
+4. nearest compatible region within constrained radius
+5. table cell relationship
+
+Do not select arbitrary globally nearest text.
+
+STAGE C — TYPE VALIDATION
+-------------------------
+Each candidate must pass field-type validation.
+
+Examples:
+
+date:
+- recognised date format
+- plausible calendar values
+
+phone:
+- reject obvious date patterns
+- require plausible digit count
+- allow country/area code punctuation
+- prohibit YYYY/MM/DD etc.
+- prohibit MM/DD/YY patterns unless contextual evidence clearly indicates phone
+
+amount:
+- numeric/currency compatible
+
+person:
+- name-like structure
+- context from label
+
+sample_number:
+- identifier-like token
+- preserve hyphens
+
+batch_size:
+- quantity plus units where present
+
+STAGE D — CONTEXT VALIDATION
+----------------------------
+Use:
+- associated label
+- OCR line
+- surrounding region
+- section
+- document schema
+
+STAGE E — DUPLICATE / COLLISION RESOLUTION
+------------------------------------------
+A single evidence span must not populate mutually incompatible fields without
+explicit justification.
+
+Example:
+
+"3/14/90"
+
+cannot simultaneously become:
+document_date
+visible_phone_number
+
+A global candidate resolver should select the semantically strongest assignment.
+
+Store rejected duplicate assignments with reason when useful.
+
+STAGE F — CONFIDENCE
+--------------------
+Field confidence should derive from measurable factors such as:
+
+OCR confidence
+label match score
+spatial relation score
+type validation
+schema compatibility
+cross-pass agreement
+review history
+
+Do not invent arbitrary percentages.
+
+=====================================================================
+12. REQUIRED REGRESSION ACCEPTANCE TEST — 87093315_87093318.png
+=====================================================================
+
+This document is a mandatory regression test.
+
+The source visibly contains fields similar to:
+
+Sample No.: 1194-90
+Date: 3/14/90
+Type of Cigarette: 100 mm Filter
+Batch Size: 47.5 lbs.
+Original Request Made By: J.H. Bell on 2/15/90
+Purpose of Sample: Cigarette Modification B-451
+Sample Specifications Written By: C.W. Lassiter
+
+After reprocessing, expect semantically equivalent fields:
+
+sample_number = 1194-90
+document_date = 3/14/90
+product_type = 100 mm Filter
+batch_size = 47.5 lbs.
+requested_by = J.H. Bell
+request_date = 2/15/90
+purpose = Cigarette Modification B-451
+specifications_written_by = C.W. Lassiter
+
+Do NOT hardcode values based on filename.
+
+The extractor must obtain them from document evidence.
+
+The regression test should assert:
+
+1. 3/14/90 is a date.
+2. 3/14/90 is NOT a phone number.
+3. 2/15/90 is associated with the original request.
+4. sample number remains 1194-90.
+5. person names are not merged with surrounding labels.
+6. evidence coordinates point to corresponding source regions.
+7. generic schema is not selected when domain evidence is sufficient.
+
+=====================================================================
+13. SECOND REGRESSION TEST — 00093726.png
+=====================================================================
+
+Use the actual available document if present.
+
+Source evidence previously observed:
+
+Date: September 21, 1976
+Sample No.: 6030
+Type of Cigarette: 85 mm Filter
+Batch Size: 50 lbs.
+Original Request Made By: Dr. A. W. Spears
+Sample Specifications Written By: W. E. Routh
+
+Verify:
+
+- date is extracted as date,
+- sample number is correct,
+- product type is correct,
+- batch size is correct,
+- requester is correct,
+- specification author is correct.
+
+Prevent the historical failure where OCR-corrupted date text became both:
 
 document_title
-and
 form_title
 
-from the same evidence unless the schema explicitly allows the equivalence.
+The same span must not populate two incompatible title fields.
 
-DEFECT C — UNCLEAR EXPECTED/MISSING COUNTS
+=====================================================================
+14. TABLE EXTRACTION
+=====================================================================
 
-The review screen displays:
+Current pages can contain specification-like tables.
 
-Expected 3
-Extracted 2
-Missing 2
+Improve table recognition using layout geometry even if advanced structure
+models are unavailable.
 
-This is confusing unless only one of the extracted fields satisfies the
-required schema.
+Support:
 
-The interface must distinguish:
+- row detection
+- column association
+- header/value pairing
+- merged/empty cells
+- unit preservation
+- provenance per cell
+- confidence
 
-- expected required fields
-- extracted fields total
-- matched required fields
-- missing required fields
-- optional fields extracted
-- duplicate fields
-- disputed fields
+Do not manufacture table structure where geometry is insufficient.
 
-DEFECT D — RAG FOLLOW-UP FAILURE
+Return "table uncertain" where needed.
 
-Conversation:
+=====================================================================
+15. LAYOUTLMv3
+=====================================================================
 
-User: “Is this safe?”
+Do not pretend `LayoutLMv3-base` alone is a field extraction model.
+
+A generic pretrained base checkpoint is NOT sufficient for project-specific
+token labels.
+
+Only mark LayoutLMv3 extraction ACTIVE when a compatible fine-tuned token
+classification checkpoint exists and real inference succeeds.
+
+If the project has no sufficiently labelled dataset:
+
+BLOCKED_BY_LABELS
+
+is the correct state.
+
+Still keep:
+- training code,
+- configuration,
+- dataset specification,
+- model adapter,
+- smoke test framework
+
+ready for CP2/future training.
+
+Do not train a meaningless model on fabricated labels.
+
+=====================================================================
+16. DONUT
+=====================================================================
+
+Use Donut as:
+
+- OCR-free comparison,
+- difficult OCR fallback,
+- experimental benchmark,
+- low-confidence disagreement resolver
+
+only if a suitable checkpoint/task configuration exists.
+
+Do not mark Donut active with a generic checkpoint that cannot produce the
+project schema.
+
+Preserve evidence limitations:
+Donut structured output may have weaker direct word-box traceability than
+OCR+LayoutLM approaches.
+
+=====================================================================
+17. VISUAL DETECTION
+=====================================================================
+
+Current OpenCV visual cues are active.
+
+Maintain them.
+
+For visual elements support candidates such as:
+
+- signatures
+- stamps/seals
+- checkboxes
+- logos
+- handwritten regions
+- large marked blocks
+
+Do NOT claim signature authenticity.
+
+Presence != authenticity.
+
+YOLO
+----
+Current registry references YOLO26n.
+
+Only activate YOLO-based detection if:
+
+- Ultralytics imports,
+- a compatible checkpoint exists,
+- checkpoint is trained for project-relevant classes,
+- smoke inference succeeds,
+- detections validate.
+
+A generic pretrained object detector that knows everyday objects is not a
+signature/stamp detector.
+
+If no labelled document-object training set/checkpoint exists:
+
+BLOCKED_BY_LABELS or BLOCKED_BY_CHECKPOINT.
+
+=====================================================================
+18. DINOv2 / VISUAL SIMILARITY
+=====================================================================
+
+Use DINOv2 where feasible for:
+
+- page similarity
+- visually near-duplicate documents
+- document image embeddings
+- suspicious copy/template reuse
+
+Do not call a SHA-256 exact duplicate check DINOv2.
+
+Keep exact hash and perceptual hash as separate signals.
+
+If DINOv2 assets are unavailable, keep those deterministic duplicate checks
+active and mark DINOv2 blocked truthfully.
+
+=====================================================================
+19. TAMPER / FORENSICS
+=====================================================================
+
+Current ELA/noise/high-pass screening works.
+
+Keep it as an indicator system, NOT a fraud detector.
+
+A visual-forensics record should describe measurable findings:
+
+- region
+- method
+- statistic
+- threshold/baseline
+- confidence/strength if justified
+- source page
+- explanation
+
+Avoid unsupported wording such as:
+"This document was edited."
+
+Prefer:
+"Region exhibits an image-compression inconsistency and requires human
+verification."
+
+SEGFORMER
+---------
+Only activate SegFormer when a document-forensics segmentation checkpoint
+exists and inference succeeds.
+
+A generic segmentation model is insufficient.
+
+=====================================================================
+20. ANOMALY AND RISK MODELS
+=====================================================================
+
+ISOLATION FOREST
+----------------
+Current IsolationForest is active.
+
+Ensure it only runs when minimum corpus/sample conditions are met.
+
+Expose:
+
+- feature names
+- anomaly score
+- threshold
+- baseline population
+- model version
+- explanation
+
+Do not equate anomaly with fraud.
+
+XGBOOST
+-------
+Only activate XGBoost project risk model when:
+
+- labelled risk training data exists,
+- training/validation pipeline is real,
+- model checkpoint exists,
+- evaluation metrics are computed from held-out data,
+- smoke inference passes.
+
+Otherwise keep disabled/blocked.
+
+Never fabricate labelled fraud examples merely to activate the registry.
+
+=====================================================================
+21. BUSINESS RISK ENGINE
+=====================================================================
+
+Build risk analysis from multiple independent signals.
+
+Risk engine categories should include where applicable:
+
+1. field/schema inconsistencies
+2. financial inconsistencies
+3. document relationship inconsistencies
+4. bank account change/mismatch
+5. vendor identity mismatch
+6. duplicate invoice/identifier
+7. suspicious date sequence
+8. amount discrepancy
+9. missing required approval/signature
+10. unusual visual indicators
+11. anomalous document statistics
+12. near duplicate/reused page
+13. conflicting verified fields
+14. contract/payment inconsistency
+15. manually escalated reviewer concern
+
+Every risk indicator should have:
+
+risk_id
+tenant_id
+document_id(s)
+category
+severity
+status
+evidence[]
+rule/model source
+reason
+timestamp
+review state
+human decision
+
+Do not assign severe language without supporting evidence.
+
+=====================================================================
+22. HUMAN REVIEW WORKFLOW
+=====================================================================
+
+Keep current improved review UI.
+
+Ensure counts have unambiguous meaning:
+
+required_expected
+required_matched
+required_missing
+optional_extracted
+total_extracted
+duplicates_rejected
+disputed
+
+Never use inconsistent formulas.
+
+For generic/unknown schemas, do not misleadingly show:
+
+Required expected = 0
+
+as though extraction is complete.
+
+Instead show something equivalent to:
+
+"Specific schema unavailable — required-field completeness cannot be
+evaluated."
+
+Each field review must support:
+
+- accept
+- edit
+- reject
+- evidence reviewed
+- comments
+- verified/unverified/disputed state
+- reviewer
+- timestamps
+
+Document-level actions:
+
+Approve
+Reject
+Escalate
+Reprocess
+Mark error
+
+must respect unresolved required fields and permissions.
+
+Approval should be blocked if:
+- required fields unresolved,
+- critical conflicts unresolved,
+- mandatory signature condition failed where configured,
+- severe review gate exists.
+
+=====================================================================
+23. CONFIRM FRAUD BACKEND SAFEGUARD
+=====================================================================
+
+The visible Confirm Fraud action requires strong safeguards.
+
+Implement/verify:
+
+- only authorised ADMIN/reviewer role
+- backend role check, not frontend only
+- mandatory reviewer comment/reason
+- mandatory evidence selection
+- explicit acknowledgement that decision is human
+- immutable audit event
+- document/risk IDs
+- timestamp
+- previous status
+- new status
+- reviewer identity
+
+Never allow an automated model to invoke Confirm Fraud.
+
+Consider renaming the normal model state to:
+
+"Suspicious — human verification required"
+
+while retaining Confirm Fraud only as a privileged human decision.
+
+=====================================================================
+24. NEO4J SEMANTIC KNOWLEDGE GRAPH
+=====================================================================
+
+Neo4j technical connectivity is now solved.
+
+Do NOT spend time rebuilding connection code unless a real issue appears.
+
+Now improve GRAPH SEMANTICS.
+
+Primary node types should include where applicable:
+
+Document
+Page
+Person
+Organisation
+Vendor
+Customer
+Product
+Identifier
+Invoice
+PurchaseOrder
+Contract
+BankAccount
+DateValue
+Amount
+Address
+ContactMethod
+Signature
+Stamp
+Clause
+RiskIndicator
+Evidence
+ReviewDecision
+
+Do not force every primitive into a node if a property is more appropriate.
+Use a sensible ontology.
+
+Potential relationships:
+
+CONTAINS_PAGE
+HAS_FIELD
+HAS_SAMPLE_NUMBER
+HAS_DOCUMENT_DATE
+REQUESTED_BY
+SPECIFICATIONS_WRITTEN_BY
+HAS_PRODUCT_TYPE
+HAS_BATCH_SIZE
+REFERENCES
+ISSUED_BY
+ISSUED_TO
+MATCHES_PO
+MATCHES_INVOICE
+HAS_BANK_ACCOUNT
+REQUESTS_PAYMENT_TO
+APPROVED_BANK_ACCOUNT
+HAS_AMOUNT
+HAS_CLAUSE
+HAS_SIGNATURE
+HAS_STAMP
+HAS_RISK
+SUPPORTED_BY
+REVIEWED_BY
+CONFLICTS_WITH
+POSSIBLE_DUPLICATE_OF
+RELATED_TO
+
+Use MERGE and stable natural/internal IDs to ensure idempotency.
+
+Do not create duplicate entity nodes every time a document is reprocessed.
+
+Preserve:
+
+tenant_id
+source_document_id
+page
+evidence
+confidence
+verification status
+processing version
+
+Graph data must be rebuilt/updated when reviewed fields change.
+
+=====================================================================
+25. KNOWLEDGE GRAPH UI
+=====================================================================
+
+Current graph works but can be difficult to understand.
+
+Improve WITHOUT redesigning the entire page.
+
+Requirements:
+
+- meaningful node labels
+- relationship labels readable
+- colours/shapes by semantic type
+- hover/click details
+- evidence panel
+- verified/unverified state
+- confidence where relevant
+- filter by node type
+- filter by status
+- filter by relationship
+- search
+- path-from
+- path-to
+- highlight path
+- selected document scope
+
+Avoid meaningless nodes labelled only as:
+"Field"
+"value"
+or truncated generic strings when a semantic label is available.
+
+For the sample document, prefer graph structure such as:
+
+Document
+ ├─ HAS_SAMPLE_NUMBER → 1194-90
+ ├─ HAS_DOCUMENT_DATE → 3/14/90
+ ├─ REQUESTED_BY → J.H. Bell
+ ├─ HAS_REQUEST_DATE → 2/15/90
+ ├─ HAS_PURPOSE → Cigarette Modification B-451
+ ├─ SPECIFICATIONS_WRITTEN_BY → C.W. Lassiter
+ ├─ HAS_BATCH_SIZE → 47.5 lbs
+ └─ HAS_PRODUCT_TYPE → 100 mm Filter
+
+=====================================================================
+26. REAL GRAPH QUERY / GRAPHRAG
+=====================================================================
+
+The "Ask a relationship question" control must not merely run local projection
+search.
+
+Implement a real GraphRAG retrieval path.
+
+Possible query:
+
+"Which documents are associated with the same bank account?"
+
+Pipeline:
+
+question
+   ↓
+scope/tenant resolution
+   ↓
+intent/entity extraction
+   ↓
+Neo4j parameterized graph query/path retrieval
+   ↓
+evidence resolution back to documents/pages
+   ↓
+optional text/vector supporting retrieval
+   ↓
+grounded generator
+   ↓
+citation validation
+   ↓
+answer
+
+Never allow arbitrary unsafe Cypher directly from frontend user text.
+
+Use controlled query templates or securely generated/validated read-only
+queries.
+
+=====================================================================
+27. BGE-M3 — SEMANTIC RETRIEVAL
+=====================================================================
+
+Current local-hashing-v1 should remain as a safe fallback.
+
+Attempt to activate BAAI/bge-m3.
+
+Current registry indicates FlagEmbedding is missing.
+
+Install compatible dependencies if feasible.
+
+Activation requirements:
+
+- package import
+- checkpoint available/download permitted by existing policy
+- encoder initializes
+- real chunk embedding smoke test
+- dimension/shape validation
+- retrieval smoke test
+
+Use BGE-M3 for semantic document/chunk retrieval.
+
+Store embedding metadata:
+
+tenant_id
+document_id
+page
+chunk_id
+source
+verification status
+content type
+processing version
+
+Do not embed only extracted field values.
+
+Index:
+
+- OCR lines
+- meaningful layout blocks
+- semantic chunks
+- extracted fields
+- tables
+- verified facts
+- graph facts where useful
+- visual detection descriptions
+- risk evidence summaries
+
+=====================================================================
+28. QDRANT
+=====================================================================
+
+Activate Qdrant after BGE retrieval is operational, or use current compatible
+embedding until BGE is ready if architecture permits.
+
+Use tenant-safe collections/filters.
+
+The vector DB must support:
+
+- insert/upsert
+- delete/reindex document
+- metadata filtering
+- retrieval top-k
+- version-aware reprocessing
+- tenant isolation
+
+Reprocessing must not create stale duplicate chunks.
+
+Use stable point IDs or delete previous version before replacement.
+
+After activation:
+
+- health check
+- upsert test
+- filtered semantic search test
+- app-level retrieval smoke test
+
+Then registry may show ACTIVE.
+
+=====================================================================
+29. BGE RERANKER
+=====================================================================
+
+Attempt BAAI/bge-reranker-v2-m3 after base retrieval works.
+
+Input:
+top retrieval candidates
+
+Output:
+reranked candidates with measured scores.
+
+Do not invent reranker scores when reranker is unavailable.
+
+Fallback:
+use deterministic combined lexical/vector scoring.
+
+=====================================================================
+30. HYBRID RETRIEVAL CASCADE
+=====================================================================
+
+Ask Documents should not depend on only one retrieval mechanism.
+
+Implement a retrieval cascade over:
+
+1. verified fields
+2. reviewed fields
+3. unverified structured fields
+4. exact identifiers
+5. schema aliases
+6. OCR key-value pairs
+7. OCR lines
+8. semantic chunks
+9. lexical/BM25-like retrieval
+10. BGE vector retrieval
+11. reranked candidates
+12. Neo4j facts/paths
+13. tables
+14. visual detections
+15. risk indicators
+16. deterministic calculations
+
+Retrieve only within user-selected tenant/document scope.
+
+=====================================================================
+31. CONVERSATIONAL RAG STATE
+=====================================================================
+
+This is mandatory.
+
+Do not treat every message independently.
+
+Maintain conversation/session state including:
+
+- current tenant
+- selected scope
+- selected document(s)
+- last intent
+- entities
+- unresolved clarification
+- previous answer evidence
+- requested comparison
+- pending risk category
+
+Example:
+
+USER:
+"Is this safe?"
+
+ASSISTANT:
+clarification_needed
+
+Options:
+- document quality
+- suspicious indicators
+- financial consistency
+- signature/stamp presence
+- approval status
+
+USER selects:
+"Check suspicious indicators"
+
+This second action must resolve the pending clarification from the same
+conversation and same document.
+
+Do NOT classify it as an unrelated new question.
+
+Also support natural follow-ups:
+
+"What about the date?"
+"Who requested it?"
+"Compare that with the purchase order."
+"Why is it suspicious?"
+"Show the evidence."
+"Which page?"
+"Is that verified?"
+"What else is related to this vendor?"
+
+=====================================================================
+32. QUERY UNDERSTANDING
+=====================================================================
+
+Avoid brittle exact keyword routing.
+
+Use:
+
+- normalized text
+- aliases
+- intent patterns
+- conversation context
+- entities
+- selected document scope
+
+Intent categories may include:
+
+field_lookup
+summary
+comparison
+calculation
+risk_question
+graph_relationship
+document_quality
+signature_presence
+approval_status
+source_request
+follow_up
+clarification_response
+
+A question does NOT have to match a hard-coded sentence.
+
+=====================================================================
+33. DETERMINISTIC CALCULATIONS
+=====================================================================
+
+For numeric questions:
+
+- retrieve verified/appropriate source values
+- parse Decimal safely
+- execute deterministic calculation
+- return operation
+- return inputs
+- cite sources
+- never delegate arithmetic to hallucination-prone generation alone
+
+Examples:
+
+sum invoice totals
+count verified invoices
+difference between invoice and PO
+percentage variance
+date interval
+
+=====================================================================
+34. QWEN LOCAL GENERATOR
+=====================================================================
+
+Current registry shows Qwen/Qwen3.5-9B disabled due to missing transformers and
+checkpoint/assets.
+
+Attempt activation only if practical on this Apple Silicon machine.
+
+Be resource-aware:
+system memory is limited.
+
+Do not destroy application responsiveness by forcing an oversized model.
+
+Investigate available implementation path already coded in repository.
+
+Possible conditions:
+
+ENABLE_HEAVY_MODELS=true
+ENABLE_QWEN_LOCAL=true
+QWEN_CHECKPOINT=...
+
+Install transformers/torch only if compatible.
+
+If full Qwen checkpoint is too resource-intensive:
+
+- do not falsely activate,
+- keep grounded-template-generator-v1 active,
+- make local Qwen state BLOCKED_BY_RESOURCES or appropriate reason.
+
+If a smaller compatible explicitly configured Qwen model is supported by the
+existing project design, only use it if this does not violate the configured
+model contract.
+
+Do NOT silently substitute an unrelated model while still displaying
+"Qwen/Qwen3.5-9B".
+
+=====================================================================
+35. GENERATION GUARDRAILS
+=====================================================================
+
+Whether using Qwen, external provider or template generator:
+
+Generator receives ONLY:
+
+- retrieved evidence
+- verified deterministic calculations
+- controlled graph facts
+- current conversation state
+
+Answer schema should include:
+
+answer
+status
+confidence/support indicator
+citations
+sources checked
+retrieval path
+calculations where applicable
+limitations
+
+Possible status:
+
+supported
+partially_supported
+not_found
+clarification_needed
+conflicting_evidence
+review_required
+
+Do not answer unsupported facts.
+
+=====================================================================
+36. EXTERNAL LLM PROVIDER
+=====================================================================
+
+Keep optional OpenAI-compatible external provider support.
+
+Do NOT require external provider for project operation.
+
+Do not expose API keys to frontend.
+
+Registry should show disabled/block reason when not configured.
+
+When enabled, run:
+- connection test
+- evidence-only prompt smoke test
+- schema validation
+- citation/numeric grounding validation
+
+=====================================================================
+37. CITATIONS
+=====================================================================
+
+Current analytics may show citation coverage unavailable when no supported
+answers are measured.
+
+Make citation metrics real.
+
+Every evidence-grounded answer should cite enough information to resolve:
+
+- source document
+- page
+- field/span/region
+- chunk where appropriate
+
+Clicking evidence in UI should navigate/show relevant source when practical.
+
+Calculate:
+
+citation_coverage =
+supported answers with valid citations /
+supported answers requiring citations
+
+Do not calculate against zero supported answers as a misleading percentage.
+
+Use:
+"Not available — no eligible answers"
+
+when denominator = 0.
+
+=====================================================================
+38. FINANCE NARRATIVES
+=====================================================================
+
+Current finance narrative functionality is strong.
+
+Preserve:
+
+- verified values
+- source counts
+- calculation functions
+- versioning
+- generate/reuse
+- new version
+- citations
+
+Strengthen:
+
+- currency grouping
+- date filtering
+- vendor filtering
+- document scoping
+- duplicate invoice exclusion
+- approved/verified values only where required
+- decimal arithmetic
+- source snapshot hashing/versioning
+
+Narratives should never silently mix currencies.
+
+Example:
+
+sum(Decimal(verified total_amount)) grouped by verified currency
+
+is good.
+
+Keep it auditable.
+
+=====================================================================
+39. REPORTS
+=====================================================================
+
+Preserve current report system:
+
+- document intelligence reports
+- version
+- source snapshot
+- creator
+- creation time
+- view sources
+- download
+- regenerate/new version
+- reuse semantics
+
+Ensure reports include:
+
+- document summary
+- classification
+- extracted fields
+- reviewed/verified status
+- OCR/layout summary
+- tables where present
+- risk indicators
+- graph relations
+- model/runtime trace
+- limitations
+- source evidence
+
+Report generation must operate from immutable source snapshots/version IDs.
+
+=====================================================================
+40. ANALYTICS
+=====================================================================
+
+The previous 43,000+ second duration bug appears fixed.
+
+Prevent regression.
+
+Durations must derive from real monotonic or valid start/end timestamps.
+
+Do not mix:
+- Unix epoch
+- local timestamp
+- milliseconds
+- seconds
+
+Metrics should include where supported:
+
+document count
+success/failure
+document types
+structured extraction coverage
+schema coverage
+mean OCR confidence
+mean field confidence
+mean processing
+median processing
+P95 processing
+stage latency
+review counts
+risk counts
+generated artefacts
+citation coverage
+model activation state
+
+For model evaluation, do NOT use operational inference counts as "accuracy."
+
+Only report evaluation metrics from labelled ground truth.
+
+=====================================================================
+41. MODEL LABORATORY
+=====================================================================
+
+Ensure Model Laboratory distinguishes:
+
+A. deployment/runtime smoke testing
+B. actual model evaluation
+C. training
+
+Smoke test != accuracy evaluation.
+
+For each model show:
+
+name
+stage
+provider
+requested state
+runtime state
+health
+device
+package version
+checkpoint
+checkpoint availability
+init latency
+inference latency
+schema
+last test
+reason when blocked
+
+Training actions require appropriate dataset/configuration.
+
+=====================================================================
+42. MODEL REGISTRY UI CORRECTNESS
+=====================================================================
+
+Current truthful registry behaviour is good.
+
+Preserve it.
+
+Fix any inconsistency where:
+
+- pipeline uses a runtime,
+- but registry says unavailable,
+
+or vice versa.
+
+Single source of runtime truth.
+
+Requested toggle means:
+
+"deployment intent"
+
+NOT:
+"model is active."
+
+A requested model becomes active only after validation.
+
+If toggle is ON while blocked:
+
+Requested: ON
+Runtime: BLOCKED
+Reason: Missing checkpoint
+
+This is correct.
+
+=====================================================================
+43. DEBERTA CUAD
+=====================================================================
+
+Only activate contract intelligence if:
+
+- transformers/torch operational
+- compatible CUAD-style checkpoint available
+- contract-specific inference succeeds
+
+Use clause output as evidence, not final legal judgement.
+
+Potential use:
+- renewal
+- termination
+- governing law
+- payment terms
+- liability
+- confidentiality
+- change-of-control
+etc., depending on actual trained task.
+
+Do not claim unsupported legal conclusions.
+
+=====================================================================
+44. REPROCESSING AND VERSIONING
+=====================================================================
+
+Reprocessing must be safe and idempotent.
+
+When reprocessing a document:
+
+1. create new processing run/version
+2. preserve original artefacts/history
+3. replace or version current extracted facts
+4. refresh vector index
+5. refresh graph projection/Neo4j
+6. refresh risk indicators
+7. invalidate stale generated narrative/report only when appropriate
+8. maintain review history
+9. retain audit events
+
+Do not create duplicated graph/vector objects indefinitely.
+
+=====================================================================
+45. AUTHENTICATION, AUTHORISATION AND AUDIT
+=====================================================================
+
+Inspect existing auth.
+
+Do not weaken it.
+
+Roles should constrain at least:
+
+ADMIN
+REVIEWER
+standard/user role if present
+
+Sensitive actions require backend permission:
+
+- document deletion
+- report deletion
+- confirmation of fraud
+- review override
+- model configuration
+- reprocessing if restricted
+- organisation settings
+
+Audit history should capture meaningful actions:
+
+login if currently designed
+upload
+processing
+review action
+field edit
+approval
+rejection
+escalation
+fraud confirmation
+report generation
+narrative generation
+model configuration
+reprocessing
+deletion
+
+Never log secrets/API keys/passwords.
+
+=====================================================================
+46. SECURITY / SECRET HANDLING
+=====================================================================
+
+Do not commit:
+
+- Neo4j password
+- API keys
+- JWT secrets
+- database credentials
+- external provider keys
+
+Ensure:
+.env
+backend/.env
+
+are ignored appropriately.
+
+Frontend VITE_* variables must never contain Neo4j/database secrets.
+
+React talks to FastAPI only.
+
+=====================================================================
+47. FRONTEND QUALITY
+=====================================================================
+
+Do NOT redesign the application.
+
+Current UI structure is acceptable.
+
+Fix functionality and clarity.
+
+Required pages must remain operational:
+
+Dashboard
+Upload
+Documents
+Review Queue
+Ask Documents
+Knowledge Graph
+Analytics
+Finance Narratives
+Reports
+Model Laboratory
+Admin Settings
+Audit History
+
+Fix:
+
+- loading states
+- meaningful errors
+- disabled state reasons
+- overflow
+- clipped graph labels
+- stale state
+- incorrect counts
+- nonfunctional buttons
+- inconsistent statuses
+- unnecessary duplicate requests
+
+Do not add decorative UI that does not improve functionality.
+
+=====================================================================
+48. UPLOAD FLOW
+=====================================================================
+
+Maintain asynchronous processing.
+
+Upload should support current intended formats:
+
+PDF
+TXT
+PNG
+JPG/JPEG
+TIFF
+
+Validate:
+- size
+- MIME/type
+- duplicate handling
+- tenant
+- filename safety
+
+Processing profile should support:
+
+automatic classification
+explicit document type override
+advanced parser request
+signature required
+approved bank identifier where applicable
+
+Do not apply finance-specific controls nonsensically to unrelated documents.
+
+=====================================================================
+49. PROCESSING TRACE
+=====================================================================
+
+For each document provide an inspectable trace:
+
+ingestion
+preprocessing
+OCR
+layout
+classification
+schema selection
+extraction
+table extraction
+visual detection
+forensics
+risk
+indexing
+graph projection
+review routing
+
+Each stage:
+
+status
+started_at
+ended_at
+duration
+runtime/model
+fallback
+warning/error
+output schema/version
+
+This trace powers trustworthy analytics and debugging.
+
+=====================================================================
+50. FAILURE HANDLING
+=====================================================================
+
+Current analytics shows at least one failure.
+
+Identify actual failed document/run.
+
+Do not hide it.
+
+Determine:
+- stage
+- exception
+- root cause
+- whether retryable
+
+Fix if reproducible.
+
+Provide retry/reprocess handling.
+
+A failed optional model should not necessarily fail the entire document when
+safe fallback exists.
+
+But fallback must be visible.
+
+=====================================================================
+51. TEST STRATEGY
+=====================================================================
+
+Run and expand tests.
+
+UNIT TESTS
+----------
+At minimum:
+
+- date parser
+- phone parser
+- identifier parser
+- amount parser
+- alias matcher
+- spatial key/value matching
+- duplicate resolver
+- schema selection
+- risk rule evaluation
+- graph MERGE/idempotency
+- numeric calculation
+- citation validator
+- conversation state resolution
+
+Critical regression:
+
+"3/14/90" MUST classify as a date and MUST NOT classify as a phone.
+
+INTEGRATION TESTS
+-----------------
+Test:
+
+upload -> processing -> extraction
+
+review -> verified field
+
+reprocess -> updated extraction
+
+document -> vector index
+
+document -> Neo4j
+
+question -> retrieval -> evidence -> answer
+
+clarification -> response -> same conversational context
+
+finance narrative -> verified arithmetic
+
+report -> immutable source snapshot
+
+ROLE TESTS
+----------
+Confirm unauthorised users cannot execute privileged actions.
+
+=====================================================================
+52. REAL END-TO-END ACCEPTANCE TESTS
+=====================================================================
+
+Do not rely only on mocked tests.
+
+Run real application tests on representative documents.
+
+ACCEPTANCE A — SAMPLE BUSINESS FORM
+-----------------------------------
+Use 87093315_87093318.png.
+
+Expected semantic extraction described previously.
+
+Verify:
+- correct classification/schema
+- at least expected visible core fields
+- evidence boxes
+- correct dates
+- no date-as-phone
+- semantic Neo4j nodes
+- Ask Documents can answer:
+  "What is the sample number?"
+  "Who requested the sample?"
+  "When was the request made?"
+  "What was the purpose?"
+  "Who wrote the specifications?"
+  "Show the evidence."
+
+ACCEPTANCE B — 00093726.png
+---------------------------
+Verify previously listed semantic fields and no duplicate title/date error.
+
+ACCEPTANCE C — INVOICE
+----------------------
+Use a real current dataset invoice.
+
+Verify:
+- invoice number
+- vendor
+- date
+- amount
+- currency
+- PO reference where present
+- bank details where present
+- finance narrative
+- citations
+
+ACCEPTANCE D — PO / INVOICE RELATIONSHIP
+----------------------------------------
+Where suitable source documents exist:
+
+Invoice -> REFERENCES/MATCHES -> Purchase Order
+
+Verify Neo4j path.
+
+ACCEPTANCE E — BANK CHANGE RISK
+-------------------------------
+Only using real or clearly labelled synthetic test data already intended for
+the project.
+
+If invoice payment account differs from verified approved vendor account:
+
+produce:
+"Bank account mismatch — human verification required"
+
+Do not say fraud.
+
+ACCEPTANCE F — CONVERSATIONAL QA
+--------------------------------
+
+Question:
+"Is this safe?"
 
 System:
 clarification needed
 
-System asks whether the user means:
+Select:
+"Check suspicious indicators"
 
-- document quality
-- financial consistency
-- suspicious indicators
-- signature presence
-- approval status
+System:
+uses original context and performs the requested evidence lookup.
 
-User: “yes”
+Then:
 
-Current result:
+"Why?"
+"Show the evidence."
+"What page is that on?"
 
-not found
-semantic question
-local-hybrid
+must preserve conversation.
 
-This proves that conversational clarification state is not preserved.
-
-“yes” must not be treated as a standalone document question.
-
-DEFECT E — RAG EVIDENCE RETRIEVAL IS STILL WEAK
-
-Ask Documents repeatedly returns the base no-evidence response.
-
-The system must answer questions using:
-
-1. verified fields
-2. unverified extracted fields
-3. OCR key-value pairs
-4. OCR lines
-5. document chunks
-6. graph facts
-7. visual detections
-8. deterministic calculations
-
-It must not stop after one retrieval source returns no match.
-
-DEFECT F — GRAPH RELATIONSHIPS ARE NOT UNDERSTANDABLE
-
-The current graph contains:
-
-- Document
-- Page
-- ExtractedField
-- DocumentTitle
-- proposed relationships
-
-But:
-
-- node names are based on incorrect extraction
-- edge relationship names are not clearly visible
-- the graph resembles a technical projection rather than an enterprise graph
-- incorrect “document title” values are turned into graph entities
-- the reviewer cannot easily understand what each relationship means
-- graph evidence is not prominent
-- semantic business entities are missing
-
-DEFECT G — MOST TARGET MODELS REMAIN BLOCKED
-
-Currently active or available:
-
-- Tesseract-5
-- local-layout-adapter-v1
-- deterministic-schema-extractor-v2
-- OpenCV visual cues
-- ELA-noise-forensics-v1
-- IsolationForest
-- local-hashing-v1
-- local-vector-store-v1
-- local-graph-projection-v1
-- grounded-template-generator-v1
-
-Currently blocked or disabled:
-
-- PP-OCRv5
-- PP-StructureV3 / PP-DocLayoutV3
-- LayoutLMv3
-- PaddleOCR-VL
-- Donut
-- DINOv2
-- trained YOLO document detector
-- DeBERTa-CUAD
-- SegFormer document forensics
-- XGBoost risk model
-- BGE-M3
-- BGE reranker
-- Qdrant
-- Neo4j
-- local instruction LLM
-- external LLM provider
-
-DEFECT H — LOCAL PARSER REGISTRY INCONSISTENCY
-
-The local parser is shown as unavailable because its smoke test has not run,
-although the document-processing pipeline is clearly functioning.
-
-The registry must execute and store a valid smoke test for every component used
-by the live pipeline.
-
-DEFECT I — ANALYTICS PROCESSING-TIME ERROR
-
-Analytics displays:
-
-Average processing = 43683.1 seconds
-
-This is not credible for the visible jobs and likely reflects:
-
-- incorrect timestamps
-- stale jobs
-- queued duration included incorrectly
-- null timestamp substitution
-- timezone mismatch
-- legacy records
-- milliseconds/seconds conversion error
-
-DEFECT J — EXTRACTION COVERAGE IS STILL ONLY 47%
-
-Nine of seventeen documents still lack fields.
-
-The application must improve readable form extraction using generic,
-document-specific and OCR-backed schema fallback.
-
-DEFECT K — GRAPH QUERYING IS NOT YET REAL GRAPHRAG
-
-Graph query and Ask Documents must be able to use graph paths as evidence,
-not merely display the local graph.
-
-DEFECT L — CONFIRM FRAUD MUST REMAIN EVIDENCE-GATED
-
-The button is visible because the current account appears to be ADMIN.
-
-Verify that the backend still requires:
-
-- authorised role
-- selected evidence
-- written rationale
-- acknowledgement
-- reviewer comment
-- audit event
-- recent authentication where configured
-
-=======================================================================
-3. FIRST ACTION — REAL REPOSITORY AND RUNTIME AUDIT
-=======================================================================
-
-Inspect the actual repository and runtime.
-
-Do not rely only on registry configuration.
-
-Inspect:
-
-- operating system
-- CPU architecture
-- available RAM
-- Python version
-- Node version
-- Docker availability
-- currently active virtual environment
-- FastAPI process
-- worker process
-- MongoDB
-- Redis
-- object storage
-- installed packages
-- existing checkpoints
-- environment variables
-- migrations
-- document schemas
-- extraction aliases
-- OCR line storage
-- vector index
-- graph projection
-- RAG query router
-- conversation storage
-- analytics aggregation
-- model-registry smoke-test logic
-
-Run and record:
-
-python --version
-python -c "import platform; print(platform.platform(), platform.machine())"
-pip list
-docker version
-docker compose ps
-git status
-git log -5 --oneline
-
-Create a safe Git checkpoint before modifications.
-
-Do not destroy user documents, review decisions or audit history.
-
-Create a clean demo-organisation migration or archive path where old invalid
-records must be separated from new test results.
-
-Produce a brief audit and then immediately continue implementation.
-
-=======================================================================
-4. PHASE 1 — REBUILD EXTRACTION QUALITY BEFORE ACTIVATING MORE MODELS
-=======================================================================
-
-The current deterministic extractor executes, but it does not understand fields
-accurately enough.
-
-Create or upgrade to:
-
-deterministic-schema-extractor-v3
-
-The extraction pipeline must be:
-
-page image
-    ↓
-multi-pass preprocessing
-    ↓
-OCR words
-    ↓
-OCR line reconstruction
-    ↓
-label candidate recognition
-    ↓
-label alias normalisation
-    ↓
-spatial value association
-    ↓
-field-type validation
-    ↓
-duplicate/conflict resolution
-    ↓
-schema mapping
-    ↓
-evidence persistence
-
------------------------------------------------------------------------
-4.1 MULTI-PASS OCR FOR CRITICAL REGIONS
------------------------------------------------------------------------
-
-Do not trust a single full-page Tesseract pass.
-
-For low-confidence lines or recognised field labels:
-
-1. crop the line or field region
-2. upscale by an appropriate factor
-3. test grayscale
-4. test adaptive thresholding
-5. test contrast enhancement
-6. test appropriate Tesseract page-segmentation modes
-7. compare candidate outputs
-8. select the candidate using field-type validation
-9. retain all OCR candidates in provenance
-
-For the visible date line:
-
-“Date: September 21, 1976”
-
-The system should attempt to correct:
-
-“bate: september 21, 11/6”
-
-using:
-
-- expected label vocabulary
-- image-region re-OCR
-- date parsing
-- context
-- character-confusion patterns
-
-Do not silently rewrite source text without evidence.
-
-Store:
-
-{
-  "raw_ocr": "bate: september 21, 11/6",
-  "corrected_ocr": "Date: September 21, 1976",
-  "correction_method": "roi_reocr_and_date_validation",
-  "correction_confidence": 0.0,
-  "candidates": [],
-  "evidence_box": []
-}
-
-When correction is still uncertain:
-
-- retain the raw value
-- set normalised_value to null
-- route for review
-
------------------------------------------------------------------------
-4.2 LABEL ALIAS DICTIONARY
------------------------------------------------------------------------
-
-Add aliases for at least:
-
-date:
-- date
-- dated
-- document date
-- form date
-- request date
-
-sample_number:
-- sample no
-- sample no.
-- sample number
-- sample id
-
-product_type:
-- type of cigarette
-- product type
-- item type
-- sample type
-
-batch_size:
-- batch size
-- quantity
-- lot size
-
-requested_by:
-- original request made by
-- requested by
-- requestor
-- requester
-
-specifications_written_by:
-- sample specifications written by
-- specifications by
-- prepared by
-
-document_title:
-- title
-- document title
-- form title
-- heading
-
-Do not map a line beginning with “Date:” to document_title.
-
------------------------------------------------------------------------
-4.3 SPATIAL VALUE ASSOCIATION
------------------------------------------------------------------------
-
-Associate values using this order:
-
-1. value after colon on the same line
-2. value immediately right of the label
-3. underlined value region after the label
-4. value directly below the label
-5. table-cell association
-6. nearest validated candidate in the same block
-
-Store separate label and value bounding boxes.
-
------------------------------------------------------------------------
-4.4 FIELD-TYPE VALIDATION
------------------------------------------------------------------------
-
-Date fields:
-
-- parse month names
-- parse numeric dates
-- preserve raw text
-- store ISO value only when sufficiently unambiguous
-- detect impossible years and malformed dates
-
-Numeric identifiers:
-
-- preserve punctuation
-- avoid interpreting them as dates unless the label is a date label
-
-Names:
-
-- preserve initials and titles
-- do not classify a whole date line as a person or title
-
-Quantities:
-
-- preserve number and unit
-- separate numeric value and unit where useful
-
------------------------------------------------------------------------
-4.5 DUPLICATE AND CONFLICT RESOLUTION
------------------------------------------------------------------------
-
-Create a field candidate resolver.
-
-The same evidence span must not populate multiple incompatible schema fields.
-
-For every candidate calculate:
-
-- label match
-- spatial relationship
-- type validity
-- OCR confidence
-- schema compatibility
-- duplicate penalty
-- conflict penalty
-
-When two fields use substantially identical evidence:
-
-- select the best schema field
-- mark the other candidate rejected
-- record the reason
-
-Example:
-
-Date line
-→ date
-
-It must not simultaneously become:
-
-document_title
-form_title
-
------------------------------------------------------------------------
-4.6 REQUIRED SCHEMAS
------------------------------------------------------------------------
-
-Create or verify schemas for:
-
-- business_form
-- generic_key_value_form
-- fax_transmission
-- invoice
-- purchase_order
-- receipt
-- bank_confirmation
-- contract
-- report
-- correspondence
-- unknown/generic metadata
-
-Business-form schema for the displayed test document must include:
-
-- date
-- sample_number
-- product_type
-- batch_size
-- requested_by
-- specifications_written_by
-- document_title, optional
-- organisation_name, optional
-- additional_notes, optional
-
------------------------------------------------------------------------
-4.7 EXPECTED-FIELD DISPLAY
------------------------------------------------------------------------
-
-Replace ambiguous summary:
-
-Expected 3 | Extracted 2 | Missing 2
-
-with:
-
-Required expected: 3
-Required matched: 1
-Required missing: 2
-Optional extracted: 1
-Total extracted: 2
-Duplicates rejected: 1
-Disputed: 0
-
-Use the same calculation service in:
-
-- document viewer
-- review workspace
-- analytics
-- reports
-
-=======================================================================
-5. PHASE 2 — IMPLEMENT A REAL MULTI-SOURCE RAG PIPELINE
-=======================================================================
-
-The current local-hybrid query pipeline is insufficient.
-
-Implement a full retrieval cascade that works even before all heavy models are
-available.
-
------------------------------------------------------------------------
-5.1 QUERY ROUTING
------------------------------------------------------------------------
-
-Classify questions as:
-
-- greeting
-- help
-- clarification_response
-- structured_field_lookup
-- OCR_lookup
-- semantic_question
-- relationship_question
-- arithmetic_question
-- visual_question
-- risk_question
-- comparison_question
-- approval_question
-- unsupported_question
-
------------------------------------------------------------------------
-5.2 CONVERSATION AND CLARIFICATION STATE
------------------------------------------------------------------------
-
-Persist conversation state in backend storage.
-
-Required fields:
-
-{
-  "conversation_id": "...",
-  "user_id": "...",
-  "organisation_id": "...",
-  "selected_scope": {},
-  "pending_clarification": {},
-  "last_query_type": "...",
-  "turns": [],
-  "expires_at": "..."
-}
-
-When the user asks:
-
-“Is this safe?”
-
-Return structured clarification options:
-
-- Check document quality
-- Check suspicious indicators
-- Check financial consistency
-- Check signature or stamp presence
-- Check approval status
-
-The frontend must display selectable chips or buttons.
-
-A reply such as “yes” must not be sent as an independent semantic query.
-
-When no option has been selected, respond:
-
-“Please select which type of safety check you want me to perform.”
-
-When a chip is selected, create the resolved question and continue retrieval.
-
------------------------------------------------------------------------
-5.3 RETRIEVAL CASCADE
------------------------------------------------------------------------
-
-Use this exact sequence:
-
-1. verified structured fields
-2. reviewed structured fields
-3. unverified extracted fields
-4. field aliases
-5. OCR key-value pairs
-6. reconstructed OCR lines
-7. lexical/BM25 chunks
-8. dense vector retrieval
-9. reranked evidence
-10. graph facts and paths
-11. visual detections
-12. deterministic calculations
-
-Do not return not_found until all enabled relevant sources have been checked.
-
-Store retrieval trace:
-
-{
-  "sources_checked": [],
-  "candidate_counts": {},
-  "selected_evidence": [],
-  "retrieval_duration_ms": 0,
-  "retriever_versions": {}
-}
-
------------------------------------------------------------------------
-5.4 OCR AND FIELD QUESTIONS
------------------------------------------------------------------------
-
-For the business-form document, these questions must work when evidence exists:
-
-- What is the date?
-- What is the sample number?
-- What type of product is shown?
-- What is the batch size?
-- Who made the original request?
-- Who wrote the sample specifications?
-
-Answers must cite:
-
-- filename
-- page
-- source text
-- bounding box
-- extraction status
-- confidence
-
------------------------------------------------------------------------
-5.5 SAFETY AND RISK QUESTIONS
------------------------------------------------------------------------
-
-For:
-
-“Is this document safe?”
-
-Do not make a legal or fraud conclusion.
-
-Answer using separated categories:
-
-- processing quality
-- data-quality issues
-- business-rule indicators
-- visual-manipulation indicators
-- approval status
-
-Example:
-
-“No confirmed fraud determination is available. The document has two
-unverified fields and two unresolved required fields. It therefore requires
-human review.”
-
-Include citations to the relevant fields and indicators.
-
------------------------------------------------------------------------
-5.6 ANSWER GENERATION
------------------------------------------------------------------------
-
-Maintain the grounded-template generator as a safe fallback.
-
-Activate a real LLM only after retrieval works.
-
-The generator must receive only:
-
-- resolved question
-- retrieved evidence
-- verified facts
-- deterministic calculations
-- graph paths
-- source metadata
-
-Required response:
-
-{
-  "answer": "...",
-  "answer_status":
-    "supported|partially_supported|not_found|clarification_needed",
-  "query_type": "...",
-  "citations": [],
-  "confidence": 0.0,
-  "retrieval_trace_id": "...",
-  "retriever": "...",
-  "reranker": "...",
-  "generator": "...",
-  "requires_review": false
-}
-
-No citation means no factual claim.
-
-=======================================================================
-6. PHASE 3 — ACTIVATE THE PRACTICAL CORE AI STACK
-=======================================================================
-
-Do not attempt to activate every large research model simultaneously.
-
-Activate the core operational stack first.
-
-Required priority:
-
-1. local parser
-2. PaddleOCR / PP-OCR
-3. structure/layout parser
-4. BGE embedding model
-5. reranker
-6. Qdrant
-7. Neo4j
-8. local or configured grounded LLM
-
-Advanced task-specific models come afterward.
-
------------------------------------------------------------------------
-6.1 PLATFORM-AWARE DEPENDENCY INSTALLATION
------------------------------------------------------------------------
-
-Detect the machine architecture.
-
-When running on Apple Silicon:
-
-- do not install CUDA wheels
-- use CPU or MPS-compatible PyTorch packages
-- use a compatible Paddle runtime
-- isolate conflicting AI dependencies if required
-- prefer a separate AI environment or service over breaking the backend
-
-Create dependency groups:
-
-backend/requirements/base.txt
-backend/requirements/ai-core.txt
-backend/requirements/ai-full.txt
-backend/requirements/dev.txt
-
-Create:
-
-scripts/bootstrap_ai_core.sh
-scripts/verify_ai_core.py
-scripts/smoke_test_models.py
-
-The bootstrap script must:
-
-- detect platform
-- install compatible dependencies
-- start required containers
-- download only explicitly permitted checkpoints
-- validate checkpoint paths
-- run smoke tests
-- produce a summary
-
-Never expose credentials in logs.
-
------------------------------------------------------------------------
-6.2 LOCAL PARSER
------------------------------------------------------------------------
-
-The live pipeline appears to use the local parser, but the registry shows it as
-unavailable.
-
-Run:
-
-python scripts/smoke_test_models.py --model local-parser-v1
-
-Fix any registry or adapter mismatch.
-
-It must become active only after:
-
-- initialisation
-- sample parse
-- output validation
-
------------------------------------------------------------------------
-6.3 PADDLEOCR AND STRUCTURE
------------------------------------------------------------------------
-
-Attempt real activation of:
-
-- PP-OCR
-- PP-Structure / document-layout adapter
-
-Required evidence:
-
-- package imports
-- one sample-page inference
-- returned text
-- returned boxes/polygons
-- confidence values
-- runtime
-- output-schema validation
-
-If the exact named version is not available in the installed compatible
-runtime, register the exact model/runtime actually used.
-
-Do not label an older or different model as PP-OCRv5.
-
-Use Tesseract fallback when PaddleOCR fails.
-
------------------------------------------------------------------------
-6.4 LAYOUTLMV3
------------------------------------------------------------------------
-
-Do not activate base LayoutLMv3 as a field extractor unless it has a trained
-token-classification head and label map.
-
-Inspect available training data.
-
-When labelled data exists:
-
-- create document-level train/validation/test split
-- fine-tune the model
-- save checkpoint
-- evaluate token and field F1
-- run smoke inference
-- register the checkpoint
-
-When labels are absent:
-
-- keep LayoutLMv3 marked BLOCKED_BY_LABELS
-- provide annotation conversion tools
-- continue using deterministic extraction
-
-Do not let LayoutLMv3 block core system completion.
-
------------------------------------------------------------------------
-6.5 BGE-M3 AND RERANKER
------------------------------------------------------------------------
-
-Make a serious activation attempt.
-
-Support either the intended FlagEmbedding package or a compatible,
-truthfully recorded implementation.
-
-Required checks:
-
-- package imports
-- embedding model loads
-- query embedding generated
-- document embedding generated
-- dimensions match
-- reranker scores question/passage pair
-- tenant and scope metadata preserved
-
-Do not mark BGE active merely because the package imports.
-
------------------------------------------------------------------------
-6.6 QDRANT
------------------------------------------------------------------------
-
-Start Qdrant through the repository’s Docker Compose configuration.
-
-Verify:
-
-- service health
-- collection creation
-- vector dimension
-- payload indexes
-- tenant filtering
-- document filtering
-- insertion
-- search
-- deletion/reprocessing idempotency
-
-Qdrant must be active only when the server is reachable and a real search
-passes.
-
------------------------------------------------------------------------
-6.7 NEO4J
------------------------------------------------------------------------
-
-Start Neo4j through Docker Compose.
-
-Verify:
-
-- service health
-- authentication
-- uniqueness constraints
-- tenant isolation
-- node insertion
-- relationship insertion
-- path query
-- evidence-property retrieval
-
-Neo4j must be active only when a real graph operation passes.
-
------------------------------------------------------------------------
-6.8 GROUNDED LOCAL LLM
------------------------------------------------------------------------
-
-Inspect available machine memory before selecting a local model.
-
-Use a compatible instruction model that can run reliably on the available
-hardware.
-
-Do not hard-code a model that cannot fit into memory.
-
-Possible integration paths:
-
-- local Transformers
-- an existing local model runner
-- an OpenAI-compatible local endpoint
-- a configured external endpoint when credentials already exist
-
-The ChatGPT/Codex account must not be treated as a project runtime credential.
-
-Required smoke test:
-
-- initialise provider
-- pass retrieved evidence
-- answer one grounded question
-- validate JSON response
-- verify citation IDs remain unchanged
-- verify unsupported question returns not_found
-
-If a local LLM cannot be run, the grounded-template generator remains the
-fallback, but retrieval must still work correctly.
-
-=======================================================================
-7. PHASE 4 — REBUILD THE KNOWLEDGE GRAPH SEMANTICALLY
-=======================================================================
-
-The graph must represent enterprise meaning, not merely storage structure.
-
------------------------------------------------------------------------
-7.1 GRAPH ONTOLOGY
------------------------------------------------------------------------
-
-Node types:
-
-- Document
-- Page
-- Organisation
-- Person
-- Product
-- Form
-- Invoice
-- PurchaseOrder
-- Contract
-- BankAccount
-- ContactMethod
-- Date
-- Amount
-- Identifier
-- Signature
-- Stamp
-- ExtractedField
-- RiskIndicator
-
-Relationship types:
-
-- CONTAINS_PAGE
-- HAS_FIELD
-- HAS_DATE
-- HAS_SAMPLE_NUMBER
-- HAS_PRODUCT_TYPE
-- HAS_BATCH_SIZE
-- REQUESTED_BY
-- SPECIFICATIONS_WRITTEN_BY
-- ISSUED_BY
-- ISSUED_TO
-- REFERENCES
-- ASSOCIATED_WITH
-- HAS_CONTACT
-- HAS_BANK_ACCOUNT
-- SIGNED_BY
-- HAS_RISK
-- CONFLICTS_WITH
-- MATCHES
-- DUPLICATE_OF
-
------------------------------------------------------------------------
-7.2 GRAPH CREATION RULES
------------------------------------------------------------------------
-
-Do not create a DocumentTitle node from a field whose detected label is Date.
-
-Do not promote low-confidence unverified fields into verified enterprise facts.
-
-Use:
-
-- verified relationships
-- proposed relationships
-- conflict relationships
-
-Every graph element must store:
-
-{
-  "tenant_id": "...",
-  "document_id": "...",
-  "source_page": 1,
-  "source_field_id": "...",
-  "source_text": "...",
-  "bounding_box": [],
-  "confidence": 0.0,
-  "verification_status": "verified|proposed|rejected",
-  "extractor_version": "...",
-  "pipeline_version": "..."
-}
-
------------------------------------------------------------------------
-7.3 EXPECTED GRAPH FOR 00093726.PNG
------------------------------------------------------------------------
-
-When extraction evidence supports it, create:
-
-Document: 00093726.png
-    ├── HAS_DATE → September 21, 1976
-    ├── HAS_SAMPLE_NUMBER → 6030
-    ├── HAS_PRODUCT_TYPE → 85 mm Filter
-    ├── HAS_BATCH_SIZE → 50 lbs.
-    ├── REQUESTED_BY → Dr. A. W. Spears
-    └── SPECIFICATIONS_WRITTEN_BY → W. E. Routh
-
-Do not hard-code these values in production.
-
-Use them only as test expectations derived from the supplied test fixture.
-
------------------------------------------------------------------------
-7.4 GRAPH UI
------------------------------------------------------------------------
-
-Display:
-
-- readable node labels
-- visible edge labels
-- arrow direction
-- node-type legend
-- relationship-status legend
-- verified/proposed/conflict styling
-- zoom and fit
-- search
-- type filters
-- relationship filters
-- evidence drawer
-- source-document navigation
-- confidence
-- verification status
-
-Avoid overlapping labels.
-
-Limit node size.
-
-Truncate long labels with full value on hover.
-
-When a node or edge is clicked, show:
-
-- semantic meaning
-- evidence
-- page
-- source text
-- confidence
-- relationship status
-- open-document action
-
------------------------------------------------------------------------
-7.5 GRAPH QUERY AND GRAPHRAG
------------------------------------------------------------------------
-
-Graph queries must return paths with explanations.
-
-Example question:
-
-“Who requested this sample?”
-
-Graph path:
-
-Document
-→ REQUESTED_BY
-→ Person
-
-Answer must cite the extracted field and page evidence.
-
-GraphRAG retrieval must combine:
-
-- graph path
-- related fields
-- supporting OCR text
-- verification status
-
-=======================================================================
-8. PHASE 5 — FIX ANALYTICS AND PIPELINE TIMING
-=======================================================================
-
-Investigate the displayed:
-
-43683.1 seconds average processing time
-
-Define:
-
-queued_duration =
-processing_started_at - queued_at
-
-processing_duration =
-processing_completed_at - processing_started_at
-
-review_wait_duration =
-review_completed_at - processing_completed_at
-
-Do not mix these values.
-
-Exclude:
-
-- incomplete jobs
-- missing timestamps
-- legacy records without reliable timestamps
-- negative durations
-- durations from incompatible pipeline versions
-
-Store duration in milliseconds internally.
-
-Convert once for display.
-
-Add:
-
-- mean
-- median
-- p95
-- sample size
-- pipeline version
-- per-stage timing
-
-Per-stage metrics:
-
-- ingestion
-- preprocessing
-- OCR
-- layout
-- extraction
-- validation
-- indexing
-- graph projection
-- risk screening
-
-Add a migration or recalculation script for legacy timing records.
-
-=======================================================================
-9. PHASE 6 — REPROCESS AND VERSION DATA CORRECTLY
-=======================================================================
-
-After fixing extraction and retrieval:
-
-- increment pipeline version
-- increment extractor version
-- reprocess selected demo documents
-- invalidate obsolete fields
-- replace obsolete chunks
-- replace obsolete vectors
-- rebuild graph projection
-- recalculate review reasons
-- recalculate analytics
-- preserve old audit evidence
-
-Do not create duplicate:
-
-- fields
-- chunks
-- vectors
-- graph nodes
-- graph edges
-- review tasks
-- reports
-- narratives
-
-Create commands:
-
-python -m scripts.reprocess_documents \
-  --organisation documind-demo \
-  --pipeline-version current
-
-python -m scripts.rebuild_search_index \
-  --organisation documind-demo
-
-python -m scripts.rebuild_graph \
-  --organisation documind-demo
-
-python -m scripts.recalculate_analytics \
-  --organisation documind-demo
-
-=======================================================================
-10. PHASE 7 — REVIEW AND FRAUD SAFETY
-=======================================================================
-
-Keep suspicious-indicator language.
-
-Do not automatically declare fraud.
-
-Confirm Fraud must require:
-
-- ADMIN, COMPLIANCE_OFFICER or SENIOR_REVIEWER
-- evidence selection
-- written rationale
-- reviewer comments
-- explicit acknowledgement
-- confirmation modal
-- audit event
-- second review when organisation policy requires it
-
-The button being visible to ADMIN is acceptable only when backend safeguards
-are verified.
-
-Add automated authorisation tests.
-
-=======================================================================
-11. REQUIRED AUTOMATED TESTS
-=======================================================================
-
-TEST 1 — Date extraction correction
-
-Input:
-00093726.png
+ACCEPTANCE G — NO EVIDENCE
+--------------------------
+Ask for a field that is absent.
 
 Expected:
+not_found / insufficient evidence
 
-- Date label is recognised.
-- Date value is associated with date.
-- The date line is not assigned to document_title.
-- The same evidence is not assigned to form_title.
+NOT hallucinated answer.
 
-TEST 2 — Business-form fields
+=====================================================================
+53. SEMESTER/CAPSTONE OBJECTIVE MAPPING
+=====================================================================
 
-When visibly present, extract:
+Preserve project alignment with these objectives:
 
-- date
-- sample_number
-- product_type
-- batch_size
-- requested_by
-- specifications_written_by
+O1
+Document ingestion, visual preprocessing, OCR and layout understanding.
 
-Every field must contain evidence.
+O2
+Document classification and evidence-backed structured field/table extraction.
 
-TEST 3 — OCR uncertainty
+O3
+Evidence-grounded document question answering using hybrid RAG.
 
-When “1976” remains uncertain:
+O4
+Cross-document knowledge graph and explainable risk detection.
 
-- preserve raw OCR
-- do not invent the year
-- route for review
+O5
+Human review, analytics, finance narratives, reports and auditability.
 
-TEST 4 — Duplicate field prevention
+Current implementation may span O1-O5, but final documentation must truthfully
+distinguish:
 
-One evidence span cannot populate two incompatible fields.
+implemented
+working fallback
+experimental
+blocked
+planned/future
 
-TEST 5 — Review counts
+Do not claim blocked heavy models as completed implementation.
 
-Required expected, required matched and required missing must be internally
-consistent.
+=====================================================================
+54. DOCUMENTATION
+=====================================================================
 
-TEST 6 — Clarification conversation
+Update README and relevant docs AFTER implementation.
 
-User:
-“Is this safe?”
+Document:
 
-Expected:
-clarification options.
+architecture
+setup
+environment variables
+Docker services
+backend run
+frontend run
+model bootstrap
+feature flags
+model registry semantics
+Neo4j
+Qdrant
+OCR routing
+schema system
+RAG
+GraphRAG
+review workflow
+risk semantics
+testing
+known limitations
 
-User:
-“yes”
+Provide clean local startup instructions.
 
-Expected:
-request an option selection, not semantic not_found.
+Do not expose secrets.
 
-User selects:
-“Check suspicious indicators”
+=====================================================================
+55. FINAL VERIFICATION COMMANDS
+=====================================================================
 
-Expected:
-evidence-grounded risk summary.
+At the end, actually run relevant versions of:
 
-TEST 7 — Structured question
+backend tests
+frontend typecheck/build/tests
+docker compose service health
+model smoke tests
+representative API requests
+document reprocessing
+Neo4j query
+Qdrant query if enabled
 
-Question:
-“What is the sample number?”
+Inspect logs for:
 
-Expected:
-supported answer with citation when evidence exists.
+ERROR
+Traceback
+500
+authentication failures
+unhandled exceptions
 
-TEST 8 — OCR fallback
+Fix genuine regressions before stopping.
 
-Delete or ignore structured field for a test.
+=====================================================================
+56. RELEASE QUALITY GATE
+=====================================================================
 
-Question:
-“What is the date?”
+The project is NOT complete until these pass:
 
-Expected:
-OCR-line retrieval can still return supported evidence when confidence permits.
+[ ] Existing application still starts
+[ ] Frontend loads
+[ ] Backend responds
+[ ] Existing login/auth not broken
+[ ] Upload works
+[ ] Processing works
+[ ] Tesseract fallback works
+[ ] Semantic classification improved
+[ ] Sample business-form schema works
+[ ] 3/14/90 is never interpreted as a phone number
+[ ] 87093315_87093318.png regression passes
+[ ] 00093726.png regression passes if source available
+[ ] Review counts make semantic sense
+[ ] Required fields block approval when applicable
+[ ] Neo4j active/healthy/smoke-passed
+[ ] Semantic graph generated
+[ ] Graph insertion is idempotent
+[ ] Ask Documents preserves conversation state
+[ ] Unsupported questions do not hallucinate
+[ ] Evidence citations resolve
+[ ] Finance calculations use verified Decimal values
+[ ] Reports preserve source snapshots/version
+[ ] Analytics timing is realistic
+[ ] Failed processing runs are visible
+[ ] Model registry is truthful
+[ ] Privileged actions are backend protected
+[ ] No secrets exposed to frontend
+[ ] No API/database credentials committed
+[ ] Tests pass
+[ ] Frontend production build passes
 
-TEST 9 — Graph semantics
+Additional target gates if technically feasible:
 
-Expected graph includes meaningful typed nodes and named relationships.
-
-TEST 10 — Graph evidence
-
-Clicking an edge exposes its page and source field.
-
-TEST 11 — GraphRAG
-
-Question:
-“Who made the original request?”
-
-Expected:
-graph path plus source citation.
-
-TEST 12 — BGE retrieval
-
-A semantically paraphrased query retrieves the correct chunk.
-
-TEST 13 — Qdrant filtering
-
-A query scoped to one document cannot retrieve another tenant’s or document’s
-evidence.
-
-TEST 14 — LLM grounding
-
-The LLM cannot cite an evidence ID that was not supplied.
-
-TEST 15 — Processing duration
-
-No valid demo job displays an implausible duration caused by timestamp bugs.
-
-TEST 16 — Registry truthfulness
-
-Every active component has:
-
-- successful initialisation
-- successful inference
-- valid output
-- smoke-test timestamp
-
-TEST 17 — Local parser
-
-The parser registry status matches actual pipeline usage.
-
-TEST 18 — Reprocessing idempotency
-
-Running reprocessing twice does not create duplicate fields, chunks or edges.
-
-TEST 19 — Fraud authorisation
-
-Unauthorised role receives 403.
-
-TEST 20 — No hallucination
-
-Unsupported questions return not_found or clarification_needed.
-
-=======================================================================
-12. MANUAL END-TO-END ACCEPTANCE WALKTHROUGH
-=======================================================================
-
-Demonstrate this sequence:
-
-1. Upload 00093726.png.
-2. Processing completes.
-3. Document is classified as business_form.
-4. Correct schema is selected.
-5. Date is not treated as a title.
-6. Multiple correct fields appear.
-7. Clicking a field highlights the exact source.
-8. Review counts are understandable.
-9. Ask “What is the sample number?”
-10. Receive a cited answer.
-11. Ask “Is this safe?”
-12. Select suspicious-indicator check.
-13. Receive an evidence-grounded response.
-14. Open knowledge graph.
-15. See readable entity and relationship labels.
-16. Click REQUESTED_BY.
-17. See source evidence.
-18. Run GraphRAG question.
-19. Generate a report.
-20. Verify no duplicate artefacts are created.
-21. View analytics.
-22. Confirm realistic processing durations.
-23. View Admin Models.
-24. Confirm core active stack has passed smoke tests.
-
-=======================================================================
-13. PRACTICAL MODEL ACTIVATION GATE
-=======================================================================
-
-The final core stack should aim to have:
-
-[ ] local parser active
-[ ] Tesseract active
-[ ] PaddleOCR active, when platform compatible
-[ ] structure/layout adapter active
-[ ] deterministic extractor active
-[ ] BGE embedding model active
-[ ] reranker active
-[ ] local vector retrieval active
+[ ] PP-OCRv5 active
+[ ] PP-Structure active
+[ ] BGE-M3 active
 [ ] Qdrant active
-[ ] local graph projection active
-[ ] Neo4j active
-[ ] grounded template generator active
-[ ] one real grounded LLM provider active when compatible credentials or a
-    runnable local checkpoint exist
+[ ] BGE reranker active
+[ ] Qwen active
 
-Conditional advanced models:
+If any optional target cannot be reached, the project may still be complete
+when the runtime truthfully states the blocker and the fallback path works.
 
-[ ] LayoutLMv3 — only with a trained extraction checkpoint
-[ ] Donut — only with a suitable task checkpoint
-[ ] YOLO — only with a trained document-object checkpoint
-[ ] DeBERTa-CUAD — only with a validated clause checkpoint
-[ ] SegFormer — only with a document-forensics checkpoint
-[ ] XGBoost — only with labelled risk data and a trained checkpoint
-[ ] DINOv2 — activate when visual duplicate comparison is implemented
+=====================================================================
+57. PRIORITY ORDER — FOLLOW THIS
+=====================================================================
 
-Do not allow conditional research models to block the core RAG and graph system.
+Do not waste time activating glamorous models before core correctness.
 
-=======================================================================
-14. FINAL ACCEPTANCE GATE
-=======================================================================
+PRIORITY 1
+----------
+Semantic classification + schema routing.
 
-Do not claim completion until:
+PRIORITY 2
+----------
+Correct field extraction and date/phone bug.
 
-[ ] The visible Date line is extracted as a date, not a title.
-[ ] Duplicate field assignment is prevented.
-[ ] Business-form extraction captures multiple meaningful fields.
-[ ] Structured-extraction coverage is recalculated.
-[ ] Review expected/matched/missing counts are clear.
-[ ] Clarification state survives across turns.
-[ ] “yes” is not treated as an independent document question.
-[ ] Ask Documents searches all relevant evidence sources.
-[ ] Supported answers contain clickable citations.
-[ ] Knowledge-graph nodes have meaningful labels.
-[ ] Relationships have visible semantic names.
-[ ] Graph edges expose source evidence.
-[ ] Graph questions use real paths.
-[ ] Processing-time analytics are corrected.
-[ ] Local parser registry is consistent.
-[ ] BGE activation was genuinely attempted and smoke-tested.
-[ ] Qdrant activation was genuinely attempted and smoke-tested.
-[ ] Neo4j activation was genuinely attempted and smoke-tested.
-[ ] A compatible grounded LLM was genuinely attempted.
-[ ] No fake active states exist.
-[ ] No unsupported field corrections exist.
-[ ] No invented graph relationships exist.
-[ ] No unsupported answer is generated.
-[ ] Reprocessing is idempotent.
-[ ] Automated tests pass.
-[ ] Manual walkthrough passes.
+PRIORITY 3
+----------
+Regression documents and review correctness.
 
-When a component remains blocked, the final report must state:
+PRIORITY 4
+----------
+Neo4j semantic graph improvements.
 
-- exact blocker
-- exact command attempted
-- complete error output summary
-- package version
-- operating system
-- missing checkpoint or credential
-- fallback currently used
-- next executable action
+Neo4j infrastructure itself is already working.
 
-“Missing package” alone is not sufficient unless installation was actually
-attempted and the failure was recorded.
+PRIORITY 5
+----------
+Conversation-aware multi-source RAG.
 
-=======================================================================
-15. REQUIRED FINAL RESPONSE FROM THE CODEX AGENT
-=======================================================================
+PRIORITY 6
+----------
+BGE-M3 + Qdrant + reranker.
 
-Provide:
+PRIORITY 7
+----------
+Local Qwen generator if resources permit.
 
-1. Repository and environment audit
-2. Root causes found
-3. Files modified
-4. Migrations added
-5. Packages installed
-6. Services started
-7. Checkpoints configured
-8. Extraction before/after comparison
-9. RAG before/after comparison
-10. Graph before/after comparison
-11. Processing-time correction
-12. Active model registry
-13. Blocked model registry with attempted commands
-14. Automated-test results
-15. Manual acceptance results
-16. Sample extracted JSON
-17. Sample RAG response with citations
-18. Sample graph path response
-19. Remaining genuine limitations
-20. PASS/FAIL/BLOCKED checklist
+PRIORITY 8
+----------
+PP-OCR / advanced layout where platform permits.
 
-Do not produce this report before implementation.
+PRIORITY 9
+----------
+Optional advanced visual/contract models with legitimate checkpoints.
 
-Do not stop after a planning message.
+PRIORITY 10
+-----------
+Full E2E validation, analytics, security and docs.
 
-Do not say “the user must install everything manually” without first trying
-the compatible installation and recording why it failed.
+=====================================================================
+58. IMPORTANT ENGINEERING PRINCIPLE
+=====================================================================
 
-=======================================================================
-16. BEGIN EXECUTION
-=======================================================================
+A sophisticated model running on incorrect data is worse than a reliable
+fallback running on correct evidence.
 
-Start with the exact failing document:
+Therefore:
 
-00093726.png
+Correct OCR
+    >
+Correct schema
+    >
+Correct semantic extraction
+    >
+Correct evidence
+    >
+Correct relationships
+    >
+Correct retrieval
+    >
+LLM sophistication
 
-Trace:
+Do not reverse this priority.
 
-image
-→ OCR words
-→ OCR lines
-→ classifier
-→ selected schema
-→ field candidates
-→ duplicate resolver
-→ stored fields
-→ chunks
-→ graph nodes
-→ RAG response
+=====================================================================
+59. DO NOT HARD-CODE THE REGRESSION DOCUMENTS
+=====================================================================
 
-Find exactly why:
+The two named documents are acceptance tests, not exceptions to encode.
 
-“Date: September 21, 1976”
+Do NOT implement logic such as:
 
-became:
+if filename == "87093315_87093318.png":
+    return {...}
 
-document_title = “bate: september 21, 11/6”
-form_title = “bate: september 21, 11/6”
+or hardcoded expected OCR values.
 
-Fix that complete chain first.
+Improvements must generalise through:
 
-Then repair conversational RAG.
+- aliases
+- spatial rules
+- schema routing
+- type validators
+- candidate resolution
+- model output
 
-Then rebuild the semantic knowledge graph.
+=====================================================================
+60. EXPECTED FINAL RESPONSE FROM YOU
+=====================================================================
 
-Then activate the practical AI core stack.
+After you have actually executed the work, return a final implementation report
+with these EXACT high-level sections:
 
-Then reprocess the demo corpus and run every acceptance test.
+1. Repository changes made
+2. Bugs fixed
+3. Semantic extraction improvements
+4. Regression test results
+5. OCR/layout status
+6. Model activation status
+7. Qdrant/BGE retrieval status
+8. Neo4j/GraphRAG status
+9. Ask Documents/RAG status
+10. Risk and review status
+11. Finance/report status
+12. Analytics status
+13. Security/audit status
+14. Tests executed and results
+15. Remaining genuine blockers
+16. Exact commands to start the completed project
 
-Do not add another page.
-Do not stop at visual improvement.
-Do not hide behind fallback mode.
-Do not fabricate advanced-model availability.
+For every model report one of:
 
-Make the existing platform actually understand, retrieve, relate and explain
-the visible document evidence.
+ACTIVE
+FALLBACK_ACTIVE
+DISABLED
+BLOCKED_BY_PACKAGE
+BLOCKED_BY_CHECKPOINT
+BLOCKED_BY_LABELS
+BLOCKED_BY_PLATFORM
+BLOCKED_BY_RESOURCES
+FAILED_SMOKE_TEST
+
+Do not say "done" unless it was actually verified.
+
+List changed files.
+
+List tests actually run.
+
+List representative documents actually reprocessed.
+
+List services actually health-tested.
+
+List blockers honestly.
+
+=====================================================================
+61. FINAL EXECUTION DIRECTIVE
+=====================================================================
+
+START NOW.
+
+Do not stop after analysing this prompt.
+
+Inspect the existing repository.
+
+Then:
+
+fix
+run
+observe
+debug
+re-run
+validate
+reprocess
+test
+verify
+
+Repeat until the release quality gates are satisfied or a genuine external
+blocker is proven.
+
+Preserve every currently working feature.
+
+Do not create fake success.
+
+Do not hide failures.
+
+Do not skip modules merely because they are difficult.
+
+For optional modules that genuinely cannot run on this machine, leave a robust,
+tested fallback and report the exact technical blocker.
+
+The final result must be a coherent, evidence-grounded, explainable,
+multi-document enterprise intelligence system — not a collection of unrelated
+AI model names.
+
+=====================================================================
+END OF MASTER EXECUTION PROMPT
+=====================================================================

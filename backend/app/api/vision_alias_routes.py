@@ -91,7 +91,9 @@ async def alias_upload_vision_documents(
 @router.get("/documents")
 async def alias_list_vision_documents(user: AuthUser = Depends(require_user)) -> dict:
     documents = vision_ai_service.list_documents(user.tenant_id)
-    return _envelope({"total": len(documents), "documents": [item.model_dump(mode="json") for item in documents]})
+    return _envelope(
+        {"total": len(documents), "documents": [item.model_dump(mode="json") for item in documents]}
+    )
 
 
 @router.get("/documents/{document_id}")
@@ -104,10 +106,16 @@ async def alias_vision_document_detail(
 
 
 @router.delete("/documents/{document_id}")
-async def alias_delete_vision_document(document_id: str, user: AuthUser = Depends(require_user)) -> dict:
+async def alias_delete_vision_document(
+    document_id: str, user: AuthUser = Depends(require_user)
+) -> dict:
     _require_reviewer(user)
     try:
-        document = vision_ai_service.delete_document(document_id, user.tenant_id)
+        document = vision_ai_service.delete_document(
+            document_id,
+            user.tenant_id,
+            actor=user.email,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _envelope({"status": "deleted", "document_id": document_id}, document.case_id)
@@ -122,7 +130,9 @@ async def alias_reprocess_vision_document(
     _require_reviewer(user)
     document = _document_or_404(document_id, user.tenant_id)
     if not document.original_storage_path:
-        raise HTTPException(status_code=400, detail="Original file is not available for reprocessing")
+        raise HTTPException(
+            status_code=400, detail="Original file is not available for reprocessing"
+        )
     try:
         with open(document.original_storage_path, "rb") as source:
             content = source.read()
@@ -156,7 +166,9 @@ async def alias_vision_document_status(
             "status": document.status.value,
             "updated_at": document.updated_at,
             "model_routing": document.model_routing,
-            "review_task": document.review_task.model_dump(mode="json") if document.review_task else None,
+            "review_task": document.review_task.model_dump(mode="json")
+            if document.review_task
+            else None,
         },
         document.case_id,
     )
@@ -183,7 +195,9 @@ async def alias_vision_document_pages(
             "quality": [item.model_dump(mode="json") for item in document.quality],
             "ocr_words": [item.model_dump(mode="json") for item in document.ocr_words],
             "layout_regions": [item.model_dump(mode="json") for item in document.layout_regions],
-            "visual_detections": [item.model_dump(mode="json") for item in document.visual_detections],
+            "visual_detections": [
+                item.model_dump(mode="json") for item in document.visual_detections
+            ],
         },
         document.case_id,
     )
@@ -272,7 +286,13 @@ async def alias_vision_document_tables(
     user: AuthUser = Depends(require_user),
 ) -> dict:
     document = _document_or_404(document_id, user.tenant_id)
-    return _envelope({"document_id": document_id, "tables": [item.model_dump(mode="json") for item in document.tables]}, document.case_id)
+    return _envelope(
+        {
+            "document_id": document_id,
+            "tables": [item.model_dump(mode="json") for item in document.tables],
+        },
+        document.case_id,
+    )
 
 
 @router.get("/documents/{document_id}/risk")
@@ -286,7 +306,9 @@ async def alias_vision_document_risk(
             "document_id": document_id,
             "total": len(document.risk_indicators),
             "risk_indicators": [item.model_dump(mode="json") for item in document.risk_indicators],
-            "duplicate_candidates": [item.model_dump(mode="json") for item in document.duplicate_candidates],
+            "duplicate_candidates": [
+                item.model_dump(mode="json") for item in document.duplicate_candidates
+            ],
             "review_required": document.review_task is not None,
         },
         document.case_id,
@@ -320,7 +342,9 @@ async def alias_vision_document_related(
             "document_id": document_id,
             "duplicates": [item.model_dump(mode="json") for item in document.duplicate_candidates],
             "graph_edges": [
-                edge for edge in document.graph.edges if edge.get("type") in {"DUPLICATE_OF", "MATCHES", "CONFLICTS_WITH"}
+                edge
+                for edge in document.graph.edges
+                if edge.get("type") in {"DUPLICATE_OF", "MATCHES", "CONFLICTS_WITH"}
             ],
         },
         document.case_id,
@@ -393,6 +417,7 @@ async def alias_patch_vision_field(
             review_id,
             field_id,
             reviewed_value=field_request.reviewed_value,
+            reviewed_field_name=field_request.reviewed_field_name,
             reviewer_status=field_request.reviewer_status,
             comment=field_request.comment,
             actor=user.email,
@@ -443,7 +468,9 @@ async def alias_escalate_vision_review(
     user: AuthUser = Depends(require_user),
 ) -> dict:
     _require_reviewer(user)
-    return _review_decision(review_id, VisionProcessingStatus.under_review, request, user, http_request)
+    return _review_decision(
+        review_id, VisionProcessingStatus.under_review, request, user, http_request
+    )
 
 
 @router.post("/reviews/{review_id}/confirm-error")
@@ -454,7 +481,9 @@ async def alias_confirm_vision_error(
     user: AuthUser = Depends(require_user),
 ) -> dict:
     _require_reviewer(user)
-    return _review_decision(review_id, VisionProcessingStatus.confirmed_error, request, user, http_request)
+    return _review_decision(
+        review_id, VisionProcessingStatus.confirmed_error, request, user, http_request
+    )
 
 
 @router.post("/reviews/{review_id}/confirm-fraud")
@@ -465,7 +494,9 @@ async def alias_confirm_vision_fraud(
     user: AuthUser = Depends(require_user),
 ) -> dict:
     _require_fraud_confirmer(user)
-    return _review_decision(review_id, VisionProcessingStatus.confirmed_fraud, request, user, http_request)
+    return _review_decision(
+        review_id, VisionProcessingStatus.confirmed_fraud, request, user, http_request
+    )
 
 
 @router.post("/ask")
@@ -596,7 +627,9 @@ async def alias_vision_graph_query(
         conversation_id=http_request.headers.get("X-Session-ID"),
         user_id=user.user_id,
     )
-    return _envelope({"query_type": "vision_graph_or_evidence_search", "answer": answer.model_dump(mode="json")})
+    return _envelope(
+        {"query_type": "vision_graph_or_evidence_search", "answer": answer.model_dump(mode="json")}
+    )
 
 
 @router.post("/graph/relationships/{relationship_id}/verify")
@@ -1052,7 +1085,9 @@ def _dispatch_or_background(
     return dispatch
 
 
-def _envelope(data: Any, case_id: str | None = None, errors: list[str] | None = None) -> dict[str, Any]:
+def _envelope(
+    data: Any, case_id: str | None = None, errors: list[str] | None = None
+) -> dict[str, Any]:
     return {
         "success": not errors,
         "case_id": case_id,

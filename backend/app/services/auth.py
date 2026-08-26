@@ -37,8 +37,10 @@ class AuthService:
         self._state_dir = Path(state_dir or settings.auth_state_dir)
         self._users_file = self._state_dir / "users.json"
         self._sessions_file = self._state_dir / "refresh_sessions.json"
+        self._audit_file = self._state_dir / "audit_events.json"
         self._users: dict[str, StoredUser] = {}
         self._refresh_sessions: dict[str, dict[str, Any]] = {}
+        self._audit_events: list[dict[str, Any]] = []
         self._revoked_access_jtis: dict[str, int] = {}
         self._lock = threading.RLock()
         self._password_hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
@@ -52,7 +54,11 @@ class AuthService:
         with self._lock:
             if email in self._users:
                 raise ValueError("User already exists")
-            role = request.role if allow_privileged_role else UserRole(settings.public_registration_role)
+            role = (
+                request.role
+                if allow_privileged_role
+                else UserRole(settings.public_registration_role)
+            )
             tenant_id = self._tenant_id(request.organisation_name)
             user = AuthUser(
                 user_id=f"user-{uuid4().hex[:12]}",
@@ -103,12 +109,27 @@ class AuthService:
     def login(self, request: LoginRequest) -> tuple[str, str, int, int, AuthUser]:
         email = self._normalize_email(request.email)
         stored = self._users.get(email)
-        if not stored or not stored.user.active or not self._verify_password(
-            request.password,
-            stored.password_hash,
+        if (
+            not stored
+            or not stored.user.active
+            or not self._verify_password(
+                request.password,
+                stored.password_hash,
+            )
         ):
+            self._record_auth_audit("login_failed", email=email, success=False)
             raise ValueError("Invalid email or password")
+        self._record_auth_audit(
+            "login_succeeded",
+            email=email,
+            success=True,
+            user=stored.user,
+        )
         return (*self._issue_token_pair(stored.user), stored.user)
+
+    def audit_events(self) -> list[dict[str, Any]]:
+        """Return redacted authentication events for local audit inspection."""
+        return [dict(event) for event in self._audit_events]
 
     def reauthenticate(self, user: AuthUser, password: str) -> tuple[str, int, int]:
         stored = self._user_by_id(user.user_id)
@@ -315,6 +336,30 @@ class AuthService:
         sessions = self._read_json(self._sessions_file, {})
         if isinstance(sessions, dict):
             self._refresh_sessions = sessions
+        audit_payload = self._read_json(self._audit_file, {"events": []})
+        self._audit_events = [
+            dict(event) for event in audit_payload.get("events", []) if isinstance(event, dict)
+        ]
+
+    def _record_auth_audit(
+        self,
+        event_type: str,
+        *,
+        email: str,
+        success: bool,
+        user: AuthUser | None = None,
+    ) -> None:
+        event = {
+            "event_id": f"auth-audit-{uuid4().hex[:12]}",
+            "event_type": event_type,
+            "success": success,
+            "email_hash": hashlib.sha256(email.encode("utf-8")).hexdigest(),
+            "user_id": user.user_id if user else None,
+            "tenant_id": user.tenant_id if user else None,
+            "created_at": int(time.time()),
+        }
+        self._audit_events.append(event)
+        self._write_json(self._audit_file, {"events": self._audit_events})
 
     def _persist_users(self) -> None:
         self._persist_users_local()

@@ -73,7 +73,9 @@ def test_verified_finance_narrative_and_typed_report_flow():
     assert narrative["source_data_version"]
     assert narrative["version"] == 1
     assert all(item["source_document_ids"] for item in narrative["calculations"])
-    assert any(item["calculation_function"].startswith("sum(Decimal") for item in narrative["calculations"])
+    assert any(
+        item["calculation_function"].startswith("sum(Decimal") for item in narrative["calculations"]
+    )
 
     repeated_narrative = client.post(
         "/api/v1/finance-narratives",
@@ -91,10 +93,9 @@ def test_verified_finance_narrative_and_typed_report_flow():
         "/api/v1/finance-narratives",
         headers=headers,
     ).json()["data"]["narratives"]
-    assert sum(
-        item["identity_hash"] == narrative["identity_hash"]
-        for item in listed_narratives
-    ) == 1
+    assert (
+        sum(item["identity_hash"] == narrative["identity_hash"] for item in listed_narratives) == 1
+    )
 
     versioned_narrative = client.post(
         "/api/v1/finance-narratives",
@@ -127,6 +128,7 @@ def test_verified_finance_narrative_and_typed_report_flow():
     assert report["version"] == 1
     assert report["identity_hash"]
     assert report["source_data_version"]
+    assert report["content"]["source_document_ids"] == [document["document_id"]]
 
     repeated_report = client.post(
         "/api/v1/reports/generate",
@@ -186,6 +188,20 @@ def test_verified_finance_narrative_and_typed_report_flow():
     assert archived.status_code == 200
     assert archived.json()["data"]["status"] == "archived"
 
+    intelligence_report = client.post(
+        "/api/v1/reports/generate",
+        headers=headers,
+        json={
+            "report_type": "document_intelligence_report",
+            "document_id": document["document_id"],
+        },
+    ).json()["data"]
+    payload = intelligence_report["content"]["documents"][0]
+    assert payload["ocr_layout"]["ocr_word_count"] > 0
+    assert "page_artifacts" in payload["ocr_layout"]
+    assert {"nodes", "edges"} <= set(payload["graph"])
+    assert "structured_extraction_status" in payload["limitations"]
+
 
 def test_document_access_is_isolated_between_tenants():
     suffix = uuid4().hex[:10]
@@ -204,9 +220,7 @@ def test_document_access_is_isolated_between_tenants():
         )
         login = client.post("/api/v1/auth/login", json={"email": email, "password": password})
         assert login.status_code == 200
-        credentials.append(
-            {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
-        )
+        credentials.append({"Authorization": f"Bearer {login.json()['data']['access_token']}"})
 
     created = client.post(
         "/api/v1/vision/documents/analyze",

@@ -24,6 +24,8 @@ class VisionQueryRouter:
         "invoice date",
         "invoice number",
         "original request",
+        "request date",
+        "purpose",
         "organisation",
         "organization",
         "payment terms",
@@ -46,6 +48,7 @@ class VisionQueryRouter:
 
     def route(self, question: str) -> str:
         lower = " ".join(question.lower().split())
+        tokens = set(re.findall(r"[a-z0-9]+", lower))
         if not lower or any(phrase in lower for phrase in self.unsafe_phrases):
             return "unsupported_question"
         if re.fullmatch(r"(?:hi|hello|hey|good (?:morning|afternoon|evening))[!. ]*", lower):
@@ -66,6 +69,12 @@ class VisionQueryRouter:
             "check approval status",
         }:
             return "clarification_response"
+        if re.fullmatch(
+            r"(?:why|why\?|show (?:me )?(?:the )?evidence|what page(?: is that on)?\??|"
+            r"where is that(?: shown)?\??|explain that|source\??)[.! ]*",
+            lower,
+        ):
+            return "conversation_follow_up"
         if lower in {
             "is this safe",
             "is this safe?",
@@ -87,7 +96,42 @@ class VisionQueryRouter:
             )
         ):
             return "approval_question"
-        if any(term in lower for term in ("sum", "average", "how much total", "calculate", "difference in total")):
+        if (
+            any(
+                term in lower
+                for term in (
+                    "sum",
+                    "average",
+                    "how much total",
+                    "calculate",
+                    "difference in total",
+                    "difference between invoice",
+                    "invoice vs po",
+                    "invoice versus po",
+                    "percentage variance",
+                    "percent variance",
+                    "date interval",
+                    "days between",
+                )
+            )
+            or (
+                bool(tokens & {"invoice", "invoices"})
+                and ({"po"} <= tokens or "purchase order" in lower)
+                and bool(
+                    tokens
+                    & {"difference", "delta", "differ", "different", "minus", "variance", "versus"}
+                )
+            )
+            or (
+                bool(tokens & {"invoice", "invoices"})
+                and "total" in tokens
+                and bool(tokens & {"all", "combined", "aggregate"})
+            )
+            or (
+                any(term in lower for term in ("count", "how many", "number of"))
+                and bool(tokens & {"invoice", "invoices"})
+            )
+        ):
             return "arithmetic_question"
         if any(term in lower for term in ("signed", "signature", "stamp", "seal", "checkbox", "logo", "handwritten")):
             return "visual_question"
@@ -106,6 +150,9 @@ class VisionQueryRouter:
                 "made the original request",
                 "who wrote the sample specifications",
                 "specifications written by",
+                "when was the request",
+                "request made",
+                "what was the purpose",
             )
         ):
             return "relationship_question"

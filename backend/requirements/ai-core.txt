@@ -1,9 +1,11 @@
 -r base.txt
 
-# Core semantic/runtime adapters. Keep Transformers below the next major
-# release because FlagEmbedding 1.x imports the Transformers 4.x API.
+# Core semantic/runtime adapters. Transformers 5.5.4 closes the published
+# checkpoint/config code-execution advisories; DocuMind uses its public paired-
+# text API for reranking because FlagEmbedding 1.x's legacy tokenizer shim was
+# removed in Transformers 5.
 torch>=2.4.0,<3
-transformers>=4.49.0,<5
+transformers>=5.5.4,<6
 sentence-transformers>=3.4.0,<6
 FlagEmbedding>=1.3.5,<2
 accelerate>=1.2.0,<2

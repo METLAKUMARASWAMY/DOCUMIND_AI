@@ -19,18 +19,15 @@ services:
       NEO4J_AUTH: ${NEO4J_AUTH:?Run python scripts/generate_local_env.py}
       MINIO_ENDPOINT: minio:9000
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./dataset/documind_ai_synthetic_dataset:/data/documind_ai_synthetic_dataset:ro
       - ./var:/app/var
     depends_on:
       - postgres
-      - chroma
       - neo4j
-      - mongodb
       - redis
       - qdrant
-      - minio
 
   worker:
     build:
@@ -46,6 +43,7 @@ services:
       - --pool=solo
     environment:
       DOCUMIND_AUTH_SECRET: ${DOCUMIND_AUTH_SECRET:?Run python scripts/generate_local_env.py}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?Run python scripts/generate_local_env.py}:${POSTGRES_PASSWORD:?Run python scripts/generate_local_env.py}@postgres:5432/${POSTGRES_DB:?Run python scripts/generate_local_env.py}
       DOCUMIND_DATASET_PATH: /data/documind_ai_synthetic_dataset
       ENABLE_CHROMA: "false"
       ENABLE_NEO4J: ${ENABLE_NEO4J:-false}
@@ -63,14 +61,17 @@ services:
       - ./dataset/documind_ai_synthetic_dataset:/data/documind_ai_synthetic_dataset:ro
       - ./var:/app/var
     depends_on:
+      - postgres
+      - neo4j
       - redis
+      - qdrant
 
   frontend:
     build:
       context: .
       dockerfile: ./frontend/Dockerfile
     ports:
-      - "5174:80"
+      - "127.0.0.1:5174:80"
     depends_on:
       - backend
 
@@ -81,17 +82,24 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python scripts/generate_local_env.py}
       POSTGRES_DB: ${POSTGRES_DB:?Run python scripts/generate_local_env.py}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/docker/postgres-init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
       - ./infra/migrations/002_vision_remediation.sql:/docker-entrypoint-initdb.d/002-vision-remediation.sql:ro
       - ./infra/migrations/003_core_intelligence_v4.sql:/docker-entrypoint-initdb.d/003-core-intelligence-v4.sql:ro
+      - ./infra/migrations/004_conversation_evidence_state.sql:/docker-entrypoint-initdb.d/004-conversation-evidence-state.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   chroma:
     image: chromadb/chroma:0.5.5
+    profiles: ["optional"]
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     volumes:
       - chroma_data:/chroma/chroma
 
@@ -101,42 +109,59 @@ services:
       NEO4J_AUTH: ${NEO4J_AUTH:?Run python scripts/generate_local_env.py}
       NEO4J_PLUGINS: '["apoc"]'
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
     volumes:
       - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   mongodb:
     image: mongo:7
+    profiles: ["optional"]
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodb_data:/data/db
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   qdrant:
     image: qdrant/qdrant:v1.18.0
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   minio:
     image: minio/minio:RELEASE.2024-07-16T23-46-41Z
+    profiles: ["optional"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Run python scripts/generate_local_env.py}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Run python scripts/generate_local_env.py}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
 

@@ -87,6 +87,19 @@ export function AskDocumentsPage() {
                 </Box>
                 <Typography>{turn.response.answer}</Typography>
                 <Typography variant="body2" color="text.secondary">{turn.response.reasoning_summary}</Typography>
+                {turn.response.calculation_trace ? (
+                  <Box className="calculation-trace" aria-label="Calculation trace">
+                    <Typography variant="caption" fontWeight={700}>
+                      {turn.response.calculation_trace.operation.replaceAll("_", " ")}
+                    </Typography>
+                    <Typography variant="body2">
+                      Inputs: {turn.response.calculation_trace.inputs.map((input) => `${input.role}=${input.normalized_value}${input.currency ? ` ${input.currency}` : ""}`).join(", ") || "none"}
+                    </Typography>
+                    <Typography variant="body2">
+                      Result: {turn.response.calculation_trace.result ?? "not calculated"}{turn.response.calculation_trace.unit ? ` ${turn.response.calculation_trace.unit}` : ""}
+                    </Typography>
+                  </Box>
+                ) : null}
                 {turn.response.clarification_options.length ? (
                   <Box className="clarification-options" aria-label="Clarification options">
                     {turn.response.clarification_options.map((option) => (

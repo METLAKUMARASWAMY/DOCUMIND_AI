@@ -2,15 +2,21 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 from app.models.vision import (
     ExtractedVisionField,
     ReviewerStatus,
     VisionDocumentType,
     VisionFieldCompleteness,
+)
+from app.services.vision.schema_config import (
+    ConfiguredField,
+    LoadedSchemaCatalog,
+    load_schema_catalog,
 )
 
 
@@ -22,7 +28,14 @@ class SchemaFieldSpec:
     required: bool = False
     value_kind: str = "text"
     multiline: bool = False
+    extraction_strategies: tuple[str, ...] = ()
+    semantic_entity_type: str | None = None
     allow_evidence_sharing_with: tuple[str, ...] = ()
+    validators: tuple[str, ...] = ()
+    normalizers: tuple[str, ...] = ()
+    graph_relationship: str | None = None
+    multi_value: bool = False
+    incompatible_with: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -31,6 +44,11 @@ class DocumentSchema:
     fields: tuple[SchemaFieldSpec, ...]
     schema_id: str = ""
     schema_kind: str = "exact"
+    version: str = "v1"
+    family: str = "enterprise_document"
+    classification_hints: tuple[str, ...] = ()
+    applicable_modules: tuple[str, ...] = ()
+    catalog_version: str = "unversioned"
 
     @property
     def name(self) -> str:
@@ -61,9 +79,37 @@ class SchemaSelection:
     source: str
     path: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        if self.source not in {"exact", "parent", "generic_key_value", "generic_metadata"}:
+            raise ValueError(f"Unsupported schema selection source: {self.source}")
+        if self.selected_schema != self.schema.name:
+            raise ValueError("Selected schema ID must match the selected schema")
+        if self.source == "exact" and self.exact_schema != self.selected_schema:
+            raise ValueError("Mode A selection requires the exact schema to be selected")
+        if self.source == "parent" and self.fallback_schema != self.selected_schema:
+            raise ValueError("Mode B parent selection requires the fallback schema to be selected")
+        if self.source.startswith("generic") and (
+            self.exact_schema is not None or self.fallback_schema is not None
+        ):
+            raise ValueError("Mode C selection cannot claim an exact or parent schema")
+        if not self.path or self.selected_schema not in self.path:
+            raise ValueError("Schema decision path must contain the selected schema")
+
     @property
     def fallback_used(self) -> bool:
         return self.source != "exact"
+
+    @property
+    def mode(self) -> str:
+        if self.source == "exact":
+            return "A"
+        if self.source == "parent":
+            return "B"
+        return "C"
+
+    @property
+    def schema_status(self) -> str:
+        return "registered" if self.mode == "A" else "inferred" if self.mode == "B" else "generic"
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -74,611 +120,116 @@ class SchemaSelection:
             "schema_source": self.source,
             "schema_path": list(self.path),
             "fallback_used": self.fallback_used,
+            "mode": self.mode,
+            "schema_status": self.schema_status,
+            "schema_version": self.schema.version,
+            "schema_family": self.schema.family,
+            "schema_kind": self.schema.schema_kind,
+            "schema_catalog_version": self.schema.catalog_version,
         }
 
 
-def _field(
-    name: str,
-    *aliases: str,
-    required: bool = False,
-    value_kind: str = "text",
-    multiline: bool = False,
-    allow_evidence_sharing_with: tuple[str, ...] = (),
-) -> SchemaFieldSpec:
+def _runtime_field(item: ConfiguredField) -> SchemaFieldSpec:
     return SchemaFieldSpec(
-        name=name,
-        display_name=name.replace("_", " ").title(),
-        aliases=tuple(dict.fromkeys((name.replace("_", " "), *aliases))),
-        required=required,
-        value_kind=value_kind,
-        multiline=multiline,
-        allow_evidence_sharing_with=allow_evidence_sharing_with,
+        name=item.name,
+        display_name=item.display_name,
+        aliases=item.aliases,
+        required=item.required,
+        value_kind=item.value_kind,
+        multiline=item.multiline,
+        extraction_strategies=item.extraction_strategies,
+        semantic_entity_type=item.semantic_entity_type,
+        allow_evidence_sharing_with=item.allow_evidence_sharing_with,
+        validators=item.validators,
+        normalizers=item.normalizers,
+        graph_relationship=item.graph_relationship,
+        multi_value=item.multi_value,
+        incompatible_with=item.incompatible_with,
     )
 
 
-ORGANISATION_FORM_FIELDS = (
-    _field("document_title", "form title", "form name", "title", value_kind="title"),
-    _field(
-        "organisation_name",
-        "organization name",
-        "organisation",
-        "organization",
-        "company name",
-        required=True,
-    ),
-    _field("address", "postal address", "office address", multiline=True),
-    _field("contact_name", "contact person", "contact", required=True),
-    _field(
-        "phone_number",
-        "phone",
-        "phone no",
-        "telephone",
-        "telephone number",
-        "tel",
-        "contact number",
-        value_kind="phone",
-    ),
-    _field(
-        "fax_number",
-        "fax",
-        "fax no",
-        "fax no.",
-        "facsimile",
-        "facsimile number",
-        "telefax",
-        value_kind="phone",
-    ),
-    _field("email", "email address", "e-mail", value_kind="email"),
-    _field(
-        "date",
-        "dated",
-        "document date",
-        "form date",
-        "request date",
-        "transmission date",
-        value_kind="date",
-    ),
-    _field("reference_number", "reference no", "ref no", value_kind="reference"),
-    _field("subject", "re"),
-    _field("message", "comments", "notes", multiline=True),
-)
+def _runtime_maps(
+    catalog: LoadedSchemaCatalog,
+) -> tuple[
+    dict[VisionDocumentType, DocumentSchema],
+    dict[str, DocumentSchema],
+    dict[VisionDocumentType, str],
+]:
+    exact: dict[VisionDocumentType, DocumentSchema] = {}
+    generic: dict[str, DocumentSchema] = {}
+    for configured in catalog.schemas:
+        fields = tuple(_runtime_field(item) for item in configured.fields)
+        common = {
+            "fields": fields,
+            "schema_id": configured.schema_id,
+            "schema_kind": configured.schema_kind,
+            "version": configured.version,
+            "family": configured.family,
+            "classification_hints": configured.classification_hints,
+            "applicable_modules": configured.applicable_modules,
+            "catalog_version": catalog.catalog_version,
+        }
+        if configured.schema_kind == "exact":
+            for document_type in configured.document_types:
+                exact[document_type] = DocumentSchema(document_type=document_type, **common)
+        else:
+            generic[configured.schema_id] = DocumentSchema(document_type=None, **common)
+    return exact, generic, dict(catalog.parent_schema_by_document_type)
 
 
-# A business-form classification is used for labelled operational request forms.
-# Keep this schema distinct from the legacy generic ``form`` type so that an
-# organisation-registration form is not incorrectly required to contain sample data.
-BUSINESS_FORM_FIELDS = (
-    _field(
-        "date",
-        "dated",
-        "document date",
-        "form date",
-        "request date",
-        required=True,
-        value_kind="date",
-    ),
-    _field(
-        "sample_number",
-        "sample no",
-        "sample no.",
-        "sample number",
-        "sample id",
-        required=True,
-        value_kind="reference",
-    ),
-    _field(
-        "product_type",
-        "type of cigarette",
-        "product type",
-        "item type",
-        "sample type",
-        required=True,
-    ),
-    _field(
-        "batch_size",
-        "quantity",
-        "lot size",
-        required=True,
-        value_kind="quantity",
-    ),
-    _field(
-        "requested_by",
-        "original request made by",
-        "requested by",
-        "requestor",
-        "requester",
-        required=True,
-        value_kind="name",
-    ),
-    _field(
-        "specifications_written_by",
-        "sample specifications written by",
-        "specifications by",
-        "prepared by",
-        required=True,
-        value_kind="name",
-    ),
-    _field(
-        "document_title",
-        "title",
-        "document title",
-        "form title",
-        "heading",
-        value_kind="title",
-    ),
-    _field(
-        "organisation_name", "organization name", "organisation", "organization", "company name"
-    ),
-    _field("additional_notes", "additional notes", "notes", "comments", multiline=True),
-    # Preserve useful generic fields without making them requirements of every
-    # operational request form.
-    _field("address", "postal address", "office address", multiline=True),
-    _field("contact_name", "contact person", "contact", value_kind="name"),
-    _field(
-        "phone_number",
-        "phone",
-        "phone no",
-        "telephone",
-        "telephone number",
-        "tel",
-        "contact number",
-        value_kind="phone",
-    ),
-    _field(
-        "fax_number",
-        "fax",
-        "fax no",
-        "fax no.",
-        "facsimile",
-        "facsimile number",
-        "telefax",
-        value_kind="phone",
-    ),
-    _field("email", "email address", "e-mail", value_kind="email"),
-    _field("reference_number", "reference no", "ref no", value_kind="reference"),
-    _field("subject", "re"),
-)
-
-FAX_FIELDS = (
-    _field("document_title", "title", required=True, value_kind="title"),
-    _field("date", "dated", "transmission date", required=True, value_kind="date"),
-    _field("time", "transmission time", value_kind="time"),
-    _field("sender_name", "from", "sender", "sent by", value_kind="name"),
-    _field("sender_company", "sender company", "from company", value_kind="organisation"),
-    _field("sender_phone", "sender phone", "from phone", "phone", "telephone", value_kind="phone"),
-    _field(
-        "sender_fax", "sender fax", "from fax", "fax", "fax number", "facsimile", value_kind="phone"
-    ),
-    _field(
-        "recipient_name",
-        "to",
-        "message to",
-        "recipient",
-        "attention",
-        "attn",
-        required=True,
-        value_kind="name",
-    ),
-    _field(
-        "recipient_company",
-        "company",
-        "recipient company",
-        "organisation",
-        "organization",
-        "firm",
-        value_kind="organisation",
-    ),
-    _field(
-        "recipient_phone",
-        "phone",
-        "phone number",
-        "telephone",
-        "telephone number",
-        "tel",
-        "contact number",
-        value_kind="phone",
-    ),
-    _field(
-        "recipient_fax",
-        "fax number",
-        "fax no",
-        "fax no.",
-        "fax",
-        "facsimile",
-        "facsimile number",
-        "telefax",
-        required=True,
-        value_kind="phone",
-    ),
-    _field(
-        "client_number",
-        "client no",
-        "client number",
-        "reference no",
-        "reference number",
-        "ref no",
-        value_kind="reference",
-    ),
-    _field("subject", "re"),
-    _field("page_count", "pages", "number of pages", "page count", value_kind="integer"),
-    _field("hard_copy_follow_up", "hard copy", "hardcopy", value_kind="boolean"),
-    _field("message", "comments", "notes", multiline=True),
-    _field("confidentiality_notice", "confidentiality", "confidential notice", multiline=True),
-)
-
-GENERIC_KEY_VALUE_FIELDS = (
-    _field(
-        "document_title", "form title", "document title", "heading", "title", value_kind="title"
-    ),
-    _field("organisation_name", "organization", "organisation"),
-    _field("person_name", "name", "contact", value_kind="name"),
-    _field("company_name", "company", "firm", value_kind="organisation"),
-    _field("date", "dated", value_kind="date"),
-    _field("reference_number", "reference no", "ref no", "client number", value_kind="reference"),
-    _field("account_number", "account no", "acct no", value_kind="account"),
-    _field("phone_number", "phone", "telephone", "tel", "contact number", value_kind="phone"),
-    _field("fax_number", "fax", "fax no", "facsimile", "telefax", value_kind="phone"),
-    _field("email", "email address", "e-mail", value_kind="email"),
-    _field("address", "postal address", multiline=True),
-    _field("amount", "total", "amount due", value_kind="money"),
-    _field("subject", "re"),
-    _field("message", "comments", "notes", multiline=True),
-    _field("signature_name", "signed by", "signature", value_kind="name"),
-)
-
-GENERIC_METADATA_FIELDS = (
-    _field("title", "document title", value_kind="title"),
-    _field("visible_dates", value_kind="date_list"),
-    _field("visible_names", value_kind="name_list"),
-    _field("visible_organisations", value_kind="organisation_list"),
-    _field("visible_phone_numbers", value_kind="phone_list"),
-    _field("visible_fax_numbers", value_kind="phone_list"),
-    _field("visible_emails", value_kind="email_list"),
-    _field("visible_currency_amounts", value_kind="money_list"),
-    _field("visible_reference_numbers", value_kind="reference_list"),
-)
-
-REPORT_FIELDS = (
-    _field("document_title", "report title", "title", "heading", value_kind="title"),
-    _field("report_date", "report date", "date", "dated", value_kind="date"),
-    _field(
-        "organisation_name", "organisation", "organization", "company", value_kind="organisation"
-    ),
-    _field("prepared_by", "prepared by", "written by", "author", value_kind="name"),
-    _field(
-        "reference_number", "reference number", "reference no", "ref no", value_kind="reference"
-    ),
-    _field("additional_notes", "summary", "notes", "comments", multiline=True),
-)
-
-CORRESPONDENCE_FIELDS = (
-    _field("document_title", "subject", "title", "heading", value_kind="title"),
-    _field("date", "dated", "letter date", value_kind="date"),
-    _field("sender_name", "from", "sender", "sent by", value_kind="name"),
-    _field("recipient_name", "to", "recipient", "attention", "attn", value_kind="name"),
-    _field(
-        "organisation_name", "company", "organisation", "organization", value_kind="organisation"
-    ),
-    _field(
-        "reference_number", "reference number", "reference no", "ref no", value_kind="reference"
-    ),
-    _field("subject", "re"),
-    _field("message", "body", "message", "comments", multiline=True),
-)
-
-
-SCHEMAS: dict[VisionDocumentType, DocumentSchema] = {
-    VisionDocumentType.form: DocumentSchema(
-        VisionDocumentType.form, ORGANISATION_FORM_FIELDS, "organisation_form"
-    ),
-    VisionDocumentType.business_form: DocumentSchema(
-        VisionDocumentType.business_form, BUSINESS_FORM_FIELDS, "business_form"
-    ),
-    VisionDocumentType.fax_transmission: DocumentSchema(
-        VisionDocumentType.fax_transmission, FAX_FIELDS, "fax_transmission"
-    ),
-    VisionDocumentType.invoice: DocumentSchema(
-        VisionDocumentType.invoice,
-        (
-            _field(
-                "vendor_name",
-                "vendor",
-                "supplier",
-                "seller",
-                required=True,
-                value_kind="organisation",
-            ),
-            _field("vendor_address", "supplier address", "seller address", multiline=True),
-            _field("vendor_tax_id", "tax id", "gstin", "vat", "tin", value_kind="reference"),
-            _field(
-                "invoice_number",
-                "invoice no",
-                "invoice #",
-                "inv no",
-                required=True,
-                value_kind="reference",
-            ),
-            _field("invoice_date", "date of invoice", required=True, value_kind="date"),
-            _field("due_date", "payment due", value_kind="date"),
-            _field(
-                "purchase_order_number",
-                "purchase order",
-                "po number",
-                "po no",
-                "po reference",
-                value_kind="reference",
-            ),
-            _field("subtotal", "sub total", value_kind="money"),
-            _field("tax", "tax amount", "gst", "vat amount", value_kind="money"),
-            _field("discount", "discount amount", value_kind="money"),
-            _field(
-                "total_amount",
-                "grand total",
-                "amount due",
-                "invoice total",
-                required=True,
-                value_kind="money",
-                allow_evidence_sharing_with=("currency",),
-            ),
-            _field(
-                "currency",
-                "currency code",
-                required=True,
-                value_kind="currency",
-                allow_evidence_sharing_with=("total_amount",),
-            ),
-            _field("payment_terms", "terms of payment", "payment term"),
-            _field("bank_name", "beneficiary bank", value_kind="organisation"),
-            _field(
-                "bank_account_number",
-                "account number",
-                "account no",
-                "bank account",
-                "acct no",
-                value_kind="account",
-            ),
-            _field(
-                "bank_code",
-                "ifsc",
-                "swift",
-                "bic",
-                "routing number",
-                "sort code",
-                value_kind="reference",
-            ),
-        ),
-        "invoice",
-    ),
-    VisionDocumentType.purchase_order: DocumentSchema(
-        VisionDocumentType.purchase_order,
-        (
-            _field(
-                "purchase_order_number",
-                "purchase order",
-                "po number",
-                "po no",
-                required=True,
-                value_kind="reference",
-            ),
-            _field(
-                "buyer_name",
-                "buyer",
-                "customer",
-                "bill to",
-                required=True,
-                value_kind="organisation",
-            ),
-            _field(
-                "vendor_name",
-                "vendor",
-                "supplier",
-                "seller",
-                required=True,
-                value_kind="organisation",
-            ),
-            _field("order_date", "po date", "purchase date", required=True, value_kind="date"),
-            _field("delivery_date", "required date", "ship date", value_kind="date"),
-            _field("line_items", "items", "description", multiline=True),
-            _field("subtotal", "sub total", value_kind="money"),
-            _field("tax", "tax amount", value_kind="money"),
-            _field(
-                "total_amount",
-                "grand total",
-                "po total",
-                required=True,
-                value_kind="money",
-                allow_evidence_sharing_with=("currency",),
-            ),
-            _field(
-                "currency",
-                "currency code",
-                required=True,
-                value_kind="currency",
-                allow_evidence_sharing_with=("total_amount",),
-            ),
-            _field("approval_status", "status", "approved"),
-        ),
-        "purchase_order",
-    ),
-    VisionDocumentType.contract: DocumentSchema(
-        VisionDocumentType.contract,
-        (
-            _field("parties", "contracting parties", "between", required=True, multiline=True),
-            _field("agreement_date", "date of agreement", value_kind="date"),
-            _field("effective_date", "effective as of", required=True, value_kind="date"),
-            _field("expiry_date", "expiration date", "end date", value_kind="date"),
-            _field("governing_law", "governed by"),
-            _field("renewal_term", "renewal", "automatic renewal"),
-            _field("termination_clause", "termination", "terminate", multiline=True),
-            _field("payment_terms", "payment shall be due", required=True),
-            _field("liability_clause", "liability", "limitation of liability", multiline=True),
-            _field("confidentiality_clause", "confidentiality", "non-disclosure", multiline=True),
-            _field(
-                "indemnification_clause",
-                "indemnification",
-                "indemnity",
-                "hold harmless",
-                multiline=True,
-            ),
-            _field("signatures", "signed by", "signature", required=True),
-        ),
-        "contract",
-    ),
-    VisionDocumentType.bank_document: DocumentSchema(
-        VisionDocumentType.bank_document,
-        (
-            _field(
-                "account_holder",
-                "account holder name",
-                "beneficiary",
-                required=True,
-                value_kind="name",
-            ),
-            _field(
-                "bank_name", "bank", "beneficiary bank", required=True, value_kind="organisation"
-            ),
-            _field(
-                "account_number",
-                "bank account number",
-                "account no",
-                "acct no",
-                required=True,
-                value_kind="account",
-            ),
-            _field(
-                "bank_code",
-                "ifsc",
-                "swift",
-                "bic",
-                "routing number",
-                required=True,
-                value_kind="reference",
-            ),
-            _field("branch", "branch name", "bank branch"),
-            _field("effective_date", "effective from", value_kind="date"),
-            _field(
-                "authorised_signer",
-                "authorized signer",
-                "signed by",
-                "authorised by",
-                value_kind="name",
-            ),
-        ),
-        "bank_document",
-    ),
-    VisionDocumentType.bank_confirmation: DocumentSchema(
-        VisionDocumentType.bank_confirmation,
-        (
-            _field("document_title", "title", required=True),
-            _field(
-                "account_holder",
-                "account holder",
-                "customer name",
-                required=True,
-                value_kind="name",
-            ),
-            _field("bank_name", "bank", required=True, value_kind="organisation"),
-            _field(
-                "account_number",
-                "account no",
-                "bank account number",
-                required=True,
-                value_kind="account",
-            ),
-            _field("bank_code", "swift", "bic", "routing number", "ifsc", value_kind="reference"),
-            _field("confirmation_date", "date", "confirmed on", value_kind="date"),
-            _field("authorised_signer", "authorized signer", "signed by", value_kind="name"),
-        ),
-        "bank_confirmation",
-    ),
-    VisionDocumentType.receipt: DocumentSchema(
-        VisionDocumentType.receipt,
-        (
-            _field("merchant_name", "merchant", "store", value_kind="organisation"),
-            _field("receipt_number", "receipt no", "transaction no", value_kind="reference"),
-            _field("date", "transaction date", value_kind="date"),
-            _field(
-                "total_amount",
-                "total",
-                "amount paid",
-                required=True,
-                value_kind="money",
-                allow_evidence_sharing_with=("currency",),
-            ),
-            _field(
-                "currency",
-                "currency code",
-                value_kind="currency",
-                allow_evidence_sharing_with=("total_amount",),
-            ),
-        ),
-        "receipt",
-    ),
-    VisionDocumentType.report: DocumentSchema(
-        VisionDocumentType.report,
-        REPORT_FIELDS,
-        "report",
-    ),
-    VisionDocumentType.general_report: DocumentSchema(
-        VisionDocumentType.general_report,
-        REPORT_FIELDS,
-        "report",
-    ),
-    VisionDocumentType.financial_report: DocumentSchema(
-        VisionDocumentType.financial_report,
-        REPORT_FIELDS,
-        "report",
-    ),
-    VisionDocumentType.correspondence: DocumentSchema(
-        VisionDocumentType.correspondence,
-        CORRESPONDENCE_FIELDS,
-        "correspondence",
-    ),
-    VisionDocumentType.letter: DocumentSchema(
-        VisionDocumentType.letter,
-        CORRESPONDENCE_FIELDS,
-        "correspondence",
-    ),
-    VisionDocumentType.insurance_document: DocumentSchema(
-        VisionDocumentType.insurance_document,
-        (
-            _field("document_title", "title"),
-            _field("policy_number", "policy no", required=True, value_kind="reference"),
-            _field("insured_name", "insured", "policy holder", value_kind="name"),
-            _field("insurer_name", "insurer", "insurance company", value_kind="organisation"),
-            _field("effective_date", "policy start", value_kind="date"),
-            _field("expiry_date", "policy end", value_kind="date"),
-        ),
-        "insurance_document",
-    ),
-}
-
-GENERIC_SCHEMAS: dict[str, DocumentSchema] = {
-    "generic_key_value_form": DocumentSchema(
-        None, GENERIC_KEY_VALUE_FIELDS, "generic_key_value_form", "generic_key_value"
-    ),
-    "generic_document": DocumentSchema(
-        None, GENERIC_METADATA_FIELDS, "generic_document", "generic_metadata"
-    ),
-}
-
-PARENT_SCHEMA_BY_TYPE: dict[VisionDocumentType, str] = {
-    VisionDocumentType.fax_transmission: "business_form",
-    VisionDocumentType.form: "business_form",
-    VisionDocumentType.business_form: "business_form",
-    VisionDocumentType.legal_form: "generic_key_value_form",
-}
+_DEFAULT_CATALOG = load_schema_catalog()
+SCHEMAS, GENERIC_SCHEMAS, PARENT_SCHEMA_BY_TYPE = _runtime_maps(_DEFAULT_CATALOG)
 
 
 class VisionSchemaRegistry:
+    def __init__(
+        self,
+        catalog: LoadedSchemaCatalog | None = None,
+        *,
+        catalog_path: str | Path | None = None,
+    ) -> None:
+        if catalog is not None and catalog_path is not None:
+            raise ValueError("Provide either catalog or catalog_path, not both")
+        self.catalog = catalog or (
+            load_schema_catalog(catalog_path) if catalog_path is not None else _DEFAULT_CATALOG
+        )
+        self._schemas, self._generic_schemas, self._parents = _runtime_maps(self.catalog)
+
+    @property
+    def catalog_version(self) -> str:
+        return self.catalog.catalog_version
+
+    @property
+    def catalog_fingerprint(self) -> str:
+        return self.catalog.fingerprint
+
+    @property
+    def catalog_source(self) -> str:
+        return self.catalog.source
+
+    def registered_schemas(self) -> Iterator[DocumentSchema]:
+        """Yield one configured schema for each registered document type."""
+
+        yield from self._schemas.values()
+
+    def classification_schemas(self) -> Iterator[DocumentSchema]:
+        """Yield unambiguous schema/type pairs suitable for classifier hints."""
+
+        schema_id_counts = Counter(item.name for item in self._schemas.values())
+        yield from (
+            item
+            for item in self._schemas.values()
+            if schema_id_counts[item.name] == 1 and item.classification_hints
+        )
+
     def get(self, document_type: VisionDocumentType | str) -> DocumentSchema | None:
         resolved = self._document_type(document_type)
-        return SCHEMAS.get(resolved) if resolved else None
+        return self._schemas.get(resolved) if resolved else None
 
     def get_by_id(self, schema_id: str) -> DocumentSchema | None:
-        if schema_id in GENERIC_SCHEMAS:
-            return GENERIC_SCHEMAS[schema_id]
-        return next((item for item in SCHEMAS.values() if item.name == schema_id), None)
+        if schema_id in self._generic_schemas:
+            return self._generic_schemas[schema_id]
+        return next((item for item in self._schemas.values() if item.name == schema_id), None)
 
     def resolve(
         self,
@@ -687,20 +238,22 @@ class VisionSchemaRegistry:
         prefer_key_value: bool = False,
     ) -> SchemaSelection:
         resolved = self._document_type(document_type) or VisionDocumentType.unknown
-        exact = SCHEMAS.get(resolved)
-        parent_id = PARENT_SCHEMA_BY_TYPE.get(resolved)
-        parent = self.get_by_id(parent_id) if parent_id else None
+        exact = self._schemas.get(resolved)
+        parent_id = self._parents.get(resolved)
+        parent = self.get_by_id(parent_id) if parent_id and exact is None else None
         generic_id = "generic_key_value_form" if prefer_key_value else "generic_document"
-        generic = GENERIC_SCHEMAS[generic_id]
+        generic = self._generic_schemas[generic_id]
         selected = exact or parent or generic
         source = "exact" if exact else "parent" if parent else generic.schema_kind
+        fallback_id = parent.name if parent is not None else None
         path = tuple(
             dict.fromkeys(
                 item
                 for item in (
-                    resolved.value if exact or resolved != VisionDocumentType.unknown else None,
-                    parent_id,
-                    "generic_key_value_form",
+                    resolved.value if resolved != VisionDocumentType.unknown else None,
+                    exact.name if exact else None,
+                    fallback_id,
+                    generic_id,
                     "generic_document",
                 )
                 if item
@@ -709,7 +262,7 @@ class VisionSchemaRegistry:
         return SchemaSelection(
             schema=selected,
             exact_schema=exact.name if exact else None,
-            fallback_schema=parent_id,
+            fallback_schema=fallback_id,
             generic_schema=generic_id,
             selected_schema=selected.name,
             source=source,
@@ -825,10 +378,26 @@ class VisionSchemaRegistry:
         cleaned = value.strip()
         if not cleaned:
             return False, "empty_value"
-        kind = spec.value_kind if spec else "text"
-        if kind in {"text", "organisation", "name_list", "organisation_list"}:
-            return (any(character.isalnum() for character in cleaned), "contains_visible_text")
-        if kind == "name":
+        validator = spec.validators[0] if spec and spec.validators else (
+            spec.value_kind if spec else "visible_text"
+        )
+        validator = {
+            "text": "visible_text",
+            "organisation": "visible_text",
+            "product": "visible_text",
+            "name_list": "visible_text",
+            "organisation_list": "visible_text",
+            "email_list": "email",
+            "phone_list": "phone",
+            "money_list": "money",
+            "date_list": "date",
+            "reference_list": "reference",
+            "account": "reference",
+        }.get(validator, validator)
+        if validator == "visible_text":
+            valid = any(character.isalnum() for character in cleaned)
+            return valid, "contains_visible_text" if valid else "missing_visible_text"
+        if validator == "name":
             date_like = re.search(
                 r"(?i)\b(?:date|dated|january|february|march|april|may|june|july|"
                 r"august|september|october|november|december)\b.*\d",
@@ -836,7 +405,7 @@ class VisionSchemaRegistry:
             )
             valid = bool(re.search(r"[A-Za-z]", cleaned)) and not date_like
             return valid, "name_text_preserved" if valid else "name_is_date_or_missing"
-        if kind == "title":
+        if validator == "title":
             labelled_value = re.match(
                 r"(?i)^\s*(?:date|dated|sample\s+(?:no\.?|number|id)|batch\s+size|"
                 r"type\s+of\s+cigarette|original\s+request\s+made\s+by|"
@@ -848,28 +417,33 @@ class VisionSchemaRegistry:
                 r"september|october|november|december)\s+\d{1,2}.*\d",
                 cleaned,
             )
-            valid = (
-                bool(re.search(r"[A-Za-z]", cleaned))
-                and labelled_value is None
-                and date_line is None
-            )
+            valid = bool(re.search(r"[A-Za-z]", cleaned)) and labelled_value is None and date_line is None
             return valid, "title_like_text" if valid else "labelled_value_is_not_a_title"
-        if kind in {"email", "email_list"}:
+        if validator == "email":
             valid = re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", cleaned) is not None
             return valid, "valid_email" if valid else "invalid_email_format"
-        if kind in {"phone", "phone_list"}:
+        if validator == "phone":
+            date_token = re.compile(
+                r"(?<!\d)(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})(?!\d)"
+            )
+            if date_token.search(cleaned):
+                return False, "calendar_date_is_not_phone"
             digits = re.sub(r"\D", "", cleaned)
-            valid = 7 <= len(digits) <= 15
-            return valid, "valid_phone_length" if valid else "phone_digit_count_out_of_range"
-        if kind in {"money", "money_list"}:
+            phone_shape = re.fullmatch(
+                r"(?x)\s*(?:\+\s*)?(?:\(?\d{2,4}\)?[ ./-]*)?\d{3,4}[ ./-]\d{3,4}\s*",
+                cleaned,
+            )
+            valid = 7 <= len(digits) <= 15 and phone_shape is not None
+            return valid, "valid_phone_shape" if valid else "invalid_phone_shape_or_length"
+        if validator == "money":
             valid = re.search(r"-?\d[\d,]*(?:\.\d+)?", cleaned) is not None
             return valid, "numeric_amount_present" if valid else "amount_not_parseable"
-        if kind == "currency":
-            valid = (
-                re.fullmatch(r"(?:USD|INR|EUR|GBP|AUD|CAD|JPY|\$|€|£|₹)", cleaned, re.I) is not None
-            )
+        if validator == "currency":
+            valid = re.fullmatch(
+                r"(?:USD|INR|EUR|GBP|AUD|CAD|JPY|\$|€|£|₹)", cleaned, re.I
+            ) is not None
             return valid, "known_currency" if valid else "unknown_currency"
-        if kind in {"date", "date_list"}:
+        if validator == "date":
             date_cleaned = cleaned.rstrip(" .,:;")
             year_match = re.search(r"(?<!\d)(\d{4})(?!\d)", date_cleaned)
             if year_match and not 1800 <= int(year_match.group(1)) <= 2100:
@@ -880,6 +454,10 @@ class VisionSchemaRegistry:
                 "%m/%d/%Y",
                 "%d-%m-%Y",
                 "%m-%d-%Y",
+                "%d/%m/%y",
+                "%m/%d/%y",
+                "%d-%m-%y",
+                "%m-%d-%y",
                 "%b %d, %Y",
                 "%B %d, %Y",
                 "%b %d %Y",
@@ -901,18 +479,14 @@ class VisionSchemaRegistry:
                 )
                 and re.search(r"\d", date_cleaned)
             ) or bool(re.fullmatch(r"\d{1,4}(?:[/-]\d{1,4}){1,2}", date_cleaned))
-            return (
-                (True, "date_uncertain_needs_review")
-                if date_like
-                else (False, "date_not_parseable")
-            )
-        if kind == "time":
+            return (True, "date_uncertain_needs_review") if date_like else (False, "date_not_parseable")
+        if validator == "time":
             valid = re.search(r"\b\d{1,2}:\d{2}(?:\s*[AP]M)?\b", cleaned, re.I) is not None
             return valid, "valid_time" if valid else "time_not_parseable"
-        if kind == "integer":
+        if validator == "integer":
             valid = re.fullmatch(r"\d{1,5}", cleaned) is not None
             return valid, "valid_integer" if valid else "integer_not_parseable"
-        if kind == "boolean":
+        if validator == "boolean":
             valid = cleaned.lower() in {
                 "yes",
                 "no",
@@ -924,20 +498,17 @@ class VisionSchemaRegistry:
                 "unchecked",
             }
             return valid, "valid_boolean" if valid else "boolean_not_parseable"
-        if kind == "quantity":
-            valid = (
-                re.fullmatch(
-                    r"(?i)\s*\d+(?:[.,]\d+)?\s*(?:lbs?\.?|pounds?|kg|kgs|g|grams?|"
-                    r"mg|oz|ounces?|litres?|liters?|ml|units?|pcs?\.?)\s*",
-                    cleaned,
-                )
-                is not None
-            )
+        if validator == "quantity":
+            valid = re.fullmatch(
+                r"(?i)\s*\d+(?:[.,]\d+)?\s*(?:lbs?\.?|pounds?|kg|kgs|g|grams?|"
+                r"mg|oz|ounces?|litres?|liters?|ml|units?|pcs?\.?)\s*",
+                cleaned,
+            ) is not None
             return valid, "number_and_unit_present" if valid else "quantity_not_parseable"
-        if kind in {"reference", "reference_list", "account"}:
+        if validator == "reference":
             valid = bool(re.search(r"[A-Za-z0-9]", cleaned)) and len(cleaned) <= 100
             return valid, "valid_identifier" if valid else "identifier_not_parseable"
-        return True, "no_special_validation"
+        raise ValueError(f"Schema field {spec.name if spec else '<unknown>'} uses unknown validator {validator}")
 
     def _document_type(
         self,

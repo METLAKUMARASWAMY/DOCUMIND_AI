@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -48,6 +48,7 @@ function response(overrides: Partial<AskResponse>): AskResponse {
 
 describe("AskDocumentsPage clarification state", () => {
   beforeEach(() => {
+    cleanup();
     vi.clearAllMocks();
     vi.mocked(api.documents).mockResolvedValue({ documents: [], total: 0 });
   });
@@ -90,5 +91,53 @@ describe("AskDocumentsPage clarification state", () => {
       conversationId: "conversation-from-server",
     }));
     expect(screen.getByRole("button", { name: "Check suspicious indicators" })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("shows deterministic calculation inputs and result", async () => {
+    vi.mocked(api.ask).mockResolvedValueOnce(response({
+      answer: "USD 310.50",
+      answer_status: "supported",
+      query_type: "arithmetic_question",
+      clarification_options: [],
+      calculation_trace: {
+        operation: "sum",
+        inputs: [{
+          document_id: "invoice-1",
+          document_type: "invoice",
+          role: "addend",
+          field_name: "total_amount",
+          raw_value: "USD 310.50",
+          normalized_value: "310.50",
+          value_type: "decimal",
+          currency: "USD",
+          reviewer_status: "accepted",
+        }],
+        result: "310.50",
+        result_type: "decimal",
+        currency: "USD",
+        formula: "sum(Decimal(verified input))",
+        calculation_version: "deterministic-calculation-v1",
+      },
+    }));
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AskDocumentsPage />
+        </BrowserRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText("Ask a question about your documents"),
+      "Sum invoice totals",
+    );
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(await screen.findByLabelText("Calculation trace")).toHaveTextContent("addend=310.50 USD");
+    expect(screen.getByLabelText("Calculation trace")).toHaveTextContent("Result: 310.50");
   });
 });

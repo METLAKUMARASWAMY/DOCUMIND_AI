@@ -66,6 +66,35 @@ describe("document canvas overlays", () => {
     expect(result.every((item) => item.layer === "lowConfidence")).toBe(true);
   });
 
+  it("projects schema-independent attributes and their review state", () => {
+    const genericDocument = {
+      ...document,
+      generic_fields: [{
+        field_id: "generic-1",
+        raw_label: "Unseen Attribute",
+        normalized_label: "unseen_attribute",
+        raw_value: "VALUE-7",
+        normalized_value: "VALUE-7",
+        page: 1,
+        confidence: 0.65,
+        review_required: true,
+        value_bbox: box,
+        evidence: { evidence_id: "generic-evidence", page_number: 1, bounding_box: box },
+      }],
+      verified_facts: [{ evidence_id: "generic-evidence" }],
+    } as unknown as VisionDocument;
+
+    const fieldOverlays = buildOverlays(genericDocument, 1, layers("fields"));
+    expect(fieldOverlays).toHaveLength(2);
+    expect(fieldOverlays[1]).toMatchObject({
+      id: "generic-1",
+      label: "Unseen Attribute: VALUE-7",
+      variant: "verified",
+    });
+
+    expect(buildOverlays(genericDocument, 1, layers("lowConfidence"))).toHaveLength(3);
+  });
+
   it("keeps coordinates proportional across rendered sizes", () => {
     expect(boxStyle(box, 1000, 2000)).toEqual({
       left: "10%",

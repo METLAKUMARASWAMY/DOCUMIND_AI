@@ -87,7 +87,7 @@ test("repaired workspaces are connected, readable, and responsive", async ({ pag
   await expect.poll(async () => page.locator(".page-stage img").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await expect(page.locator(".evidence-overlay")).not.toHaveCount(0);
 
-  await page.getByRole("checkbox", { name: "Extracted fields" }).uncheck();
+  await page.getByRole("checkbox", { name: "Fields & attributes" }).uncheck();
   await expect(page.locator(".evidence-overlay")).toHaveCount(0);
   await page.getByRole("checkbox", { name: "OCR" }).check();
   await expect(page.locator(".overlay-ocr")).not.toHaveCount(0);
@@ -95,7 +95,7 @@ test("repaired workspaces are connected, readable, and responsive", async ({ pag
   await expect(page.locator(".overlay-ocr")).toHaveCount(0);
   await capture(page, "document-viewer-readable.png");
 
-  await page.getByRole("checkbox", { name: "Extracted fields" }).check();
+  await page.getByRole("checkbox", { name: "Fields & attributes" }).check();
   await page.getByRole("checkbox", { name: "Risk indicators" }).check();
   await capture(page, "document-viewer-overlays.png");
   await page.getByRole("button", { name: "Clear all overlays" }).click();
@@ -113,7 +113,9 @@ test("repaired workspaces are connected, readable, and responsive", async ({ pag
 
   await page.goto("/ask");
   await expect(page.getByRole("heading", { name: "Ask documents" })).toBeVisible();
-  await page.getByLabel("Scope").click();
+  await page.getByLabel("Scope", { exact: true }).click();
+  await page.getByRole("option", { name: "Current document", exact: true }).click();
+  await page.getByLabel("Document", { exact: true }).click();
   await page.getByRole("option", { name: "documind-demo-invoice.txt" }).click();
   await page.getByPlaceholder("Ask a question about your documents").fill("What is the total amount?");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
@@ -149,7 +151,9 @@ test("repaired workspaces are connected, readable, and responsive", async ({ pag
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Admin settings" })).toBeVisible();
   await expect(page.getByText(/Requested state is deployment intent/)).toBeVisible();
-  await expect(page.getByText("deterministic-schema-extractor-v3")).toBeVisible();
+  await expect(
+    page.getByText("deterministic-schema-extractor-v3", { exact: true }),
+  ).toBeVisible();
   await capture(page, "admin-model-runtime.png");
 
   await page.setViewportSize({ width: 390, height: 844 });

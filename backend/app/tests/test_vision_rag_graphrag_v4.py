@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from app.core.config import settings
 from app.core.security import hash_document, utc_now_iso
+from app.models.schemas import TextAnalysisRequest
 from app.models.vision import (
     ExtractedVisionField,
     ReviewerStatus,
@@ -88,6 +90,8 @@ def _business_form() -> VisionDocumentRecord:
                 "W. E. Routh",
                 "Sample Specifications Written By: W. E. Routh",
             ),
+            _field(document_id, "request_date", "September 19, 1976", "Request Date: September 19, 1976"),
+            _field(document_id, "purpose", "Filter evaluation", "Purpose: Filter evaluation"),
             _field(
                 document_id,
                 "document_title",
@@ -114,6 +118,8 @@ def test_semantic_graph_ontology_has_source_linked_business_relationships():
         "HAS_BATCH_SIZE",
         "REQUESTED_BY",
         "SPECIFICATIONS_WRITTEN_BY",
+        "HAS_REQUEST_DATE",
+        "HAS_PURPOSE",
     } <= relationships
     assert not any(
         node["type"] == "Form" and node.get("value") == "September 21, 1976"
@@ -152,6 +158,148 @@ def test_graphrag_query_returns_readable_path_and_field_evidence():
     assert response.citations[0].source_text == "Original Request Made By: Dr. A. W. Spears"
     assert response.citations[0].bounding_boxes
     assert response.citations[0].evidence_type == "graph_path"
+
+
+def test_conversational_followups_reuse_prior_citations_and_document_scope():
+    service = VisionAIService()
+    document = _business_form()
+    service.documents[document.document_id] = document
+    conversation_id = f"follow-up-{uuid4().hex}"
+    user_id = "reviewer-follow-up"
+
+    original = service.ask(
+        VisionAskRequest(
+            question="Who requested this sample?",
+            scope="current_document",
+            document_id=document.document_id,
+        ),
+        document.tenant_id,
+        conversation_id=conversation_id,
+        user_id=user_id,
+    )
+    why = service.ask(
+        VisionAskRequest(question="Why?", conversation_id=conversation_id),
+        document.tenant_id,
+        user_id=user_id,
+    )
+    evidence = service.ask(
+        VisionAskRequest(question="Show evidence", conversation_id=conversation_id),
+        document.tenant_id,
+        user_id=user_id,
+    )
+    page = service.ask(
+        VisionAskRequest(question="What page is that on?", conversation_id=conversation_id),
+        document.tenant_id,
+        user_id=user_id,
+    )
+
+    for follow_up in (why, evidence, page):
+        assert follow_up.answer_status == "supported"
+        assert follow_up.query_type == "conversation_follow_up"
+        assert follow_up.retrieval_path == "prior_turn_citations"
+        assert follow_up.retriever == "conversation_citation_state"
+        assert follow_up.resolved_question == "Who requested this sample?"
+        assert follow_up.scope["scope"] == "current_document"
+        assert follow_up.scope["documents"][0]["document_id"] == document.document_id
+        assert follow_up.citations == original.citations
+
+    source_text = "Original Request Made By: Dr. A. W. Spears"
+    assert source_text in why.answer
+    assert source_text in evidence.answer
+    assert "page 1" in page.answer
+
+
+def test_persisted_ask_citations_resolve_after_service_restart(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    tenant_id = "tenant-citation-resolution"
+    service = VisionAIService()
+    document = service.process_text(
+        TextAnalysisRequest(
+            filename="renamed-business-record.txt",
+            text=(
+                "SAMPLE REQUEST FORM\n"
+                "Sample No.: RESOLVE-6030\n"
+                "Original Request Made By: Dr. A. W. Spears\n"
+                "Purpose: Filter evaluation\n"
+            ),
+        ),
+        tenant_id=tenant_id,
+    )
+    fax_document = service.process_text(
+        TextAnalysisRequest(
+            filename="renamed-fax-record.txt",
+            text="FAX TRANSMISSION\nFax: 910/535-7707\n",
+        ),
+        tenant_id=tenant_id,
+    )
+    # Exercise the raw-OCR citation path independently of structured extraction.
+    fax_document.extracted_fields = []
+    service._persist_document(fax_document)
+
+    responses = [
+        service.ask(
+            VisionAskRequest(
+                question="What is the sample number?",
+                scope="current_document",
+                document_id=document.document_id,
+            ),
+            tenant_id,
+        ),
+        service.ask(
+            VisionAskRequest(
+                question="Who requested this sample?",
+                scope="current_document",
+                document_id=document.document_id,
+            ),
+            tenant_id,
+        ),
+        service.ask(
+            VisionAskRequest(
+                question="Describe the filter evaluation details",
+                scope="current_document",
+                document_id=document.document_id,
+            ),
+            tenant_id,
+        ),
+        service.ask(
+            VisionAskRequest(
+                question="What is the fax number?",
+                scope="current_document",
+                document_id=fax_document.document_id,
+            ),
+            tenant_id,
+        ),
+    ]
+    assert all(response.citations for response in responses)
+
+    restarted = VisionAIService()
+    for response in responses:
+        stored_question = restarted.get_question(response.question_id, tenant_id)
+        assert stored_question["answer"]["question_id"] == response.question_id
+        for citation in response.citations:
+            source = restarted.get_document(citation.document_id, tenant_id)
+            evidence_ids = {
+                field.evidence.evidence_id for field in source.extracted_fields
+            } | {
+                field.evidence.evidence_id for field in source.generic_fields
+            } | {
+                evidence.evidence_id
+                for indicator in [*source.risk_indicators, *source.processing_warnings]
+                for evidence in indicator.evidence
+            } | {
+                str(edge.get("evidence_id"))
+                for edge in source.graph.edges
+                if edge.get("evidence_id")
+            }
+            chunk_ids = {chunk.chunk_id for chunk in source.evidence_chunks}
+            ocr_locations = {
+                (line.page, line.text) for line in source.ocr_lines
+            }
+            assert (
+                bool(citation.evidence_id and citation.evidence_id in evidence_ids)
+                or bool(citation.chunk_id and citation.chunk_id in chunk_ids)
+                or (citation.page_number, citation.source_text) in ocr_locations
+            ), citation.model_dump(mode="json")
 
 
 def test_yes_preserves_pending_clarification_until_an_option_is_selected():

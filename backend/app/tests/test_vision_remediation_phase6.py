@@ -3,8 +3,16 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.models.vision import (
+    GenericDiscoveredField,
+    VisionBoundingBox,
+    VisionEvidence,
+    VisionSemanticType,
+)
+from app.services.vision.graph_builder import evidence_graph_builder
 from app.services.vision.persistence import VisionPersistenceCoordinator
 from app.tests.auth_helpers import auth_headers
+from app.tests.test_vision_rag_graphrag_v4 import _business_form
 
 client = TestClient(create_app())
 
@@ -135,3 +143,56 @@ def test_neo4j_projection_uses_whitelisted_domain_labels_and_relationships():
     assert any(":Organisation" in statement for statement in transaction.statements)
     assert any("[r:HAS_CONTACT" in statement for statement in transaction.statements)
     assert all("VISION_RELATIONSHIP" not in statement for statement in transaction.statements)
+
+
+def test_neo4j_projection_keeps_generic_attributes_for_unseen_labels():
+    document = _business_form()
+    evidence = VisionEvidence(
+        document_id=document.document_id,
+        page_number=1,
+        source_text="Warehouse Zone: W-17",
+        bounding_box=VisionBoundingBox(x1=10, y1=50, x2=250, y2=75),
+        model_confidence=0.88,
+        model_name="generic-semantic-discovery",
+        model_version="v1",
+        processing_timestamp=document.updated_at,
+    )
+    document.generic_fields = [
+        GenericDiscoveredField(
+            raw_label="Warehouse Zone",
+            normalized_label="warehouse_zone",
+            raw_value="W-17",
+            normalized_value="W-17",
+            label_bbox=VisionBoundingBox(x1=10, y1=50, x2=140, y2=75),
+            value_bbox=VisionBoundingBox(x1=160, y1=50, x2=250, y2=75),
+            confidence=0.88,
+            source_engine="generic-semantic-discovery-v1",
+            semantic_type_if_known=VisionSemanticType.identifier,
+            evidence=evidence,
+        )
+    ]
+    document.graph = evidence_graph_builder.build(document)
+
+    class Result:
+        def consume(self):
+            return None
+
+    class Transaction:
+        def __init__(self):
+            self.statements: list[str] = []
+
+        def run(self, statement: str, **parameters):
+            del parameters
+            self.statements.append(statement)
+            return Result()
+
+    transaction = Transaction()
+    VisionPersistenceCoordinator._upsert_graph_tx(
+        transaction,
+        document.tenant_id,
+        document.document_id,
+        document.graph.model_dump(mode="json"),
+    )
+
+    assert any(":Attribute" in statement for statement in transaction.statements)
+    assert any("[r:HAS_ATTRIBUTE" in statement for statement in transaction.statements)

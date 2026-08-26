@@ -57,6 +57,10 @@ class VisionDocumentType(str, Enum):
     correspondence = "correspondence"
     letter = "letter"
     statement = "statement"
+    sample_form = "sample_form"
+    product_specification = "product_specification"
+    email = "email"
+    generic_form = "generic_form"
     # Retained for records created before the v3 taxonomy migration.
     form = "form"
     report = "report"
@@ -112,6 +116,28 @@ class VisionBoundingBox(BaseModel):
         return self
 
 
+class VisionSemanticType(str, Enum):
+    date = "DATE"
+    datetime = "DATETIME"
+    person = "PERSON"
+    organisation = "ORGANISATION"
+    money = "MONEY"
+    number = "NUMBER"
+    quantity = "QUANTITY"
+    percentage = "PERCENTAGE"
+    phone = "PHONE"
+    email = "EMAIL"
+    address = "ADDRESS"
+    bank_account = "BANK_ACCOUNT"
+    identifier = "IDENTIFIER"
+    document_reference = "DOCUMENT_REFERENCE"
+    currency = "CURRENCY"
+    product = "PRODUCT"
+    text = "TEXT"
+    boolean = "BOOLEAN"
+    url = "URL"
+
+
 class VisionEvidence(BaseModel):
     evidence_id: str = Field(default_factory=lambda: f"vis-ev-{uuid4().hex[:12]}")
     document_id: str
@@ -125,6 +151,65 @@ class VisionEvidence(BaseModel):
     processing_timestamp: str
     reviewer_status: ReviewerStatus = ReviewerStatus.unverified
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GenericDiscoveredField(BaseModel):
+    """A schema-independent label/value observation backed by OCR geometry."""
+
+    field_id: str = Field(default_factory=lambda: f"generic-field-{uuid4().hex[:12]}")
+    raw_label: str
+    normalized_label: str
+    raw_value: str
+    normalized_value: str
+    page: int = Field(default=1, ge=1)
+    label_bbox: VisionBoundingBox
+    value_bbox: VisionBoundingBox
+    confidence: float = Field(ge=0, le=1)
+    source_engine: str
+    semantic_type_if_known: VisionSemanticType | None = None
+    semantic_mapping_confidence: float | None = Field(default=None, ge=0, le=1)
+    evidence: VisionEvidence
+    alternatives: list[dict[str, Any]] = Field(default_factory=list)
+    review_required: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class TypedVisionEntity(BaseModel):
+    """A reusable semantic interpretation; extraction remains independently auditable."""
+
+    entity_id: str = Field(default_factory=lambda: f"entity-{uuid4().hex[:12]}")
+    raw_value: str
+    normalized_value: str
+    semantic_type: VisionSemanticType
+    confidence: float = Field(ge=0, le=1)
+    validator_valid: bool = True
+    validation_reasons: list[str] = Field(default_factory=list)
+    context: dict[str, Any] = Field(default_factory=dict)
+    evidence_ids: list[str] = Field(default_factory=list)
+    alternatives: list[dict[str, Any]] = Field(default_factory=list)
+    conflict_ids: list[str] = Field(default_factory=list)
+    review_required: bool = False
+
+
+class VerifiedVisionFact(BaseModel):
+    fact_id: str = Field(default_factory=lambda: f"fact-{uuid4().hex[:12]}")
+    field_id: str
+    name: str
+    value: str
+    normalized_value: str | None = None
+    semantic_type: VisionSemanticType | None = None
+    evidence_id: str
+    reviewer_status: ReviewerStatus
+    reviewer: str | None = None
+    verified_at: str | None = None
+
+
+class VisionSchemaProfile(BaseModel):
+    mode: str = Field(default="C", pattern="^[ABC]$")
+    schema_status: str = Field(default="generic", pattern="^(registered|inferred|generic)$")
+    schema_id: str | None = None
+    schema_version: str = "v1"
+    selection_source: str = "generic"
 
 
 class PageQualityReport(BaseModel):
@@ -170,6 +255,8 @@ class OCRWord(BaseModel):
     review_required: bool = False
     model_name: str = "local-ocr-word-adapter"
     model_version: str = "v1"
+    preprocessing_variant: str = "unknown"
+    ocr_pass: str = "primary"
 
 
 class OCRLineRecord(BaseModel):
@@ -215,6 +302,11 @@ class TableResult(BaseModel):
     cells: list[TableCell]
     bounding_box: VisionBoundingBox
     confidence: float = Field(default=0.0, ge=0, le=1)
+    structure_status: str = Field(
+        default="structured",
+        pattern="^(structured|table_uncertain)$",
+    )
+    uncertainty_reasons: list[str] = Field(default_factory=list)
     model_name: str = "local-table-structure-adapter"
     model_version: str = "v1"
 
@@ -579,7 +671,11 @@ class VisionDocumentRecord(BaseModel):
     tables: list[TableResult] = Field(default_factory=list)
     visual_detections: list[VisualDetection] = Field(default_factory=list)
     tamper_analysis: list[TamperAnalysisResult] = Field(default_factory=list)
+    generic_fields: list[GenericDiscoveredField] = Field(default_factory=list)
+    typed_entities: list[TypedVisionEntity] = Field(default_factory=list)
     extracted_fields: list[ExtractedVisionField] = Field(default_factory=list)
+    verified_facts: list[VerifiedVisionFact] = Field(default_factory=list)
+    schema_profile: VisionSchemaProfile = Field(default_factory=VisionSchemaProfile)
     confidence_summary: VisionConfidenceSummary = Field(default_factory=VisionConfidenceSummary)
     field_completeness: VisionFieldCompleteness = Field(default_factory=VisionFieldCompleteness)
     language_analysis: VisionLanguageAnalysis = Field(default_factory=VisionLanguageAnalysis)
@@ -610,6 +706,10 @@ class VisionUploadResponse(BaseModel):
 
 class VisionFieldReviewRequest(BaseModel):
     reviewed_value: str | None = None
+    reviewed_field_name: str | None = Field(
+        default=None,
+        pattern="^[a-z][a-z0-9_]{0,79}$",
+    )
     reviewer_status: ReviewerStatus = ReviewerStatus.edited
     comment: str = ""
 
@@ -677,6 +777,8 @@ class VisionConversationState(BaseModel):
     selected_scope: dict[str, Any] = Field(default_factory=dict)
     pending_clarification: dict[str, Any] = Field(default_factory=dict)
     last_query_type: str = ""
+    last_resolved_question: str = ""
+    last_answer: dict[str, Any] = Field(default_factory=dict)
     turns: list[dict[str, Any]] = Field(default_factory=list)
     expires_at: str
     updated_at: str
@@ -729,6 +831,39 @@ class VisionAskCitation(BaseModel):
         return self.page_number
 
 
+class VisionAskCalculationOperation(str, Enum):
+    sum = "sum"
+    count_verified_invoices = "count_verified_invoices"
+    invoice_po_difference = "invoice_po_difference"
+    percentage_variance = "percentage_variance"
+    date_interval = "date_interval"
+
+
+class VisionAskCalculationInput(BaseModel):
+    document_id: str
+    document_type: VisionDocumentType
+    role: str
+    field_name: str
+    raw_value: str
+    normalized_value: str
+    value_type: str
+    currency: str | None = None
+    evidence_id: str | None = None
+    page_number: int | None = Field(default=None, ge=1)
+    reviewer_status: ReviewerStatus
+
+
+class VisionAskCalculationTrace(BaseModel):
+    operation: VisionAskCalculationOperation
+    inputs: list[VisionAskCalculationInput] = Field(default_factory=list)
+    result: str | None = None
+    result_type: str
+    currency: str | None = None
+    unit: str | None = None
+    formula: str
+    calculation_version: str = "deterministic-calculation-v1"
+
+
 class VisionAskResponse(BaseModel):
     question_id: str | None = None
     answer: str
@@ -751,6 +886,7 @@ class VisionAskResponse(BaseModel):
     retrieval_trace: VisionRetrievalTrace | None = None
     reranker: str = "not_used"
     graph_paths: list[dict[str, Any]] = Field(default_factory=list)
+    calculation_trace: VisionAskCalculationTrace | None = None
 
     @computed_field
     @property
@@ -786,7 +922,12 @@ class VisionFinanceNarrative(BaseModel):
     narrative: str
     calculations: list[VisionCalculationTrace] = Field(default_factory=list)
     citations: list[VisionAskCitation] = Field(default_factory=list)
+    # Contributors are the records counted/summed in the narrative. Source IDs
+    # additionally include conservatively excluded duplicates so versioning,
+    # staleness, and audit remain tied to every reviewed input.
     document_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    excluded_document_ids: list[str] = Field(default_factory=list)
     all_values_verified: bool = True
     answer_status: str = "supported"
     created_at: str

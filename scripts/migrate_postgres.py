@@ -84,6 +84,11 @@ MIGRATIONS = (
             "vision_retrieval_traces",
         ),
     ),
+    Migration(
+        "004_conversation_evidence_state",
+        PROJECT_ROOT / "infra/migrations/004_conversation_evidence_state.sql",
+        ("vision_conversations",),
+    ),
 )
 
 

@@ -125,6 +125,18 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .field-row:hover, .field-row.selected { border-color: #087f78; background: #f2f8f7; }
 .field-value { max-width: 260px; overflow-wrap: anywhere; }
 .field-meta { display: grid; justify-items: end; gap: 4px; flex: 0 0 auto; }
+.generic-intelligence { display: grid; gap: 15px; }
+.schema-profile-summary { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 3px 10px; padding: 11px 12px; border-left: 3px solid #087f78; background: #f2f8f7; }
+.schema-profile-summary > .MuiTypography-caption { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.generic-section { display: grid; gap: 6px; }
+.compact-heading { align-items: center; margin-bottom: 2px; }
+.generic-field-row { display: grid; border: 1px solid #e3e7ea; border-radius: 5px; background: #fff; overflow: hidden; }
+.generic-field-main, .semantic-row { width: 100%; min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 0; background: transparent; padding: 9px 10px; text-align: left; color: inherit; cursor: pointer; }
+.generic-field-main:hover, .semantic-row:hover { background: #f2f8f7; }
+.semantic-row { min-height: 58px; border: 1px solid #e3e7ea; border-radius: 5px; }
+.semantic-row:disabled { cursor: default; opacity: 1; }
+.generic-evidence-control { margin: 0 !important; padding: 2px 8px; border-top: 1px solid #edf0f2; }
+.generic-evidence-control .MuiFormControlLabel-label { font-size: .75rem; }
 .table-result { overflow: auto; margin-bottom: 20px; }
 .risk-heading { display: flex; align-items: center; gap: 9px; }
 .indicator-stack { display: grid; gap: 10px; }
@@ -149,6 +161,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .review-field { display: grid; gap: 7px; padding: 12px 0; border-bottom: 1px solid #e3e7ea; }
 .review-field-heading { display: flex; justify-content: space-between; gap: 8px; }
 .review-field-heading > :last-child { display: grid; justify-items: end; }
+.review-fields > .generic-intelligence { margin-top: 16px; padding-top: 14px; border-top: 2px solid #b8d5d2; }
 .manual-verification-panel { display: grid; gap: 10px; padding: 14px 0; border-top: 2px solid #d5aa3d; }
 .field-review-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .review-decision-bar { padding: 12px 14px; border-top: 1px solid #dfe4e8; background: #f7f9fa; display: grid; gap: 10px; }

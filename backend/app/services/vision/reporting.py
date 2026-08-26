@@ -28,19 +28,14 @@ class VisionReportService:
         actor: str,
     ) -> VisionReportRecord:
         selected = self._select_documents(request, documents)
-        if (
-            request.report_type == VisionReportType.finance_narrative
-            and request.narrative_id
-        ):
+        if request.report_type == VisionReportType.finance_narrative and request.narrative_id:
             narrative = next(
                 (item for item in narratives if item.narrative_id == request.narrative_id),
                 None,
             )
             if narrative:
-                narrative_documents = set(narrative.document_ids)
-                selected = [
-                    item for item in documents if item.document_id in narrative_documents
-                ]
+                narrative_documents = set(narrative.source_document_ids or narrative.document_ids)
+                selected = [item for item in documents if item.document_id in narrative_documents]
         content = self._content(request, selected, narratives)
         return VisionReportRecord(
             tenant_id=tenant_id,
@@ -81,7 +76,11 @@ class VisionReportService:
             b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
             b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-            b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream",
+            b"<< /Length "
+            + str(len(stream)).encode("ascii")
+            + b" >>\nstream\n"
+            + stream
+            + b"\nendstream",
         ]
         output = bytearray(b"%PDF-1.4\n")
         offsets = [0]
@@ -115,14 +114,20 @@ class VisionReportService:
         if request.vendor_name:
             vendor = self._normalise(request.vendor_name)
             selected = [item for item in selected if self._normalise(self._vendor(item)) == vendor]
-        if request.report_type in {
-            VisionReportType.document_intelligence,
-            VisionReportType.risk_screening,
-            VisionReportType.contract_review,
-        } and not selected:
+        if (
+            request.report_type
+            in {
+                VisionReportType.document_intelligence,
+                VisionReportType.risk_screening,
+                VisionReportType.contract_review,
+            }
+            and not selected
+        ):
             raise ValueError("At least one accessible document is required for this report type")
         if request.report_type == VisionReportType.contract_review:
-            selected = [item for item in selected if item.document_type == VisionDocumentType.contract]
+            selected = [
+                item for item in selected if item.document_type == VisionDocumentType.contract
+            ]
             if not selected:
                 raise ValueError("A contract document is required for a contract review report")
         return selected
@@ -144,11 +149,21 @@ class VisionReportService:
                     {
                         "document_id": item.document_id,
                         "status": item.status.value,
-                        "risk_indicators": [risk.model_dump(mode="json") for risk in item.risk_indicators],
-                        "duplicate_matches": [match.model_dump(mode="json") for match in item.duplicate_candidates],
-                        "tamper_screening": [screen.model_dump(mode="json") for screen in item.tamper_analysis],
-                        "anomaly_screening": [screen.model_dump(mode="json") for screen in item.anomaly_analysis],
-                        "audit_history": [event.model_dump(mode="json") for event in item.audit_events],
+                        "risk_indicators": [
+                            risk.model_dump(mode="json") for risk in item.risk_indicators
+                        ],
+                        "duplicate_matches": [
+                            match.model_dump(mode="json") for match in item.duplicate_candidates
+                        ],
+                        "tamper_screening": [
+                            screen.model_dump(mode="json") for screen in item.tamper_analysis
+                        ],
+                        "anomaly_screening": [
+                            screen.model_dump(mode="json") for screen in item.anomaly_analysis
+                        ],
+                        "audit_history": [
+                            event.model_dump(mode="json") for event in item.audit_events
+                        ],
                     }
                     for item in documents
                 ],
@@ -164,7 +179,9 @@ class VisionReportService:
                             for field in item.extracted_fields
                             if field.name in self._contract_fields()
                         ],
-                        "review_indicators": [risk.model_dump(mode="json") for risk in item.risk_indicators],
+                        "review_indicators": [
+                            risk.model_dump(mode="json") for risk in item.risk_indicators
+                        ],
                         "reviewer_decision": item.status.value,
                     }
                     for item in documents
@@ -182,9 +199,13 @@ class VisionReportService:
                 raise ValueError("narrative_id must identify an accessible generated narrative")
             return narrative.model_dump(mode="json")
         if not request.evaluation:
-            raise ValueError("Actual labelled evaluation output is required for a model evaluation report")
+            raise ValueError(
+                "Actual labelled evaluation output is required for a model evaluation report"
+            )
         if not request.evaluation.get("dataset") or not request.evaluation.get("metrics"):
-            raise ValueError("Evaluation output must include dataset provenance and calculated metrics")
+            raise ValueError(
+                "Evaluation output must include dataset provenance and calculated metrics"
+            )
         return {
             "evaluation": request.evaluation,
             "metric_policy": "Only metrics calculated from the identified labelled dataset are included.",
@@ -197,6 +218,16 @@ class VisionReportService:
             "document_type": document.document_type.value,
             "status": document.status.value,
             "summary": self._summary(document),
+            "ocr_layout": {
+                "ocr_word_count": len(document.ocr_words),
+                "ocr_line_count": len(document.ocr_lines),
+                "layout_region_count": len(document.layout_regions),
+                "table_count": len(document.tables),
+                "page_artifacts": [
+                    artifact.model_dump(mode="json") for artifact in document.page_artifacts
+                ],
+                "quality": [item.model_dump(mode="json") for item in document.quality],
+            },
             "field_completeness": document.field_completeness.model_dump(mode="json"),
             "fields": [self._field_payload(field) for field in document.extracted_fields],
             "validation_results": [
@@ -205,11 +236,32 @@ class VisionReportService:
                 if risk.category in {"validation", "cross_document"}
             ],
             "risk_indicators": [risk.model_dump(mode="json") for risk in document.risk_indicators],
-            "duplicate_matches": [item.model_dump(mode="json") for item in document.duplicate_candidates],
+            "duplicate_matches": [
+                item.model_dump(mode="json") for item in document.duplicate_candidates
+            ],
             "tables": [table.model_dump(mode="json") for table in document.tables],
             "reviewer_decision": document.status.value,
             "model_runs": [run.model_dump(mode="json") for run in document.model_runs],
             "audit_history": [event.model_dump(mode="json") for event in document.audit_events],
+            "graph": {
+                "nodes": [
+                    node.model_dump(mode="json") if hasattr(node, "model_dump") else dict(node)
+                    for node in document.graph.nodes
+                ],
+                "edges": [
+                    edge.model_dump(mode="json") if hasattr(edge, "model_dump") else dict(edge)
+                    for edge in document.graph.edges
+                ],
+            },
+            "limitations": {
+                "confidence_calibrated": False,
+                "requires_human_review": document.status.value
+                in {"REVIEW_REQUIRED", "UNDER_REVIEW"},
+                "risk_language": self._risk_policy(),
+                "structured_extraction_status": (document.metadata.get("extraction") or {}).get(
+                    "status"
+                ),
+            },
         }
 
     def _field_payload(self, field) -> dict:
@@ -250,7 +302,8 @@ class VisionReportService:
                 currency = (
                     currency_field.reviewed_value or currency_field.value
                     if currency_field
-                    and currency_field.reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited}
+                    and currency_field.reviewer_status
+                    in {ReviewerStatus.accepted, ReviewerStatus.edited}
                     else "UNSPECIFIED"
                 )
                 totals[currency] += amount

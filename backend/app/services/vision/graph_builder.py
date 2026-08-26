@@ -11,6 +11,7 @@ from app.models.vision import (
     VisionDocumentRecord,
     VisionEvidence,
     VisionGraphProjection,
+    VisionSemanticType,
 )
 
 VERIFIED_REVIEW_STATUSES = {ReviewerStatus.accepted, ReviewerStatus.edited}
@@ -41,6 +42,7 @@ class EvidenceGraphBuilder:
         )
         self._add_pages(document_node)
         self._add_fields()
+        self._add_generic_attributes(document_node)
         self._add_entity_relationships(document_node)
         self._add_visual_signatures(document_node)
         self._add_risks(document_node)
@@ -71,6 +73,7 @@ class EvidenceGraphBuilder:
                     "Signature",
                     "Stamp",
                     "ExtractedField",
+                    "Attribute",
                     "RiskIndicator",
                 ],
                 "relationships": {
@@ -80,6 +83,64 @@ class EvidenceGraphBuilder:
                 },
             },
         )
+
+    def _add_generic_attributes(self, document_node: str) -> None:
+        """Keep every discovered label/value pair graph-accessible.
+
+        Recognised schema fields continue to receive richer relationships below;
+        unseen labels use a stable generic Attribute node instead of disappearing.
+        """
+        schema_evidence = {
+            field.evidence.evidence_id
+            for field in self.document.extracted_fields
+            if field.extractor != "generic-open-set"
+        }
+        schema_names = {
+            field.name
+            for field in self.document.extracted_fields
+            if field.extractor != "generic-open-set"
+        }
+        for field in self.document.generic_fields:
+            if (
+                field.evidence.evidence_id in schema_evidence
+                or field.normalized_label in schema_names
+            ):
+                continue
+            value = self._mask(field.normalized_label, field.raw_value)
+            identity = (
+                f"{self.document.tenant_id}:Attribute:{field.normalized_label}:"
+                f"{self._normalize(field.normalized_value)}"
+            )
+            attribute_id = f"Attribute:{hash_document(identity.encode())[:18]}"
+            self._add_node(
+                attribute_id,
+                "Attribute",
+                f"{field.raw_label}: {value}",
+                value=value,
+                status="proposed" if field.review_required else "machine_observed",
+                review_status=ReviewerStatus.unverified.value,
+                source_page=field.page,
+                evidence_id=field.evidence.evidence_id,
+                bounding_boxes=self._boxes(field.evidence),
+                confidence=field.confidence,
+                field_name=field.normalized_label,
+                source_text=field.evidence.source_text,
+                extractor_version=field.source_engine,
+                semantic_type=(
+                    field.semantic_type_if_known.value
+                    if isinstance(field.semantic_type_if_known, VisionSemanticType)
+                    else None
+                ),
+            )
+            self._add_edge(
+                document_node,
+                attribute_id,
+                "HAS_ATTRIBUTE",
+                evidence=field.evidence,
+                status="proposed",
+                provenance=field.source_engine,
+                source_field=field.normalized_label,
+            )
 
     def _add_pages(self, document_node: str) -> None:
         page_count = max(
@@ -215,6 +276,8 @@ class EvidenceGraphBuilder:
         batch_size = self._first_entity("batch_size")
         requested_by = self._first_entity("requested_by")
         specifications_written_by = self._first_entity("specifications_written_by")
+        request_date = self._first_entity("request_date")
+        purpose = self._first_entity("purpose")
 
         if title:
             self._field_relationship(
@@ -298,6 +361,20 @@ class EvidenceGraphBuilder:
                 specifications_written_by,
                 "SPECIFICATIONS_WRITTEN_BY",
                 "specifications_written_by",
+            )
+        if request_date:
+            self._field_relationship(
+                document_node,
+                request_date,
+                "HAS_REQUEST_DATE",
+                "request_date",
+            )
+        if purpose:
+            self._field_relationship(
+                document_node,
+                purpose,
+                "HAS_PURPOSE",
+                "purpose",
             )
 
         if organisation:
@@ -422,9 +499,7 @@ class EvidenceGraphBuilder:
                 extractor_version=detection.model_version,
             )
             status = (
-                "verified"
-                if detection.reviewer_status in VERIFIED_REVIEW_STATUSES
-                else "proposed"
+                "verified" if detection.reviewer_status in VERIFIED_REVIEW_STATUSES else "proposed"
             )
             self._add_edge(
                 document_node,
@@ -495,9 +570,7 @@ class EvidenceGraphBuilder:
                 source_page=1,
             )
             evidence = duplicate.evidence[0] if duplicate.evidence else None
-            relationship = (
-                "MATCHES" if duplicate.status == "related_document" else "DUPLICATE_OF"
-            )
+            relationship = "MATCHES" if duplicate.status == "related_document" else "DUPLICATE_OF"
             self._add_edge(
                 document_node,
                 target,
@@ -557,6 +630,7 @@ class EvidenceGraphBuilder:
             "visible_dates": "Date",
             "invoice_date": "Date",
             "effective_date": "Date",
+            "request_date": "Date",
             "client_number": "Identifier",
             "reference_number": "Identifier",
             "sample_number": "Identifier",
@@ -564,6 +638,7 @@ class EvidenceGraphBuilder:
             "batch_size": "Amount",
             "requested_by": "Person",
             "specifications_written_by": "Person",
+            "purpose": "Identifier",
             "payment_reference": "Identifier",
             "total_amount": "Amount",
             "amount": "Amount",
@@ -585,7 +660,7 @@ class EvidenceGraphBuilder:
         field: ExtractedVisionField,
     ) -> str:
         raw_value = field.reviewed_value or field.value
-        stable_value = f"{self.document.tenant_id}:{node_type}:{self._normalize(raw_value)}"
+        stable_value, resolution = self._entity_identity(node_type, field, raw_value)
         node_id = f"{node_type}:{hash_document(stable_value.encode())[:18]}"
         return self._add_node(
             node_id,
@@ -602,7 +677,91 @@ class EvidenceGraphBuilder:
             source_field_id=field.field_id,
             source_text=field.evidence.source_text,
             extractor_version=field.extractor,
+            entity_resolution_status=resolution.get("status"),
+            entity_resolution_confidence=resolution.get("confidence"),
+            entity_resolution_method=resolution.get("method"),
+            canonical_entity_id=resolution.get("canonical_entity_id"),
+            observation_entity_id=resolution.get("observation_entity_id"),
+            automatic_entity_merge=resolution.get("automatic_merge", False),
+            resolution_evidence_ids=resolution.get("evidence_ids", []),
         )
+
+    def _entity_identity(
+        self,
+        node_type: str,
+        field: ExtractedVisionField,
+        raw_value: str,
+    ) -> tuple[str, dict[str, Any]]:
+        """Use canonical IDs only after the conservative resolver approved a merge."""
+        identity_types = {
+            "Organisation": {VisionSemanticType.organisation},
+            "Vendor": {VisionSemanticType.organisation},
+            "Customer": {VisionSemanticType.organisation},
+            "Person": {VisionSemanticType.person},
+            "Product": {VisionSemanticType.product},
+            "Address": {VisionSemanticType.address},
+            "ContactMethod": {
+                VisionSemanticType.email,
+                VisionSemanticType.phone,
+                VisionSemanticType.url,
+            },
+            "BankAccount": {VisionSemanticType.bank_account},
+        }
+        expected_types = identity_types.get(node_type, set())
+        normalized_value = self._normalize(raw_value)
+        candidates = [
+            entity
+            for entity in self.document.typed_entities
+            if entity.semantic_type in expected_types
+            and (
+                field.evidence.evidence_id in entity.evidence_ids
+                or self._normalize(entity.normalized_value or entity.raw_value) == normalized_value
+            )
+        ]
+        entity = max(candidates, key=lambda item: item.confidence, default=None)
+        resolution_payload = entity.context.get("entity_resolution") if entity is not None else None
+        context = dict(resolution_payload) if isinstance(resolution_payload, dict) else {}
+        canonical_id = str(context.get("canonical_entity_id") or "").strip()
+        automatic_merge = context.get("automatic_merge") is True
+        if automatic_merge and canonical_id:
+            stable = f"{self.document.tenant_id}:{node_type}:{canonical_id}"
+            return stable, {
+                "status": "resolved",
+                "confidence": context.get("resolution_confidence"),
+                "method": ",".join(context.get("resolution_methods") or []),
+                "canonical_entity_id": canonical_id,
+                "observation_entity_id": context.get("observation_entity_id"),
+                "automatic_merge": True,
+                "evidence_ids": list(entity.evidence_ids) if entity else [],
+            }
+
+        if expected_types:
+            stable = (
+                f"{self.document.tenant_id}:{self.document.document_id}:"
+                f"{node_type}:{normalized_value}"
+            )
+            statuses = list(context.get("decision_statuses") or [])
+            return stable, {
+                "status": statuses[0] if len(statuses) == 1 else "unresolved",
+                "confidence": context.get("resolution_confidence"),
+                "method": ",".join(context.get("resolution_methods") or [])
+                or "document_scoped_unresolved_entity",
+                "canonical_entity_id": None,
+                "observation_entity_id": context.get("observation_entity_id"),
+                "automatic_merge": False,
+                "evidence_ids": list(entity.evidence_ids) if entity else [],
+            }
+
+        # Dates, amounts, and document-reference value nodes retain their existing
+        # semantic-value identity; they do not assert that two people or businesses
+        # are the same real-world entity.
+        stable = f"{self.document.tenant_id}:{node_type}:{normalized_value}"
+        return stable, {
+            "status": "semantic_value",
+            "method": "exact_normalized_semantic_value",
+            "automatic_merge": False,
+            "evidence_ids": [],
+        }
 
     def _promotable_enterprise_entity(self, field: ExtractedVisionField) -> bool:
         """Keep uncertain fields visible without turning them into trusted business facts."""
@@ -612,7 +771,10 @@ class EvidenceGraphBuilder:
             source,
         ):
             return False
-        if field.validation_status == "invalid" and field.reviewer_status not in VERIFIED_REVIEW_STATUSES:
+        if (
+            field.validation_status == "invalid"
+            and field.reviewer_status not in VERIFIED_REVIEW_STATUSES
+        ):
             return False
         if (
             field.reviewer_status not in VERIFIED_REVIEW_STATUSES
@@ -634,7 +796,9 @@ class EvidenceGraphBuilder:
         verification_status = (
             status
             if status in {"verified", "proposed", "rejected", "conflict"}
-            else "verified" if node_type in {"Document", "Page"} else "proposed"
+            else "verified"
+            if node_type in {"Document", "Page"}
+            else "proposed"
         )
         self.nodes.setdefault(
             node_id,
@@ -658,9 +822,7 @@ class EvidenceGraphBuilder:
                 "extractor_version": str(
                     properties.get("extractor_version") or "document-structure-v1"
                 ),
-                "pipeline_version": str(
-                    self.document.metadata.get("pipeline_version", "legacy")
-                ),
+                "pipeline_version": str(self.document.metadata.get("pipeline_version", "legacy")),
                 **{key: value for key, value in properties.items() if value is not None},
             },
         )
@@ -723,15 +885,13 @@ class EvidenceGraphBuilder:
             "bounding_box": bounding_boxes or [],
             "confidence": confidence,
             "review_status": (
-                review_status.value if isinstance(review_status, ReviewerStatus) else str(review_status or "unverified")
+                review_status.value
+                if isinstance(review_status, ReviewerStatus)
+                else str(review_status or "unverified")
             ),
             "provenance": provenance,
-            "extractor_version": (
-                evidence.model_version if evidence else provenance
-            ),
-            "pipeline_version": str(
-                self.document.metadata.get("pipeline_version", "legacy")
-            ),
+            "extractor_version": (evidence.model_version if evidence else provenance),
+            "pipeline_version": str(self.document.metadata.get("pipeline_version", "legacy")),
             "model_name": evidence.model_name if evidence else provenance,
             "model_version": evidence.model_version if evidence else "v1",
             "deterministic": True,
@@ -770,7 +930,11 @@ class EvidenceGraphBuilder:
 
     def _first_entity(self, *field_names: str) -> str | None:
         return next(
-            (self.entities_by_field[name] for name in field_names if name in self.entities_by_field),
+            (
+                self.entities_by_field[name]
+                for name in field_names
+                if name in self.entities_by_field
+            ),
             None,
         )
 
@@ -782,11 +946,7 @@ class EvidenceGraphBuilder:
         )
 
     def _status_for(self, item: ExtractedVisionField | Any) -> str:
-        return (
-            "verified"
-            if item.reviewer_status in VERIFIED_REVIEW_STATUSES
-            else "proposed"
-        )
+        return "verified" if item.reviewer_status in VERIFIED_REVIEW_STATUSES else "proposed"
 
     def _boxes(self, evidence: VisionEvidence | None) -> list[dict[str, float]]:
         return (

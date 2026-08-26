@@ -10,7 +10,10 @@ export default defineConfig({
   outputDir: "../var/playwright-results",
   use: {
     baseURL: process.env.DOCUMIND_E2E_BASE_URL || "http://127.0.0.1:5174",
-    trace: "retain-on-failure",
+    // Playwright API traces retain request bodies and authorization headers.
+    // These E2E journeys perform real login, so keeping traces would persist
+    // bootstrap credentials and bearer tokens in local artifacts.
+    trace: "off",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },

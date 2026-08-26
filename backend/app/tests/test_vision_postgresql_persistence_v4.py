@@ -196,6 +196,8 @@ def test_conversation_round_trip_is_tenant_and_user_scoped_inside_running_loop(
         "selected_scope": {"scope": "current_document", "document_id": "doc-1"},
         "pending_clarification": {"kind": "safety_scope"},
         "last_query_type": "clarification_required",
+        "last_resolved_question": "What suspicious indicators are recorded?",
+        "last_answer": {"answer": "No confirmed finding.", "citations": []},
         "turns": [{"role": "user", "content": "Is this safe?"}],
         "expires_at": (now + timedelta(minutes=30)).isoformat(),
         "updated_at": now.isoformat(),
@@ -207,6 +209,8 @@ def test_conversation_round_trip_is_tenant_and_user_scoped_inside_running_loop(
         "selected_scope": json.dumps(conversation["selected_scope"]),
         "pending_clarification": json.dumps(conversation["pending_clarification"]),
         "last_query_type": conversation["last_query_type"],
+        "last_resolved_question": conversation["last_resolved_question"],
+        "last_answer": json.dumps(conversation["last_answer"]),
         "turns": json.dumps(conversation["turns"]),
         "expires_at": now + timedelta(minutes=30),
         "updated_at": now,
@@ -223,7 +227,7 @@ def test_conversation_round_trip_is_tenant_and_user_scoped_inside_running_loop(
     loaded = asyncio.run(call_from_running_loop())
 
     save_statement, save_parameters = fake_asyncpg.connections[0].executions[0]
-    assert "WHERE vision_conversations.user_id = EXCLUDED.user_id" in save_statement
+    assert "ON CONFLICT (tenant_id, user_id, conversation_id)" in save_statement
     assert save_parameters[:3] == (
         "tenant-alpha",
         "user-alpha",
@@ -237,6 +241,8 @@ def test_conversation_round_trip_is_tenant_and_user_scoped_inside_running_loop(
     assert loaded is not None
     assert loaded["organisation_id"] == "tenant-alpha"
     assert loaded["selected_scope"]["document_id"] == "doc-1"
+    assert loaded["last_resolved_question"] == conversation["last_resolved_question"]
+    assert loaded["last_answer"]["answer"] == "No confirmed finding."
 
 
 def test_question_retrieval_trace_is_upserted_by_tenant_and_trace_identity(

@@ -13,7 +13,8 @@ dependencies = [
   "sqlalchemy[asyncio]>=2.0.30",
   "asyncpg>=0.29.0",
   "httpx>=0.27.0",
-  "pypdf>=4.2.0",
+  "pypdf>=6.15.0",
+  "h2>=4.4.1",
   "pymupdf>=1.24.0",
   "python-docx>=1.1.2",
   "pillow>=10.4.0",
@@ -38,7 +39,7 @@ ai = [
   "sentence-transformers>=3.0.0",
   "paddleocr>=2.8.0",
   "easyocr>=1.7.1",
-  "transformers>=4.43.0",
+  "transformers>=5.5.4,<6",
   "qdrant-client>=1.9.0",
   "pymongo>=4.9.0",
   "motor>=3.5.0",
@@ -64,6 +65,9 @@ testpaths = ["app/tests", "tests"]
 [tool.setuptools.packages.find]
 include = ["app*"]
 exclude = ["tests*", "var*", "config*", "migrations*"]
+
+[tool.setuptools.package-data]
+"app.services.vision.schemas" = ["*.json"]
 
 [tool.ruff]
 line-length = 100

@@ -28,9 +28,9 @@ from app.services.vision.schema_registry import (
 
 def _source_fixture() -> Path:
     backend_root = Path(__file__).resolve().parents[2]
-    candidates = sorted((backend_root / "var" / "uploads").glob("*-00093726.png"))
-    assert candidates, "The required 00093726.png acceptance fixture is missing"
-    return candidates[-1]
+    fixture = backend_root / "var" / "test_fixtures" / "00093726.png"
+    assert fixture.is_file(), "The required 00093726.png acceptance fixture is missing"
+    return fixture
 
 
 @pytest.fixture(scope="module")
@@ -82,13 +82,22 @@ def test_00093726_date_is_corrected_from_roi_evidence_not_promoted_to_title(
     assert "form_title" not in fields
 
     provenance = fields["date"].evidence.metadata
-    assert provenance["raw_ocr"] == "bate: september 21, 11/6"
+    raw_ocr = provenance["raw_ocr"]
+    assert "september 21" in raw_ocr.lower()
+    assert raw_ocr != provenance["corrected_ocr"]
     assert provenance["corrected_ocr"] == "Date: September 21, 1976"
     assert provenance["correction_method"] == "roi_reocr_and_date_validation"
     assert provenance["correction_confidence"] is not None
     assert len(provenance["candidates"]) >= 3
     assert provenance["label_box"] is not None
     assert provenance["value_box"] is not None
+
+    consensus = extracted_fixture.metadata["ocr_consensus"][0]
+    assert consensus["selection_method"] == "confidence_character_semantic_consensus_v1"
+    assert consensus["selected_variant"] in {
+        candidate["variant"] for candidate in consensus["candidates"]
+    }
+    assert len(consensus["candidates"]) >= 2
 
 
 def test_00093726_extracts_six_business_fields_with_source_evidence(
@@ -208,8 +217,16 @@ def test_review_counts_share_one_internally_consistent_contract(
     assert completeness.required_expected_count == 6
     assert completeness.required_matched_count == 6
     assert completeness.required_missing_count == 0
-    assert completeness.optional_extracted_count == 0
-    assert completeness.total_extracted_count == 6
+    assert completeness.optional_extracted_count == len(
+        completeness.optional_extracted_fields
+    )
+    assert completeness.optional_extracted_count == 1
+    assert completeness.total_extracted_count == len(
+        extracted_fixture.extracted_fields
+    )
+    assert completeness.total_extracted_count == (
+        completeness.required_matched_count + completeness.optional_extracted_count
+    )
     assert completeness.duplicates_rejected_count == 1
     assert completeness.disputed_count == 0
     assert completeness.required_expected_count == (

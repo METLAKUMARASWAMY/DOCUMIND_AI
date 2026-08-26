@@ -20,6 +20,11 @@ from app.models.vision import (
     ModelRunRecord,
     OCRWord,
     ReviewerStatus,
+    TypedVisionEntity,
+    VerifiedVisionFact,
+    VisionAskCalculationInput,
+    VisionAskCalculationOperation,
+    VisionAskCalculationTrace,
     VisionAskCitation,
     VisionAskRequest,
     VisionAskResponse,
@@ -45,7 +50,11 @@ from app.models.vision import (
     VisionReviewTask,
     VisionRiskIndicator,
     VisionRiskSeverity,
+    VisionSemanticType,
     VisionUploadResponse,
+)
+from app.models.vision import (
+    GenericDiscoveredField as VisionGenericDiscoveredField,
 )
 from app.services.classification import DocumentClassificationService
 from app.services.ingestion import DocumentIngestionService
@@ -68,6 +77,7 @@ from app.services.vision.duplicate_detection import (
     document_dhash,
     perceptual_similarity,
 )
+from app.services.vision.entity_resolution import conservative_entity_resolver
 from app.services.vision.extraction_adapters import (
     DonutExtractionAdapter,
     LayoutLMv3ClassificationAdapter,
@@ -75,6 +85,7 @@ from app.services.vision.extraction_adapters import (
 )
 from app.services.vision.finance_narratives import verified_finance_narrative_service
 from app.services.vision.generator_adapters import GroundedGeneratorRouter
+from app.services.vision.generic_field_discovery import generic_field_discovery_engine
 from app.services.vision.graph_builder import evidence_graph_builder
 from app.services.vision.language_analysis import vision_language_analysis_service
 from app.services.vision.layout_adapters import GeometryLayoutAdapter, PaddleStructureV3Adapter
@@ -87,7 +98,21 @@ from app.services.vision.preprocessing import DocumentPreprocessor
 from app.services.vision.query_router import VisionQueryRouter
 from app.services.vision.reporting import vision_report_service
 from app.services.vision.retrieval_adapters import LocalHybridRetrievalIndex
+from app.services.vision.reviewer_feedback import ReviewerFeedbackDataset
 from app.services.vision.schema_registry import vision_schema_registry
+from app.services.vision.semantic_facts import (
+    normalize_semantic_value,
+    semantic_type_for_name,
+)
+from app.services.vision.semantic_risk import (
+    SemanticRiskFinding,
+    generic_semantic_risk_engine,
+)
+from app.services.vision.semantic_values import (
+    SemanticContext,
+    SemanticValueType,
+    semantic_value_registry,
+)
 from app.services.vision.tamper_adapters import LocalForensicsAdapter, SegFormerTamperAdapter
 from app.services.vision.visual_adapters import (
     OpenCVVisualDetectionAdapter,
@@ -201,6 +226,8 @@ class VisionAIService:
         self._idempotency_index: dict[str, str] = {}
         self._hash_index: dict[str, str] = {}
         self._semantic_index: dict[str, str] = {}
+        self._document_tenant_index: dict[str, str] = {}
+        self._semantic_label_embedding_cache: dict[str, dict[str, list[float]]] = {}
         self.questions: dict[str, dict[str, Any]] = {}
         self.question_feedback: dict[str, list[dict[str, Any]]] = {}
         self.conversations: dict[str, VisionConversationState] = {}
@@ -211,6 +238,7 @@ class VisionAIService:
         self.system_audit_events: list[dict[str, Any]] = []
         self._artifact_lock = threading.RLock()
         self._state_root = Path(settings.upload_dir).parent / "vision_state"
+        self.feedback_dataset = ReviewerFeedbackDataset(self._state_root / "active_learning")
         self.confidence_policy = self._load_confidence_policy()
         self._ensure_state_dirs()
         self._load_admin_overrides()
@@ -363,6 +391,8 @@ class VisionAIService:
         }
         if document.review_task:
             metadata["_reprocess_review_id"] = document.review_task.review_id
+        stale_artifacts = self._mark_derived_artifacts_stale(document, actor=actor)
+        metadata["stale_derived_artifacts"] = stale_artifacts
         self._reset_for_reprocess(document, metadata, actor)
 
         job_id = f"vision-job-{uuid4().hex[:10]}"
@@ -476,15 +506,17 @@ class VisionAIService:
                     self._persist_document(document)
                     if document.review_task:
                         self._persist_review(document.review_task)
-        job["status"] = VisionProcessingStatus.completed.value if not job["errors"] else VisionProcessingStatus.review_required.value
+        job["status"] = (
+            VisionProcessingStatus.completed.value
+            if not job["errors"]
+            else VisionProcessingStatus.review_required.value
+        )
         processed_documents = [
             self.documents[document_id]
             for document_id in job["document_ids"]
             if document_id in self.documents
         ]
-        decision_statuses = sorted(
-            {document.status.value for document in processed_documents}
-        )
+        decision_statuses = sorted({document.status.value for document in processed_documents})
         job["pipeline_status"] = (
             VisionProcessingStatus.completed.value
             if not job["errors"]
@@ -530,9 +562,9 @@ class VisionAIService:
         )
 
     def get_job(self, job_id: str, tenant_id: str | None = None) -> dict[str, Any] | None:
-        job = self.jobs.get(job_id)
-        if not job:
-            job = self._load_job(job_id)
+        # API and Celery worker are separate processes.  Prefer the durable job
+        # snapshot so a queued in-memory object cannot mask worker progress.
+        job = self._load_job(job_id) or self.jobs.get(job_id)
         if not job and tenant_id:
             job = self.persistence.get_job(job_id, tenant_id)
             if job:
@@ -541,7 +573,13 @@ class VisionAIService:
             return None
         return job
 
-    def retry_job(self, job_id: str, tenant_id: str | None = None) -> dict[str, Any]:
+    def retry_job(
+        self,
+        job_id: str,
+        tenant_id: str | None = None,
+        *,
+        actor: str = "system",
+    ) -> dict[str, Any]:
         job = self.get_job(job_id, tenant_id)
         if not job:
             raise ValueError("job_id not found")
@@ -549,6 +587,13 @@ class VisionAIService:
         job["status"] = VisionProcessingStatus.queued.value
         job["updated_at"] = utc_now_iso()
         self._persist_job(job)
+        self._system_audit(
+            "job_retry_queued",
+            "Queued a failed or incomplete processing job for retry.",
+            actor=actor,
+            tenant_id=str(job.get("tenant_id") or tenant_id or "tenant-local"),
+            metadata={"job_id": job_id, "document_ids": list(job.get("document_ids") or [])},
+        )
         return job
 
     def record_job_dispatch(
@@ -569,9 +614,12 @@ class VisionAIService:
         self,
         document_id: str,
         tenant_id: str | None = None,
+        *,
+        actor: str = "system",
     ) -> VisionDocumentRecord:
         document = self.get_document(document_id, tenant_id)
         self.documents.pop(document_id, None)
+        self._document_tenant_index.pop(document_id, None)
         self._remove_document(document_id)
         self._pending_content.pop(document_id, None)
         self._remove_pending_content(document_id)
@@ -586,6 +634,17 @@ class VisionAIService:
         }
         self._persist_indexes()
         self.persistence.delete_document(document_id, document.tenant_id)
+        self._system_audit(
+            "document_deleted",
+            "Deleted a document and its local derived state.",
+            actor=actor,
+            tenant_id=document.tenant_id,
+            metadata={
+                "document_id": document.document_id,
+                "case_id": document.case_id,
+                "filename": document.filename,
+            },
+        )
         return document
 
     def get_document(
@@ -593,7 +652,12 @@ class VisionAIService:
         document_id: str,
         tenant_id: str | None = None,
     ) -> VisionDocumentRecord:
-        document = self.documents.get(document_id) or self._load_document(document_id)
+        # Reload the shared durable snapshot first.  Without this, the API keeps
+        # returning its pre-queue object after a Celery worker has completed the
+        # same document in another process.
+        document = self._load_document(document_id, tenant_id=tenant_id) or self.documents.get(
+            document_id
+        )
         if not document and tenant_id:
             document = self.persistence.get_document(document_id, tenant_id)
             if document:
@@ -607,11 +671,17 @@ class VisionAIService:
         return document
 
     def list_documents(self, tenant_id: str | None = None) -> list[VisionDocumentRecord]:
-        self._load_all_documents()
+        self._load_all_documents(tenant_id)
         if tenant_id:
             for document in self.persistence.list_documents(tenant_id):
-                self.documents[document.document_id] = document
-                self._index_document(document)
+                current = self.documents.get(document.document_id)
+                if current is None or (
+                    current.updated_at,
+                    current.data_version,
+                ) != (document.updated_at, document.data_version):
+                    self.documents[document.document_id] = document
+                    self._document_tenant_index[document.document_id] = document.tenant_id
+                    self._index_document(document)
         documents = self.documents.values()
         if tenant_id:
             documents = [item for item in documents if item.tenant_id == tenant_id]
@@ -628,11 +698,7 @@ class VisionAIService:
                 self.review_tasks[review.review_id] = review
         reviews = self.review_tasks.values()
         if tenant_id:
-            reviews = [
-                item
-                for item in reviews
-                if self._review_belongs_to_tenant(item, tenant_id)
-            ]
+            reviews = [item for item in reviews if self._review_belongs_to_tenant(item, tenant_id)]
         return sorted(reviews, key=lambda item: item.created_at, reverse=True)
 
     def review_queue(
@@ -762,6 +828,7 @@ class VisionAIService:
         field_id: str,
         *,
         reviewed_value: str | None,
+        reviewed_field_name: str | None = None,
         reviewer_status: ReviewerStatus,
         comment: str,
         actor: str,
@@ -770,14 +837,38 @@ class VisionAIService:
     ) -> ExtractedVisionField:
         review = self.get_review(review_id, tenant_id)
         document = self.get_document(review.document_id, tenant_id)
-        field = next((item for item in document.extracted_fields if item.field_id == field_id), None)
+        field = next(
+            (item for item in document.extracted_fields if item.field_id == field_id), None
+        )
         if not field:
             raise ValueError("field_id not found")
+        old_name = field.name
+        if reviewed_field_name and reviewed_field_name != field.name:
+            if any(
+                item.field_id != field.field_id and item.name == reviewed_field_name
+                for item in document.extracted_fields
+            ):
+                raise ValueError("reviewed_field_name already exists on this document")
+            field.name = reviewed_field_name
+            field.schema_field = reviewed_field_name
+            field.display_name = reviewed_field_name.replace("_", " ").title()
         old_value = field.reviewed_value or field.value
         field.reviewed_value = reviewed_value if reviewed_value is not None else field.value
+        semantic_type = self._semantic_type_for_reviewed_field(document, field)
+        field.normalized_value = normalize_semantic_value(
+            field.reviewed_value,
+            semantic_type,
+            label=field.name,
+            document_type=document.document_type.value,
+        )
         field.reviewer_status = reviewer_status
         field.evidence.reviewer_status = reviewer_status
         field.verification_status = reviewer_status.value
+        self._apply_field_review_to_generic_layers(
+            document,
+            field,
+            semantic_type=semantic_type,
+        )
         event = self._audit(
             document,
             "field_reviewed",
@@ -786,6 +877,7 @@ class VisionAIService:
             metadata={
                 "field_id": field_id,
                 "field_name": field.name,
+                "old_field_name": old_name,
                 "old_value": self._mask_sensitive(field.name, old_value),
                 "new_value": self._mask_sensitive(field.name, field.reviewed_value or ""),
                 "comment": comment,
@@ -794,8 +886,20 @@ class VisionAIService:
         )
         review.history.append(event)
         review.updated_at = event.created_at
+        if reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited}:
+            self._record_active_learning_correction(
+                document,
+                field,
+                original_field_name=old_name,
+                original_value=old_value,
+                comment=comment,
+                reviewer=actor,
+                reviewed_at=event.created_at,
+            )
         document.data_version += 1
         document.analytics_cache_version += 1
+        self._refresh_verified_facts(document, reviewer=actor)
+        self._resolve_semantic_entities(document)
         document.evidence_chunks = self._chunks(document)
         document.graph = self._graph(document)
         vision_analytics_service.refresh_document(document)
@@ -870,6 +974,7 @@ class VisionAIService:
             for detection in document.visual_detections:
                 if detection.reviewer_status == ReviewerStatus.unverified:
                     detection.reviewer_status = ReviewerStatus.accepted
+            self._refresh_verified_facts(document, reviewer=actor)
         document.evidence_chunks = self._chunks(document)
         document.graph = self._graph(document)
         document.data_version += 1
@@ -890,9 +995,7 @@ class VisionAIService:
                 decision_request.automated_indicators_acknowledged
             ),
             "reauthenticated_at": (
-                reauthentication_payload.get("auth_time")
-                if reauthentication_payload
-                else None
+                reauthentication_payload.get("auth_time") if reauthentication_payload else None
             ),
             "overridden_policy_conditions": (
                 [item.code for item in policy_evaluation.observed_conditions]
@@ -934,9 +1037,7 @@ class VisionAIService:
             actor_role=actor_role,
             confidence_threshold=self._mandatory_review_threshold(document),
         )
-        evaluation.fraud_second_reviewer_required = (
-            settings.fraud_second_reviewer_required
-        )
+        evaluation.fraud_second_reviewer_required = settings.fraud_second_reviewer_required
         return evaluation
 
     def _apply_manual_confirmations(
@@ -963,9 +1064,7 @@ class VisionAIService:
                 field.verification_status = ReviewerStatus.accepted.value
             else:
                 spec = schema.field(name) if schema else None
-                identity = hash_document(
-                    f"{document.document_id}|manual-review|{name}".encode()
-                )
+                identity = hash_document(f"{document.document_id}|manual-review|{name}".encode())
                 evidence = VisionEvidence(
                     evidence_id=f"vis-ev-manual-{identity[:10]}",
                     document_id=document.document_id,
@@ -986,9 +1085,7 @@ class VisionAIService:
                     field_id=f"field-manual-{identity[:10]}",
                     name=name,
                     schema_field=name,
-                    display_name=(
-                        spec.display_name if spec else name.replace("_", " ").title()
-                    ),
+                    display_name=(spec.display_name if spec else name.replace("_", " ").title()),
                     value=value,
                     normalized_value=self._normalize(value),
                     confidence=None,
@@ -1060,9 +1157,7 @@ class VisionAIService:
             )
         unavailable = sorted(selected_evidence - available_evidence)
         if unavailable:
-            raise ReviewDecisionValidationError(
-                f"Unknown evidence IDs: {', '.join(unavailable)}"
-            )
+            raise ReviewDecisionValidationError(f"Unknown evidence IDs: {', '.join(unavailable)}")
         if settings.fraud_second_reviewer_required:
             second_reviewer = (request.second_reviewer_email or "").strip().lower()
             if (
@@ -1136,29 +1231,105 @@ class VisionAIService:
         review.updated_at = document.updated_at
         document.data_version += 1
         document.analytics_cache_version += 1
+        self._refresh_verified_facts(document, reviewer=actor)
+        document.evidence_chunks = self._chunks(document)
+        document.graph = self._graph(document)
         vision_analytics_service.refresh_document(document)
+        self._index_document(document)
+        self.persistence.upsert_graph(document.tenant_id, document.document_id, document.graph)
         self._persist_document(document)
         self._persist_review(review)
         return {"accepted_field_ids": accepted, "threshold": threshold}
 
     def active_learning_export(self, tenant_id: str | None = None) -> dict[str, Any]:
-        corrections = []
-        for document in self.list_documents(tenant_id):
+        resolved_tenant = str(tenant_id or "").strip()
+        if not resolved_tenant:
+            raise ValueError("tenant_id is required for active-learning export")
+        corrections: list[dict[str, Any]] = []
+        persisted_keys: set[tuple[str, str]] = set()
+        for record in self.feedback_dataset.records(resolved_tenant):
+            field_name = str(
+                record.get("corrected_field_name") or record.get("original_field_name") or "unknown"
+            )
+            semantic_type = str(record.get("semantic_type") or "")
+            sensitive = semantic_type == VisionSemanticType.bank_account.value or any(
+                token in field_name.casefold()
+                for token in ("bank", "account", "ifsc", "routing", "iban")
+            )
+            document_id = str(record.get("document_id") or "")
+            field_id = str(record.get("field_id") or "")
+            persisted_keys.add((document_id, field_id))
+            corrections.append(
+                {
+                    "correction_id": record.get("correction_id"),
+                    "schema_version": record.get("schema_version"),
+                    "tenant_id": resolved_tenant,
+                    "document_id": document_id,
+                    "document_type": record.get("document_type"),
+                    "field_id": field_id,
+                    "field_name": field_name,
+                    "original_field_name": record.get("original_field_name"),
+                    "raw_label": record.get("raw_label"),
+                    "semantic_type": record.get("semantic_type"),
+                    "model_value": self._mask_sensitive(
+                        field_name,
+                        str(record.get("original_value") or ""),
+                    ),
+                    "reviewed_value": self._mask_sensitive(
+                        field_name,
+                        str(record.get("corrected_value") or ""),
+                    ),
+                    "evidence": {
+                        "evidence_id": record.get("evidence_id"),
+                        "page": record.get("page"),
+                        "bounding_box": record.get("bounding_box"),
+                        "source_text": (
+                            "Sensitive source text withheld from export."
+                            if sensitive
+                            else record.get("source_text")
+                        ),
+                    },
+                    "extraction_method": record.get("extraction_method"),
+                    "layout_relation": record.get("layout_relation"),
+                    "schema_mode": record.get("schema_mode"),
+                    "schema_status": record.get("schema_status"),
+                    "processing_version": record.get("processing_version"),
+                    "status": record.get("status"),
+                    "reviewed_at": record.get("reviewed_at"),
+                    "training_policy": record.get("training_policy"),
+                }
+            )
+
+        # Keep edited fields created before the durable v2 dataset exportable.
+        legacy_count = 0
+        for document in self.list_documents(resolved_tenant):
             for field in document.extracted_fields:
-                if field.reviewer_status == ReviewerStatus.edited and field.reviewed_value is not None:
+                if (
+                    field.reviewer_status == ReviewerStatus.edited
+                    and field.reviewed_value is not None
+                    and (document.document_id, field.field_id) not in persisted_keys
+                ):
+                    legacy_count += 1
                     corrections.append(
                         {
                             "document_id": document.document_id,
                             "field_id": field.field_id,
                             "field_name": field.name,
+                            "tenant_id": document.tenant_id,
+                            "document_type": document.document_type.value,
                             "model_value": self._mask_sensitive(field.name, field.value),
-                            "reviewed_value": self._mask_sensitive(field.name, field.reviewed_value),
+                            "reviewed_value": self._mask_sensitive(
+                                field.name, field.reviewed_value
+                            ),
                             "evidence": field.evidence.model_dump(mode="json"),
                         }
                     )
         return {
             "total_corrections": len(corrections),
-            "format": "active_learning_jsonl_ready",
+            "persisted_corrections": len(corrections) - legacy_count,
+            "legacy_live_corrections": legacy_count,
+            "format": "active_learning_jsonl_v2_export",
+            "summary": self.feedback_dataset.summary(resolved_tenant),
             "corrections": corrections,
         }
 
@@ -1181,7 +1352,11 @@ class VisionAIService:
             documents.append(document)
 
         primary = next(
-            (document for document in documents if document.document_type == VisionDocumentType.invoice),
+            (
+                document
+                for document in documents
+                if document.document_type == VisionDocumentType.invoice
+            ),
             documents[0],
         )
         narrative = self._demo_narrative(primary, tenant_id=tenant_id, actor=actor)
@@ -1250,9 +1425,12 @@ class VisionAIService:
         document.status = VisionProcessingStatus.approved
         document.updated_at = event.created_at
         document.review_task.status = VisionProcessingStatus.approved
-        document.review_task.reviewer_comments = "Auto-approved for the connected local demo dataset."
+        document.review_task.reviewer_comments = (
+            "Auto-approved for the connected local demo dataset."
+        )
         document.review_task.updated_at = event.created_at
         document.review_task.history.append(event)
+        self._refresh_verified_facts(document, reviewer=actor)
         document.evidence_chunks = self._chunks(document)
         document.graph = self._graph(document)
         self._index_document(document)
@@ -1323,9 +1501,7 @@ class VisionAIService:
         resolved_tenant = tenant_id or "tenant-local"
         resolved_user = user_id or "anonymous"
         resolved_conversation_id = (
-            request.conversation_id
-            or conversation_id
-            or f"vision-conversation-{uuid4().hex[:12]}"
+            request.conversation_id or conversation_id or f"vision-conversation-{uuid4().hex[:12]}"
         )
         conversation = self._conversation_state(
             resolved_conversation_id,
@@ -1414,6 +1590,21 @@ class VisionAIService:
             question = selected_option.resolved_question
             query_type = selected_option.query_type
             conversation.pending_clarification = {}
+
+        if query_type == "conversation_follow_up":
+            request = self._request_with_selected_conversation_scope(request, conversation)
+            documents, effective_scope = self._ask_scope_documents(request, tenant_id)
+            response = self._conversation_follow_up_response(question, conversation)
+            return self._finish_ask(
+                request,
+                response,
+                documents,
+                effective_scope,
+                conversation,
+                started_at,
+                conversation.last_resolved_question or question,
+                tenant_id,
+            )
 
         documents, effective_scope = self._ask_scope_documents(request, tenant_id)
         conversation.selected_scope = self._conversation_scope(request, effective_scope)
@@ -1540,10 +1731,10 @@ class VisionAIService:
                 )
         response.query_type = query_type
         response.resolved_question = question if question != request.question.strip() else None
-        if (
-            response.answer_status == "not_found"
-            and effective_scope in {"current_document", "selected_documents"}
-        ):
+        if response.answer_status == "not_found" and effective_scope in {
+            "current_document",
+            "selected_documents",
+        }:
             broader = [
                 document
                 for document in self.list_documents(tenant_id)
@@ -1599,6 +1790,9 @@ class VisionAIService:
             started_at,
         )
         conversation.last_query_type = response.query_type
+        if response.answer_status != "clarification_needed":
+            conversation.last_resolved_question = resolved_question
+            conversation.last_answer = response.model_dump(mode="json")
         return self._record_question(
             request,
             response,
@@ -1701,6 +1895,78 @@ class VisionAIService:
             }
         )
 
+    def _request_with_selected_conversation_scope(
+        self,
+        request: VisionAskRequest,
+        conversation: VisionConversationState,
+    ) -> VisionAskRequest:
+        selected = dict(conversation.selected_scope or {})
+        if not selected:
+            return request
+        return request.model_copy(
+            update={
+                "scope": selected.get("scope", request.scope),
+                "document_id": selected.get("document_id"),
+                "document_ids": list(selected.get("document_ids") or []),
+                "top_k": int(selected.get("top_k") or request.top_k),
+            }
+        )
+
+    def _conversation_follow_up_response(
+        self,
+        question: str,
+        conversation: VisionConversationState,
+    ) -> VisionAskResponse:
+        previous = dict(conversation.last_answer or {})
+        citations = [
+            VisionAskCitation.model_validate(item)
+            for item in previous.get("citations", [])
+            if isinstance(item, dict)
+        ]
+        if not previous or not citations:
+            response = self._not_found_answer(requires_review=False)
+            response.query_type = "conversation_follow_up"
+            response.reasoning_summary = (
+                "No prior source-backed answer exists in this conversation."
+            )
+            return response
+        normalized = " ".join(question.lower().split())
+        if "page" in normalized or "where" in normalized:
+            pages = ", ".join(
+                f"{citation.filename or citation.document_id}, page {citation.page_number}"
+                for citation in citations
+            )
+            answer = f"The cited evidence is on {pages}."
+        elif "evidence" in normalized or normalized.rstrip("?.! ") == "source":
+            answer = "Evidence: " + "; ".join(
+                f"{citation.filename or citation.document_id}, page {citation.page_number}: "
+                f"{citation.source_text}"
+                for citation in citations
+            )
+        else:
+            answer = (
+                str(
+                    previous.get("reasoning_summary")
+                    or "The answer is supported by the cited evidence."
+                )
+                + " Evidence: "
+                + "; ".join(citation.source_text for citation in citations)
+            )
+        return VisionAskResponse(
+            answer=answer,
+            answer_status=str(previous.get("answer_status") or "supported"),
+            query_type="conversation_follow_up",
+            citations=citations,
+            confidence=float(previous.get("confidence") or 0.0),
+            reasoning_summary="Resolved the follow-up against the preceding source-backed answer.",
+            requires_review=bool(previous.get("requires_review")),
+            generator_name="conversation-evidence-resolver",
+            generator_version="v1",
+            retriever="conversation_citation_state",
+            retrieval_path="prior_turn_citations",
+            resolved_question=conversation.last_resolved_question or None,
+        )
+
     def _selected_clarification_option(
         self,
         requested_option: str | None,
@@ -1778,7 +2044,9 @@ class VisionAIService:
         if not matched_fields and any(
             term in question.lower() for term in ("quality", "safe", "approval")
         ):
-            matched_fields = [field for document in documents for field in document.extracted_fields]
+            matched_fields = [
+                field for document in documents for field in document.extracted_fields
+            ]
         verified = [
             field for field in matched_fields if field.reviewer_status == ReviewerStatus.accepted
         ]
@@ -1872,8 +2140,23 @@ class VisionAIService:
 
     def _text_relevant_to_question(self, question: str, text: str) -> bool:
         stopwords = {
-            "about", "and", "are", "document", "does", "for", "from", "have",
-            "how", "is", "of", "the", "this", "to", "what", "which", "who",
+            "about",
+            "and",
+            "are",
+            "document",
+            "does",
+            "for",
+            "from",
+            "have",
+            "how",
+            "is",
+            "of",
+            "the",
+            "this",
+            "to",
+            "what",
+            "which",
+            "who",
         }
         query_tokens = {
             token
@@ -1927,9 +2210,7 @@ class VisionAIService:
                     "thumbnail_url": f"/documents/{document.document_id}/pages/1/image?variant=original",
                     "page_count": document.page_count,
                     "field_count": len(document.extracted_fields),
-                    "processing_version": document.metadata.get(
-                        "pipeline_version", "legacy"
-                    ),
+                    "processing_version": document.metadata.get("pipeline_version", "legacy"),
                 }
                 for document in documents
             ],
@@ -1952,7 +2233,9 @@ class VisionAIService:
         tenant_id: str,
     ) -> VisionAskResponse:
         requested_names = self._requested_field_names(question)
-        matches = self._field_matches(question.lower(), self._documents_for_question(question, documents))
+        matches = self._field_matches(
+            question.lower(), self._documents_for_question(question, documents)
+        )
         if requested_names:
             matches = [field for field in matches if field.name in requested_names]
         matches.sort(
@@ -1983,8 +2266,7 @@ class VisionAIService:
                 confidence=self._mean_available_field_confidence(matches) or 0.0,
                 reasoning_summary="Returned extracted structured fields and their source evidence.",
                 requires_review=any(
-                    field.reviewer_status
-                    not in {ReviewerStatus.accepted, ReviewerStatus.edited}
+                    field.reviewer_status not in {ReviewerStatus.accepted, ReviewerStatus.edited}
                     or not field.calibrated
                     for field in matches
                 ),
@@ -2137,9 +2419,7 @@ class VisionAIService:
             if citation.chunk_id is not None
         }
         selected = [
-            citation_by_id[item]
-            for item in generated["citation_ids"]
-            if item in citation_by_id
+            citation_by_id[item] for item in generated["citation_ids"] if item in citation_by_id
         ]
         if generated["answer_status"] != "not_found" and not selected:
             return fallback
@@ -2164,62 +2444,555 @@ class VisionAIService:
         top_k: int,
         tenant_id: str,
     ) -> VisionAskResponse:
-        del tenant_id
+        del top_k, tenant_id
+        lower = question.lower()
+        tokens = set(re.findall(r"[a-z0-9]+", lower))
+        selected_documents = self._documents_for_question(question, documents)
+        if any(term in lower for term in ("date interval", "days between")):
+            return self._answer_date_interval(question, selected_documents)
+        if (
+            any(term in lower for term in ("count", "how many", "number of"))
+            and "invoice" in lower
+        ):
+            return self._answer_verified_invoice_count(selected_documents)
+        invoice_po_question = bool(tokens & {"invoice", "invoices"}) and (
+            "po" in tokens or "purchase order" in lower
+        )
+        if invoice_po_question and (
+            "percentage" in tokens
+            or "percent" in tokens
+            or "%" in question
+        ):
+            return self._answer_invoice_po_variance(selected_documents)
+        if (
+            invoice_po_question
+            and bool(
+                tokens
+                & {"difference", "delta", "differ", "different", "minus", "variance", "versus"}
+            )
+        ):
+            return self._answer_invoice_po_difference(selected_documents)
+        return self._answer_decimal_sum(question, selected_documents)
+
+    def _answer_decimal_sum(
+        self,
+        question: str,
+        documents: list[VisionDocumentRecord],
+    ) -> VisionAskResponse:
         requested = self._requested_field_names(question)
         numeric_names = requested & {"subtotal", "tax", "discount", "total_amount"}
         if not numeric_names:
             numeric_names = {"total_amount"}
-        selected_documents = self._documents_for_question(question, documents)
-        fields = [
-            field
-            for document in selected_documents
-            for field in document.extracted_fields
-            if field.name in numeric_names
-        ][: max(top_k, 8)]
-        parsed = [
-            (field, value)
-            for field in fields
-            if (value := self._decimal_value(field.reviewed_value or field.value)) is not None
-        ]
+        if "invoice" in question.lower():
+            documents = [
+                document
+                for document in documents
+                if document.document_type == VisionDocumentType.invoice
+            ]
+        parsed: list[
+            tuple[VisionDocumentRecord, ExtractedVisionField, Decimal, str | None]
+        ] = []
+        for document in documents:
+            for field_name in sorted(numeric_names):
+                field = self._verified_calculation_field(document, field_name)
+                if field is None:
+                    continue
+                value = self._decimal_value(self._calculation_field_value(field))
+                if value is not None:
+                    parsed.append(
+                        (document, field, value, self._calculation_currency(document, field))
+                    )
         if not parsed:
             return self._not_found_answer(requires_review=False)
-        currencies = {
-            self._field_map(document).get("currency")
-            for document in selected_documents
-            if self._field_map(document).get("currency")
-        }
-        if len(currencies) > 1:
-            return VisionAskResponse(
-                answer="The calculation spans multiple currencies and cannot be combined without verified conversion data.",
-                answer_status="partially_supported",
-                citations=[self._field_citation(field) for field, _ in parsed],
-                confidence=0.0,
-                reasoning_summary="Deterministic calculation stopped at the currency-consistency guardrail.",
-                requires_review=True,
+        inputs = [
+            self._calculation_input(
+                document,
+                field,
+                role="addend",
+                normalized_value=format(value, "f"),
+                value_type="decimal",
+                currency=currency,
             )
-        total = sum((value for _, value in parsed), Decimal(0))
-        currency = next(iter(currencies), "")
+            for document, field, value, currency in parsed
+        ]
+        citations = [self._field_citation(field) for _, field, _, _ in parsed]
+        currency, currency_error = self._consistent_calculation_currency(
+            [item[3] for item in parsed]
+        )
+        if currency_error:
+            return self._calculation_guardrail_response(
+                operation=VisionAskCalculationOperation.sum,
+                inputs=inputs,
+                citations=citations,
+                formula="sum(Decimal(verified input))",
+                message=currency_error,
+            )
+        total = sum((value for _, _, value, _ in parsed), Decimal(0)).quantize(
+            Decimal("0.01")
+        )
         return VisionAskResponse(
-            answer=f"{currency + ' ' if currency else ''}{total.quantize(Decimal('0.01'))}",
-            answer_status=(
-                "supported"
-                if all(
-                    field.reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited}
-                    for field, _ in parsed
-                )
-                else "partially_supported"
-            ),
-            citations=[self._field_citation(field) for field, _ in parsed],
+            answer=f"{currency + ' ' if currency else ''}{total}",
+            answer_status="supported",
+            citations=citations,
             confidence=(
-                self._mean_available_field_confidence(field for field, _ in parsed)
-                or 0.0
+                self._mean_available_field_confidence(field for _, field, _, _ in parsed) or 0.0
             ),
-            reasoning_summary=f"Summed {len(parsed)} extracted value(s) using Decimal arithmetic.",
-            requires_review=any(
-                field.reviewer_status not in {ReviewerStatus.accepted, ReviewerStatus.edited}
-                for field, _ in parsed
+            reasoning_summary=(
+                f"Summed {len(parsed)} reviewed value(s) using deterministic Decimal arithmetic."
             ),
+            requires_review=False,
             retriever="deterministic-decimal-aggregation",
+            retrieval_path="deterministic_calculation",
+            calculation_trace=VisionAskCalculationTrace(
+                operation=VisionAskCalculationOperation.sum,
+                inputs=inputs,
+                result=format(total, ".2f"),
+                result_type="decimal",
+                currency=currency,
+                formula="sum(Decimal(verified input))",
+            ),
+        )
+
+    def _answer_verified_invoice_count(
+        self,
+        documents: list[VisionDocumentRecord],
+    ) -> VisionAskResponse:
+        counted: list[tuple[VisionDocumentRecord, ExtractedVisionField]] = []
+        verified_document_states = {
+            VisionProcessingStatus.approved,
+            VisionProcessingStatus.completed,
+        }
+        for document in documents:
+            if (
+                document.document_type != VisionDocumentType.invoice
+                or document.status not in verified_document_states
+            ):
+                continue
+            identity = self._verified_calculation_field(document, "invoice_number")
+            if identity is not None:
+                counted.append((document, identity))
+        inputs = [
+            self._calculation_input(
+                document,
+                field,
+                role="counted_invoice",
+                normalized_value=self._calculation_field_value(field),
+                value_type="document",
+            )
+            for document, field in counted
+        ]
+        count = len({document.document_id for document, _ in counted})
+        return VisionAskResponse(
+            answer=f"{count} verified invoice(s).",
+            answer_status="supported",
+            citations=[self._field_citation(field) for _, field in counted],
+            confidence=(
+                self._mean_available_field_confidence(field for _, field in counted) or 1.0
+            ),
+            reasoning_summary=(
+                "Counted distinct approved or completed invoice documents with a reviewed "
+                "invoice-number field."
+            ),
+            requires_review=False,
+            retriever="deterministic-document-count",
+            retrieval_path="deterministic_calculation",
+            calculation_trace=VisionAskCalculationTrace(
+                operation=VisionAskCalculationOperation.count_verified_invoices,
+                inputs=inputs,
+                result=str(count),
+                result_type="integer",
+                unit="invoices",
+                formula=(
+                    "count(distinct approved/completed invoice document_id with reviewed "
+                    "invoice_number evidence)"
+                ),
+            ),
+        )
+
+    def _answer_invoice_po_difference(
+        self,
+        documents: list[VisionDocumentRecord],
+    ) -> VisionAskResponse:
+        return self._answer_invoice_po_calculation(
+            documents,
+            VisionAskCalculationOperation.invoice_po_difference,
+        )
+
+    def _answer_invoice_po_variance(
+        self,
+        documents: list[VisionDocumentRecord],
+    ) -> VisionAskResponse:
+        return self._answer_invoice_po_calculation(
+            documents,
+            VisionAskCalculationOperation.percentage_variance,
+        )
+
+    def _answer_invoice_po_calculation(
+        self,
+        documents: list[VisionDocumentRecord],
+        operation: VisionAskCalculationOperation,
+    ) -> VisionAskResponse:
+        pair = self._linked_invoice_po_pair(documents)
+        if pair is None:
+            return VisionAskResponse(
+                answer=(
+                    "Select one invoice and its linked purchase order so the calculation has "
+                    "an unambiguous evidence pair."
+                ),
+                answer_status="clarification_needed",
+                confidence=0.0,
+                reasoning_summary="No unique reviewed invoice-to-purchase-order pair was found.",
+                requires_review=False,
+                retriever="deterministic-calculation-engine-v1",
+                retrieval_path="calculation_pair_resolution",
+            )
+        invoice, purchase_order = pair
+        invoice_total = self._verified_calculation_field(invoice, "total_amount")
+        po_total = self._verified_calculation_field(purchase_order, "total_amount")
+        if invoice_total is None or po_total is None:
+            return self._not_found_answer(requires_review=False)
+        invoice_value = self._decimal_value(self._calculation_field_value(invoice_total))
+        po_value = self._decimal_value(self._calculation_field_value(po_total))
+        if invoice_value is None or po_value is None:
+            return self._not_found_answer(requires_review=False)
+        invoice_currency = self._calculation_currency(invoice, invoice_total)
+        po_currency = self._calculation_currency(purchase_order, po_total)
+        inputs = [
+            self._calculation_input(
+                invoice,
+                invoice_total,
+                role="invoice_amount",
+                normalized_value=format(invoice_value, "f"),
+                value_type="decimal",
+                currency=invoice_currency,
+            ),
+            self._calculation_input(
+                purchase_order,
+                po_total,
+                role="purchase_order_amount",
+                normalized_value=format(po_value, "f"),
+                value_type="decimal",
+                currency=po_currency,
+            ),
+        ]
+        citations = [
+            self._field_citation(invoice_total),
+            self._field_citation(po_total),
+        ]
+        currency, currency_error = self._consistent_calculation_currency(
+            [invoice_currency, po_currency]
+        )
+        formula = (
+            "((Decimal(invoice_total) - Decimal(purchase_order_total)) / "
+            "Decimal(purchase_order_total)) * 100"
+            if operation == VisionAskCalculationOperation.percentage_variance
+            else "Decimal(invoice_total) - Decimal(purchase_order_total)"
+        )
+        if currency_error:
+            return self._calculation_guardrail_response(
+                operation=operation,
+                inputs=inputs,
+                citations=citations,
+                formula=formula,
+                message=currency_error,
+            )
+        difference = invoice_value - po_value
+        if operation == VisionAskCalculationOperation.percentage_variance:
+            if po_value == 0:
+                return self._calculation_guardrail_response(
+                    operation=operation,
+                    inputs=inputs,
+                    citations=citations,
+                    formula=formula,
+                    message=(
+                        "Percentage variance cannot be calculated because the reviewed "
+                        "purchase-order total is zero."
+                    ),
+                )
+            result = ((difference / po_value) * Decimal(100)).quantize(Decimal("0.01"))
+            answer = f"The invoice-to-purchase-order percentage variance is {result}%."
+            result_type = "percentage"
+            unit = "percent"
+            result_currency = None
+        else:
+            result = difference.quantize(Decimal("0.01"))
+            answer = (
+                "Invoice total minus purchase-order total is "
+                f"{currency + ' ' if currency else ''}{result}."
+            )
+            result_type = "decimal"
+            unit = None
+            result_currency = currency
+        return VisionAskResponse(
+            answer=answer,
+            answer_status="supported",
+            citations=citations,
+            confidence=self._mean_available_field_confidence(
+                [invoice_total, po_total]
+            )
+            or 0.0,
+            reasoning_summary=(
+                "Used one uniquely linked invoice/PO pair and reviewed totals with deterministic "
+                "Decimal arithmetic."
+            ),
+            requires_review=False,
+            retriever="deterministic-calculation-engine-v1",
+            retrieval_path="deterministic_calculation",
+            calculation_trace=VisionAskCalculationTrace(
+                operation=operation,
+                inputs=inputs,
+                result=format(result, ".2f"),
+                result_type=result_type,
+                currency=result_currency,
+                unit=unit,
+                formula=formula,
+            ),
+        )
+
+    def _answer_date_interval(
+        self,
+        question: str,
+        documents: list[VisionDocumentRecord],
+    ) -> VisionAskResponse:
+        lower = question.lower()
+        if "order date" in lower or "delivery date" in lower:
+            start_name, end_name = "order_date", "delivery_date"
+        elif "effective date" in lower or "expiry date" in lower:
+            start_name, end_name = "effective_date", "expiry_date"
+        else:
+            start_name, end_name = "invoice_date", "due_date"
+        candidates: list[
+            tuple[
+                VisionDocumentRecord,
+                ExtractedVisionField,
+                ExtractedVisionField,
+                datetime,
+                datetime,
+            ]
+        ] = []
+        for document in documents:
+            start_field = self._verified_calculation_field(document, start_name)
+            end_field = self._verified_calculation_field(document, end_name)
+            if start_field is None or end_field is None:
+                continue
+            start_date = self._date(self._calculation_field_value(start_field))
+            end_date = self._date(self._calculation_field_value(end_field))
+            if start_date is not None and end_date is not None:
+                candidates.append((document, start_field, end_field, start_date, end_date))
+        if len(candidates) > 1:
+            return VisionAskResponse(
+                answer="Select one document so the requested date interval is unambiguous.",
+                answer_status="clarification_needed",
+                confidence=0.0,
+                reasoning_summary="More than one document contains the reviewed date pair.",
+                requires_review=False,
+                retriever="deterministic-calculation-engine-v1",
+                retrieval_path="calculation_pair_resolution",
+            )
+        if not candidates:
+            return self._not_found_answer(requires_review=False)
+        document, start_field, end_field, start_date, end_date = candidates[0]
+        interval = (end_date.date() - start_date.date()).days
+        inputs = [
+            self._calculation_input(
+                document,
+                start_field,
+                role="start_date",
+                normalized_value=start_date.date().isoformat(),
+                value_type="date",
+            ),
+            self._calculation_input(
+                document,
+                end_field,
+                role="end_date",
+                normalized_value=end_date.date().isoformat(),
+                value_type="date",
+            ),
+        ]
+        return VisionAskResponse(
+            answer=(
+                f"The interval from {start_name.replace('_', ' ')} to "
+                f"{end_name.replace('_', ' ')} is {interval} day(s)."
+            ),
+            answer_status="supported",
+            citations=[self._field_citation(start_field), self._field_citation(end_field)],
+            confidence=self._mean_available_field_confidence([start_field, end_field]) or 0.0,
+            reasoning_summary="Parsed reviewed dates and subtracted calendar dates deterministically.",
+            requires_review=False,
+            retriever="deterministic-date-calculation",
+            retrieval_path="deterministic_calculation",
+            calculation_trace=VisionAskCalculationTrace(
+                operation=VisionAskCalculationOperation.date_interval,
+                inputs=inputs,
+                result=str(interval),
+                result_type="integer",
+                unit="days",
+                formula="date(end_date) - date(start_date)",
+            ),
+        )
+
+    def _linked_invoice_po_pair(
+        self,
+        documents: list[VisionDocumentRecord],
+    ) -> tuple[VisionDocumentRecord, VisionDocumentRecord] | None:
+        invoices = [
+            item for item in documents if item.document_type == VisionDocumentType.invoice
+        ]
+        purchase_orders = [
+            item
+            for item in documents
+            if item.document_type == VisionDocumentType.purchase_order
+        ]
+        linked = []
+        for invoice in invoices:
+            invoice_reference = self._verified_calculation_field(
+                invoice, "purchase_order_number"
+            )
+            if invoice_reference is None:
+                continue
+            normalized_reference = self._normalize(
+                self._calculation_field_value(invoice_reference)
+            )
+            for purchase_order in purchase_orders:
+                po_reference = self._verified_calculation_field(
+                    purchase_order, "purchase_order_number"
+                )
+                if (
+                    po_reference is not None
+                    and normalized_reference
+                    and normalized_reference
+                    == self._normalize(self._calculation_field_value(po_reference))
+                ):
+                    linked.append((invoice, purchase_order))
+        if len(linked) == 1:
+            return linked[0]
+        if not linked and len(invoices) == 1 and len(purchase_orders) == 1:
+            return invoices[0], purchase_orders[0]
+        return None
+
+    def _verified_calculation_field(
+        self,
+        document: VisionDocumentRecord,
+        field_name: str,
+    ) -> ExtractedVisionField | None:
+        return next(
+            (
+                field
+                for field in document.extracted_fields
+                if field.name == field_name
+                and field.reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited}
+            ),
+            None,
+        )
+
+    def _calculation_field_value(self, field: ExtractedVisionField) -> str:
+        if field.reviewed_value is not None:
+            return field.reviewed_value
+        return field.normalized_value or field.value
+
+    def _calculation_input(
+        self,
+        document: VisionDocumentRecord,
+        field: ExtractedVisionField,
+        *,
+        role: str,
+        normalized_value: str,
+        value_type: str,
+        currency: str | None = None,
+    ) -> VisionAskCalculationInput:
+        return VisionAskCalculationInput(
+            document_id=document.document_id,
+            document_type=document.document_type,
+            role=role,
+            field_name=field.name,
+            raw_value=self._calculation_field_value(field),
+            normalized_value=normalized_value,
+            value_type=value_type,
+            currency=currency,
+            evidence_id=field.evidence.evidence_id,
+            page_number=field.evidence.page_number,
+            reviewer_status=field.reviewer_status,
+        )
+
+    def _calculation_currency(
+        self,
+        document: VisionDocumentRecord,
+        amount_field: ExtractedVisionField,
+    ) -> str | None:
+        currency_field = self._verified_calculation_field(document, "currency")
+        candidates = []
+        if currency_field is not None:
+            candidates.append(self._calculation_field_value(currency_field))
+        candidates.append(self._calculation_field_value(amount_field))
+        known_codes = {
+            "AED",
+            "AUD",
+            "CAD",
+            "CHF",
+            "CNY",
+            "EUR",
+            "GBP",
+            "INR",
+            "JPY",
+            "SGD",
+            "USD",
+        }
+        symbol_codes = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR", "¥": "JPY"}
+        for candidate in candidates:
+            upper = candidate.upper()
+            code = next(
+                (item for item in re.findall(r"\b[A-Z]{3}\b", upper) if item in known_codes),
+                None,
+            )
+            if code:
+                return code
+            for symbol, symbol_code in symbol_codes.items():
+                if symbol in candidate:
+                    return symbol_code
+        return None
+
+    def _consistent_calculation_currency(
+        self,
+        currencies: list[str | None],
+    ) -> tuple[str | None, str | None]:
+        known = {currency for currency in currencies if currency}
+        if len(known) > 1:
+            return None, (
+                "The calculation spans multiple currencies and cannot be combined without "
+                "verified conversion data."
+            )
+        if known and any(currency is None for currency in currencies):
+            return None, (
+                "The calculation mixes currency-labelled and unlabelled values, so it was "
+                "stopped until every input currency is verified."
+            )
+        return next(iter(known), None), None
+
+    def _calculation_guardrail_response(
+        self,
+        *,
+        operation: VisionAskCalculationOperation,
+        inputs: list[VisionAskCalculationInput],
+        citations: list[VisionAskCitation],
+        formula: str,
+        message: str,
+    ) -> VisionAskResponse:
+        return VisionAskResponse(
+            answer=message,
+            answer_status="partially_supported",
+            citations=citations,
+            confidence=0.0,
+            reasoning_summary="Deterministic calculation stopped at a calculation guardrail.",
+            requires_review=True,
+            retriever="deterministic-calculation-engine-v1",
+            retrieval_path="calculation_guardrail",
+            calculation_trace=VisionAskCalculationTrace(
+                operation=operation,
+                inputs=inputs,
+                result=None,
+                result_type="not_calculated",
+                formula=formula,
+            ),
         )
 
     def _answer_visual(
@@ -2281,9 +3054,7 @@ class VisionAIService:
             "handwritten_note": ("handwritten",),
         }
         requested_classes = {
-            name
-            for name, terms in class_terms.items()
-            if any(term in lower for term in terms)
+            name for name, terms in class_terms.items() if any(term in lower for term in terms)
         }
         return [
             (document, detection)
@@ -2301,13 +3072,19 @@ class VisionAIService:
         *,
         source_fields: set[str] | None = None,
     ) -> VisionAskResponse:
-        del tenant_id
-        matches = self._matching_graph_edges(question, documents)
+        neo4j_paths = self.persistence.query_graph_paths(
+            tenant_id,
+            question,
+            [document.document_id for document in documents],
+            limit=top_k,
+        )
+        matches = self._neo4j_graph_matches(neo4j_paths, documents)
+        graph_backend = "neo4j-evidence-path-v1" if matches else "local-semantic-graph-path-v1"
+        if not matches:
+            matches = self._matching_graph_edges(question, documents)
         if source_fields:
             matches = [
-                item
-                for item in matches
-                if str(item[1].get("source_field") or "") in source_fields
+                item for item in matches if str(item[1].get("source_field") or "") in source_fields
             ]
         matches = matches[:top_k]
         if not matches:
@@ -2318,10 +3095,12 @@ class VisionAIService:
                 filename=document.filename,
                 page_number=int(edge.get("source_page", 1)),
                 source_text=str(edge.get("evidence_text", "")),
-                bounding_boxes=[VisionBoundingBox.model_validate(box) for box in edge.get("bounding_boxes", [])],
+                bounding_boxes=[
+                    VisionBoundingBox.model_validate(box) for box in edge.get("bounding_boxes", [])
+                ],
                 evidence_id=edge.get("evidence_id"),
                 retrieval_score=float(edge.get("confidence", 0.0) or 0.0),
-                retrieval_backend="local-semantic-graph-path-v1",
+                retrieval_backend=graph_backend,
                 model_confidence=float(edge.get("confidence", 0.0) or 0.0),
                 model_name=str(edge.get("model_name", "deterministic-graph-builder")),
                 model_version=str(edge.get("model_version", "v1")),
@@ -2375,10 +3154,80 @@ class VisionAIService:
                 "originating field or OCR evidence."
             ),
             requires_review=any(edge.get("status") != "verified" for _, edge, _, _ in matches),
-            retriever="local-semantic-graph-path-v1",
+            retriever=graph_backend,
             retrieval_path="graph_path_query",
             graph_paths=paths,
         )
+
+    def _neo4j_graph_matches(
+        self,
+        paths: list[dict[str, Any]],
+        documents: list[VisionDocumentRecord],
+    ) -> list[
+        tuple[
+            VisionDocumentRecord,
+            dict[str, Any],
+            dict[str, Any],
+            dict[str, Any],
+        ]
+    ]:
+        by_document = {document.document_id: document for document in documents}
+        matches = []
+        for path in paths:
+            document = by_document.get(str(path.get("document_id") or ""))
+            if document is None:
+                continue
+            properties = dict(path.get("relationship_properties") or {})
+            bounding_boxes = self._neo4j_json_value(
+                properties.get("bounding_boxes"),
+                [],
+            )
+            bounding_box = self._neo4j_json_value(
+                properties.get("bounding_box"),
+                None,
+            )
+            if not bounding_boxes and isinstance(bounding_box, dict):
+                bounding_boxes = [bounding_box]
+            relationship = str(path.get("relationship_type") or "")
+            edge = {
+                **properties,
+                "id": properties.get("edge_id") or f"neo4j:{document.document_id}:{relationship}",
+                "source": document.document_id,
+                "target": str(path.get("target_id") or ""),
+                "type": relationship,
+                "source_page": int(properties.get("source_page") or 1),
+                "evidence_text": str(properties.get("evidence_text") or ""),
+                "status": str(properties.get("status") or "proposed"),
+                "confidence": float(properties.get("confidence") or 0.0),
+                "model_name": "neo4j-evidence-path",
+                "model_version": "v1",
+                "bounding_boxes": (bounding_boxes if isinstance(bounding_boxes, list) else []),
+            }
+            source_node = {
+                "id": document.document_id,
+                "label": str(path.get("source_label") or document.filename),
+            }
+            target_properties = dict(path.get("target_properties") or {})
+            target_node = {
+                **target_properties,
+                "id": str(path.get("target_id") or ""),
+                "label": str(
+                    path.get("target_label")
+                    or target_properties.get("display_label")
+                    or path.get("target_id")
+                    or "related entity"
+                ),
+            }
+            matches.append((document, edge, source_node, target_node))
+        return matches
+
+    def _neo4j_json_value(self, value: object, default: object) -> object:
+        if not isinstance(value, str):
+            return value if value is not None else default
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return default
 
     def _matching_graph_edges(
         self,
@@ -2404,7 +3253,9 @@ class VisionAIService:
             "HAS_SAMPLE_NUMBER": ("sample number", "sample no", "sample id"),
             "HAS_PRODUCT_TYPE": ("product type", "type of product", "type of cigarette"),
             "HAS_BATCH_SIZE": ("batch size", "lot size", "quantity"),
-            "HAS_DATE": ("what date", "document date", "when was"),
+            "HAS_DATE": ("what date", "document date", "form date"),
+            "HAS_REQUEST_DATE": ("request date", "when was the request", "request made"),
+            "HAS_PURPOSE": ("purpose", "what was the purpose"),
             "HAS_FAX": ("fax number", "fax no", "facsimile", "telefax"),
             "ISSUED_BY": ("issued by", "vendor", "supplier"),
             "ISSUED_TO": ("issued to", "buyer", "customer"),
@@ -2417,8 +3268,21 @@ class VisionAIService:
             if any(term in lower for term in terms):
                 intents.add(relationship)
         stopwords = {
-            "are", "does", "document", "for", "from", "how", "is", "of", "the",
-            "this", "to", "what", "which", "who", "with",
+            "are",
+            "does",
+            "document",
+            "for",
+            "from",
+            "how",
+            "is",
+            "of",
+            "the",
+            "this",
+            "to",
+            "what",
+            "which",
+            "who",
+            "with",
         }
         tokens = {
             token
@@ -2491,6 +3355,8 @@ class VisionAIService:
             "HAS_PRODUCT_TYPE": f"{source_label} identifies the product as {target_label}",
             "HAS_BATCH_SIZE": f"{source_label} records a batch size of {target_label}",
             "HAS_DATE": f"{source_label} records the date as {target_label}",
+            "HAS_REQUEST_DATE": f"{source_label} records the request date as {target_label}",
+            "HAS_PURPOSE": f"{source_label} records the purpose as {target_label}",
             "ISSUED_BY": f"{source_label} was issued by {target_label}",
             "ISSUED_TO": f"{source_label} was issued to {target_label}",
             "SIGNED_BY": f"{source_label} is linked to signer {target_label}",
@@ -2517,17 +3383,11 @@ class VisionAIService:
             if field.reviewer_status not in {ReviewerStatus.accepted, ReviewerStatus.edited}
         ]
         missing = sum(
-            len(document.field_completeness.missing_required_fields)
-            for document in documents
+            len(document.field_completeness.missing_required_fields) for document in documents
         )
-        disputed = sum(
-            len(document.field_completeness.disputed_fields)
-            for document in documents
-        )
+        disputed = sum(len(document.field_completeness.disputed_fields) for document in documents)
         quality_scores = [
-            report.image_quality_score
-            for document in documents
-            for report in document.quality
+            report.image_quality_score for document in documents for report in document.quality
         ]
         warnings = [
             (document, warning)
@@ -2658,8 +3518,7 @@ class VisionAIService:
             if field.reviewer_status not in {ReviewerStatus.accepted, ReviewerStatus.edited}
         ]
         missing = sum(
-            len(document.field_completeness.missing_required_fields)
-            for document in documents
+            len(document.field_completeness.missing_required_fields) for document in documents
         )
         linked_risks = [
             (document, risk)
@@ -2674,8 +3533,7 @@ class VisionAIService:
             for region in analysis.suspicious_regions
         ]
         confirmed_fraud = any(
-            document.status == VisionProcessingStatus.confirmed_fraud
-            for document in documents
+            document.status == VisionProcessingStatus.confirmed_fraud for document in documents
         )
         statuses = ", ".join(
             f"{document.filename}: {document.status.value.replace('_', ' ').title()}"
@@ -2723,7 +3581,9 @@ class VisionAIService:
             for document, analysis, region in manipulation_regions
         )
         citations.extend(
-            self._document_state_citation(document, f"Persisted workflow status: {document.status.value}.", "workflow_state")
+            self._document_state_citation(
+                document, f"Persisted workflow status: {document.status.value}.", "workflow_state"
+            )
             for document in documents
         )
         citations = self._deduplicate_citations(citations)[: max(top_k, 8)]
@@ -2806,14 +3666,14 @@ class VisionAIService:
         tenant_id: str,
     ) -> VisionAskResponse:
         del question, tenant_id
-        matches = [
-            (document, risk)
-            for document in documents
-            for risk in document.risk_indicators
-        ][:top_k]
+        matches = [(document, risk) for document in documents for risk in document.risk_indicators][
+            :top_k
+        ]
         if not matches:
             response = self._not_found_answer(requires_review=False)
-            response.reasoning_summary = "No stored business or visual risk indicator matched the scope."
+            response.reasoning_summary = (
+                "No stored business or visual risk indicator matched the scope."
+            )
             response.retriever = "stored-risk-registry"
             return response
         citations = [
@@ -2838,11 +3698,7 @@ class VisionAIService:
             response.reasoning_summary = "Stored risk records had no source-linked evidence."
             response.retriever = "stored-risk-registry"
             return response
-        confidence_values = [
-            risk.confidence
-            for _, risk in matches
-            if risk.confidence is not None
-        ]
+        confidence_values = [risk.confidence for _, risk in matches if risk.confidence is not None]
         return VisionAskResponse(
             answer="; ".join(
                 f"{risk.severity.value}: {risk.title}. {risk.recommended_action}"
@@ -2963,9 +3819,7 @@ class VisionAIService:
             question = self.persistence.get_question(question_id, tenant_id)
             if question:
                 self.questions[question_id] = question
-        if not question or (
-            tenant_id and question.get("tenant_id", "tenant-local") != tenant_id
-        ):
+        if not question or (tenant_id and question.get("tenant_id", "tenant-local") != tenant_id):
             raise ValueError("question_id not found")
         return question
 
@@ -3010,11 +3864,7 @@ class VisionAIService:
         relationship: dict[str, Any] | None = None
         for candidate in self.list_documents(tenant_id):
             relationship = next(
-                (
-                    edge
-                    for edge in candidate.graph.edges
-                    if edge.get("id") == relationship_id
-                ),
+                (edge for edge in candidate.graph.edges if edge.get("id") == relationship_id),
                 None,
             )
             if relationship:
@@ -3081,9 +3931,7 @@ class VisionAIService:
                 ]
             )
         )
-        extraction_runs = [
-            run for run in document.model_runs if run.stage == "extraction"
-        ]
+        extraction_runs = [run for run in document.model_runs if run.stage == "extraction"]
         primary_run = next(
             (run for run in reversed(extraction_runs) if run.status == "completed"),
             extraction_runs[-1] if extraction_runs else None,
@@ -3105,8 +3953,7 @@ class VisionAIService:
             fallback_field = deterministic.get(field_name)
             layout_field = (
                 selected_field
-                if selected_field
-                and "layoutlm" in selected_field.model_name.lower()
+                if selected_field and "layoutlm" in selected_field.model_name.lower()
                 else None
             )
             donut_value = next(
@@ -3127,7 +3974,9 @@ class VisionAIService:
                 if value is not None
             ]
             disagreement = len({self._normalize(value) for value in observed_values}) > 1
-            required = bool(schema and schema.field(field_name) and schema.field(field_name).required)
+            required = bool(
+                schema and schema.field(field_name) and schema.field(field_name).required
+            )
             if selected_field:
                 validation_result = (
                     "accepted"
@@ -3135,8 +3984,7 @@ class VisionAIService:
                     in {ReviewerStatus.accepted, ReviewerStatus.edited}
                     else "requires_review"
                     if selected_field.confidence is None
-                    or selected_field.confidence
-                    < self._mandatory_review_threshold(document)
+                    or selected_field.confidence < self._mandatory_review_threshold(document)
                     else "unverified"
                 )
             else:
@@ -3165,12 +4013,16 @@ class VisionAIService:
                     else None,
                     "donut_confidence": None,
                     "validation_result": validation_result,
-                    "selected_result": self._mask_sensitive(field_name, selected_field.reviewed_value or selected_field.value)
+                    "selected_result": self._mask_sensitive(
+                        field_name, selected_field.reviewed_value or selected_field.value
+                    )
                     if selected_field
                     else None,
                     "review_status": selected_field.reviewer_status.value
                     if selected_field
-                    else "unresolved" if required else "not_available",
+                    else "unresolved"
+                    if required
+                    else "not_available",
                     "disagreement": disagreement,
                     "evidence": selected_field.evidence.model_dump(mode="json")
                     if selected_field
@@ -3299,9 +4151,7 @@ class VisionAIService:
         return {
             "total": len(documents),
             "by_status": dict(Counter(item.status.value for item in documents)),
-            "by_document_type": dict(
-                Counter(item.document_type.value for item in documents)
-            ),
+            "by_document_type": dict(Counter(item.document_type.value for item in documents)),
             "review_required": sum(item.review_task is not None for item in documents),
             "documents_without_fields": sum(not item.extracted_fields for item in documents),
             "extracted_field_count": len(fields),
@@ -3325,9 +4175,7 @@ class VisionAIService:
     ) -> dict[str, Any]:
         documents = self._analytics_documents(tenant_id, date_from, date_to)
         indicators = [risk for document in documents for risk in document.risk_indicators]
-        warnings = [
-            warning for document in documents for warning in document.processing_warnings
-        ]
+        warnings = [warning for document in documents for warning in document.processing_warnings]
         by_severity = Counter(risk.severity.value for risk in indicators)
         by_category = Counter(risk.category for risk in indicators)
         return {
@@ -3335,11 +4183,11 @@ class VisionAIService:
             "by_severity": dict(by_severity),
             "by_category": dict(by_category),
             "processing_warning_count": len(warnings),
-            "processing_warnings_by_title": dict(
-                Counter(warning.title for warning in warnings)
-            ),
+            "processing_warnings_by_title": dict(Counter(warning.title for warning in warnings)),
             "confirmed_fraud_count": sum(
-                1 for document in documents if document.status == VisionProcessingStatus.confirmed_fraud
+                1
+                for document in documents
+                if document.status == VisionProcessingStatus.confirmed_fraud
             ),
             "automatic_fraud_claims": 0,
             "sample_size": len(documents),
@@ -3355,8 +4203,7 @@ class VisionAIService:
         date_to: str | None = None,
     ) -> dict[str, Any]:
         document_ids = {
-            item.document_id
-            for item in self._analytics_documents(tenant_id, date_from, date_to)
+            item.document_id for item in self._analytics_documents(tenant_id, date_from, date_to)
         }
         reviews = [
             item for item in self.list_reviews(tenant_id) if item.document_id in document_ids
@@ -3378,9 +4225,7 @@ class VisionAIService:
             "schema_unresolved_total": sum(
                 item.unresolved_required_fields or 0 for item in reviews
             ),
-            "average_review_time_seconds": duration_metrics[
-                "average_review_time_seconds"
-            ],
+            "average_review_time_seconds": duration_metrics["average_review_time_seconds"],
             "review_duration_sample_size": duration_metrics["sample_sizes"][
                 "review_duration_samples"
             ],
@@ -3432,9 +4277,7 @@ class VisionAIService:
             if (item.get("answer") or {}).get("answer_status")
             in {"supported", "partially_supported"}
         ]
-        cited = [
-            item for item in supported if (item.get("answer") or {}).get("citations")
-        ]
+        cited = [item for item in supported if (item.get("answer") or {}).get("citations")]
         return {
             "total_questions": len(questions),
             "by_answer_status": dict(
@@ -3457,9 +4300,7 @@ class VisionAIService:
             ),
             "supported_answer_count": len(supported),
             "supported_answers_with_citations": len(cited),
-            "citation_coverage": (
-                round(len(cited) / len(supported), 4) if supported else None
-            ),
+            "citation_coverage": (round(len(cited) / len(supported), 4) if supported else None),
             "citation_coverage_denominator": len(supported),
             "feedback_count": sum(len(item.get("feedback") or []) for item in questions),
             "sample_size": len(questions),
@@ -3532,8 +4373,7 @@ class VisionAIService:
             (
                 item
                 for item in models
-                if str(item["model_id"]) == model_id
-                or str(item.get("adapter_id")) == model_id
+                if str(item["model_id"]) == model_id or str(item.get("adapter_id")) == model_id
             ),
             None,
         )
@@ -3663,16 +4503,28 @@ class VisionAIService:
                 tenant_id=tenant_id,
                 actor=actor,
             )
-            selected = [
-                self.get_document(document_id, tenant_id)
-                for document_id in narrative.document_ids
+            contributing = [
+                self.get_document(document_id, tenant_id) for document_id in narrative.document_ids
             ]
+            source_ids = narrative.source_document_ids or narrative.document_ids
+            selected = [self.get_document(document_id, tenant_id) for document_id in source_ids]
             source_data_version = self._artifact_source_data_version(selected)
             request_scope = request.model_dump(
                 mode="json",
                 exclude={"generate_new_version"},
             )
-            request_scope["document_ids"] = sorted(narrative.document_ids)
+            request_scope["document_ids"] = sorted(request.document_ids or source_ids)
+            request_scope["requested_document_ids"] = sorted(request.document_ids)
+            request_scope["source_document_ids"] = sorted(source_ids)
+            request_scope["excluded_document_ids"] = sorted(narrative.excluded_document_ids)
+            duplicate_exclusion_signature = sorted(
+                {
+                    trace.calculation_function
+                    for trace in narrative.calculations
+                    if trace.label == "Duplicate invoice documents excluded"
+                }
+            )
+            request_scope["duplicate_invoice_exclusions"] = duplicate_exclusion_signature
             identity_hash = self._artifact_identity_hash(
                 {
                     "organisation_id": tenant_id,
@@ -3687,6 +4539,8 @@ class VisionAIService:
                         }
                     ),
                     "document_ids": sorted(set(narrative.document_ids)),
+                    "source_document_ids": sorted(set(source_ids)),
+                    "duplicate_invoice_exclusions": duplicate_exclusion_signature,
                     "verified_data_version": source_data_version,
                 }
             )
@@ -3707,6 +4561,23 @@ class VisionAIService:
                 narrative.version = latest.version + 1
                 narrative.supersedes = latest.narrative_id
             self._persist_finance_narrative(narrative)
+            for document in selected:
+                self._audit(
+                    document,
+                    "finance_narrative_generated",
+                    f"Generated {narrative.narrative_type.value} version {narrative.version}.",
+                    actor=actor,
+                    metadata={
+                        "narrative_id": narrative.narrative_id,
+                        "identity_hash": narrative.identity_hash,
+                        "version": narrative.version,
+                        "contributing": document.document_id
+                        in {item.document_id for item in contributing},
+                        "excluded_duplicate": document.document_id
+                        in set(narrative.excluded_document_ids),
+                    },
+                )
+                self._persist_document(document)
             return narrative
 
     def get_finance_narrative(
@@ -3741,9 +4612,7 @@ class VisionAIService:
             self.finance_narratives[narrative.narrative_id] = narrative
         for narrative in self.persistence.list_narratives(tenant_id):
             self.finance_narratives[narrative.narrative_id] = narrative
-        scoped = [
-            item for item in self.finance_narratives.values() if item.tenant_id == tenant_id
-        ]
+        scoped = [item for item in self.finance_narratives.values() if item.tenant_id == tenant_id]
         canonical: dict[str, VisionFinanceNarrative] = {}
         for item in scoped:
             identity = item.identity_hash or self._artifact_identity_hash(
@@ -3752,6 +4621,9 @@ class VisionAIService:
                     "narrative_type": item.narrative_type.value,
                     "request_scope": item.request_scope,
                     "document_ids": sorted(set(item.document_ids)),
+                    "source_document_ids": sorted(
+                        set(item.source_document_ids or item.document_ids)
+                    ),
                     "verified_data_version": item.source_data_version,
                 }
             )
@@ -3764,7 +4636,7 @@ class VisionAIService:
         active = [
             item
             for item in canonical.values()
-            if item.status not in {"archived", "superseded"}
+            if item.status not in {"archived", "superseded", "stale"}
         ]
         return sorted(active, key=lambda item: item.created_at, reverse=True)
 
@@ -3781,9 +4653,7 @@ class VisionAIService:
                 item.narrative_id == request.narrative_id for item in narratives
             ):
                 try:
-                    narratives.append(
-                        self.get_finance_narrative(request.narrative_id, tenant_id)
-                    )
+                    narratives.append(self.get_finance_narrative(request.narrative_id, tenant_id))
                 except ValueError:
                     pass
             report = vision_report_service.generate(
@@ -3794,8 +4664,7 @@ class VisionAIService:
                 actor=actor,
             )
             selected = [
-                self.get_document(document_id, tenant_id)
-                for document_id in report.document_ids
+                self.get_document(document_id, tenant_id) for document_id in report.document_ids
             ]
             source_data_version = self._artifact_source_data_version(selected)
             request_scope = request.model_dump(
@@ -3819,9 +4688,7 @@ class VisionAIService:
                 }
             )
             matches = [
-                item
-                for item in self.list_reports(tenant_id)
-                if item.identity_hash == identity_hash
+                item for item in self.list_reports(tenant_id) if item.identity_hash == identity_hash
             ]
             latest = max(matches, key=lambda item: item.version, default=None)
             if latest and not request.generate_new_version:
@@ -3962,7 +4829,10 @@ class VisionAIService:
             "summary": self._document_summary(document),
             "risk_policy": "Suspicious indicators require human review; this report does not confirm fraud.",
             "active_learning_available": bool(
-                any(field.reviewer_status == ReviewerStatus.edited for field in document.extracted_fields)
+                any(
+                    field.reviewer_status == ReviewerStatus.edited
+                    for field in document.extracted_fields
+                )
             ),
         }
 
@@ -3973,17 +4843,26 @@ class VisionAIService:
     ) -> str:
         payload = self.render_report_payload(document_id, tenant_id)
         document = self.get_document(document_id, tenant_id)
-        fields = "\n".join(
-            f"| {field.name} | {self._mask_sensitive(field.name, field.reviewed_value or field.value)} | "
-            f"{field.confidence:.0%} | {field.evidence.evidence_id} | {field.reviewer_status.value} |"
-            for field in document.extracted_fields
-            if field.confidence is not None
-        ) or "| None | - | - | - | - |"
-        risks = "\n".join(
-            f"| {risk.title} | {risk.severity.value} | {risk.category} | {risk.recommended_action} |"
-            for risk in document.risk_indicators
-        ) or "| None | - | - | - |"
-        tables = "\n\n".join(table.markdown for table in document.tables) or "No structural tables detected."
+        fields = (
+            "\n".join(
+                f"| {field.name} | {self._mask_sensitive(field.name, field.reviewed_value or field.value)} | "
+                f"{field.confidence:.0%} | {field.evidence.evidence_id} | {field.reviewer_status.value} |"
+                for field in document.extracted_fields
+                if field.confidence is not None
+            )
+            or "| None | - | - | - | - |"
+        )
+        risks = (
+            "\n".join(
+                f"| {risk.title} | {risk.severity.value} | {risk.category} | {risk.recommended_action} |"
+                for risk in document.risk_indicators
+            )
+            or "| None | - | - | - |"
+        )
+        tables = (
+            "\n\n".join(table.markdown for table in document.tables)
+            or "No structural tables detected."
+        )
         return f"""# DOCUMIND VISION AI Report
 
 ## Summary
@@ -4096,7 +4975,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             "reliable": False,
             "exclusion_reason": "processing_incomplete",
         }
-        self._transition(document, VisionProcessingStatus.preprocessing, "Started quality analysis and preprocessing.")
+        self._transition(
+            document,
+            VisionProcessingStatus.preprocessing,
+            "Started quality analysis and preprocessing.",
+        )
 
         ingestion_started = time.perf_counter()
         text, pages, parse_evidence, stored_path = self.ingestion.parse(filename, content)
@@ -4143,7 +5026,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         )
 
         ocr_started = time.perf_counter()
-        ocr_adapter = self.paddle_ocr if self.paddle_ocr.status().status == "active" else self.local_ocr
+        ocr_adapter = (
+            self.paddle_ocr if self.paddle_ocr.status().status == "active" else self.local_ocr
+        )
         try:
             document.ocr_words = ocr_adapter.extract_words(document, preprocessing.native_words)
         except Exception as exc:
@@ -4182,7 +5067,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 ],
             )
         )
-        self._transition(document, VisionProcessingStatus.ocr_completed, "Completed OCR with page evidence.")
+        self._transition(
+            document, VisionProcessingStatus.ocr_completed, "Completed OCR with page evidence."
+        )
         stage_durations_ms["ocr"] = round(
             (time.perf_counter() - ocr_started) * 1000,
             3,
@@ -4254,7 +5141,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     None,
                     duration_ms=(time.perf_counter() - classification_started) * 1000,
                     document=document,
-                    notes=["The explicit upload selection was used instead of model classification."],
+                    notes=[
+                        "The explicit upload selection was used instead of model classification."
+                    ],
                 )
             )
             self._audit(
@@ -4265,8 +5154,8 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             )
         elif self.layoutlmv3_classifier.status().status == "active":
             try:
-                statistical_type, classification_confidence = (
-                    self.layoutlmv3_classifier.classify(document)
+                statistical_type, classification_confidence = self.layoutlmv3_classifier.classify(
+                    document
                 )
                 classification = hybrid_document_classifier.classify(
                     text,
@@ -4330,7 +5219,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     duration_ms=(time.perf_counter() - classification_started) * 1000,
                     document=document,
                     metrics={"signals": len(classification.signals)},
-                    notes=["Confidence is derived from configured rule weights, not learned accuracy."],
+                    notes=[
+                        "Confidence is derived from configured rule weights, not learned accuracy."
+                    ],
                 )
             )
         stage_durations_ms["classification"] = round(
@@ -4339,35 +5230,38 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         )
 
         extraction_started = time.perf_counter()
+        extraction_errors: list[str] = []
         extraction_adapter_name = deterministic_schema_extractor.adapter_id
         extraction_adapter_version = deterministic_schema_extractor.model_version
-        if self.layoutlmv3_extractor.status().status == "active":
-            try:
+        try:
+            if self.layoutlmv3_extractor.status().status == "active":
                 learned_fields = self.layoutlmv3_extractor.extract_fields(document)
                 learned_names = {field.name for field in learned_fields}
                 supplemental_fields = [
-                    field for field in self._extract_fields(document) if field.name not in learned_names
+                    field
+                    for field in self._extract_fields(document)
+                    if field.name not in learned_names
                 ]
                 document.extracted_fields = [*learned_fields, *supplemental_fields]
                 extraction_adapter_name = self.layoutlmv3_extractor.adapter_id
                 extraction_adapter_version = self.layoutlmv3_extractor.model_version
-            except Exception as exc:
+            else:
                 document.extracted_fields = self._extract_fields(document)
-                document.model_runs.append(
-                    self._model_run(
-                        "extraction",
-                        self.layoutlmv3_extractor.adapter_id,
-                        self.layoutlmv3_extractor.model_version,
-                        "failed_fallback_used",
-                        None,
-                        notes=[str(exc)],
-                    )
-                )
-        else:
-            document.extracted_fields = self._extract_fields(document)
+        except Exception as exc:
+            extraction_errors.append(f"{type(exc).__name__}: {exc}")
+            document.extracted_fields = []
+        try:
+            self._discover_generic_intelligence(document)
+            self._resolve_semantic_entities(document)
+        except Exception as exc:
+            extraction_errors.append(f"{type(exc).__name__}: {exc}")
         extraction_runtime_ms = (time.perf_counter() - extraction_started) * 1000
         vision_analytics_service.refresh_document(document)
-        extraction_outcome = self._extraction_outcome(document)
+        extraction_outcome = (
+            VisionExtractionOutcome.extraction_failed
+            if extraction_errors
+            else self._extraction_outcome(document)
+        )
         extraction_diagnostics = dict(document.metadata.get("extraction_diagnostics") or {})
         schema_selection = dict(document.metadata.get("schema_selection") or {})
         document.metadata["extraction"] = {
@@ -4376,15 +5270,21 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             "document_type": document.document_type.value,
             "schema": schema_selection.get("selected_schema"),
             "fields_extracted": len(document.extracted_fields),
-            "required_fields_missing": len(
-                document.field_completeness.missing_required_fields
-            ),
+            "required_fields_missing": len(document.field_completeness.missing_required_fields),
             "extractor": f"{deterministic_schema_extractor.adapter_id}-{deterministic_schema_extractor.model_version}",
             "runtime_ms": round(extraction_runtime_ms, 3),
             "pipeline_version": document.metadata["pipeline_version"],
+            "errors": extraction_errors,
+            "ocr_retrieval_preserved": bool(document.ocr_lines),
         }
-        if document.document_type == VisionDocumentType.contract:
-            self._run_contract_extraction(document)
+        if document.document_type == VisionDocumentType.contract and not extraction_errors:
+            try:
+                self._run_contract_extraction(document)
+            except Exception as exc:
+                extraction_errors.append(f"{type(exc).__name__}: {exc}")
+                extraction_outcome = VisionExtractionOutcome.extraction_failed
+                document.metadata["extraction"]["status"] = extraction_outcome.value
+                document.metadata["extraction"]["errors"] = extraction_errors
         stage_durations_ms["extraction"] = round(extraction_runtime_ms, 3)
 
         visual_analysis_started = time.perf_counter()
@@ -4415,7 +5315,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 "extraction",
                 extraction_adapter_name,
                 extraction_adapter_version,
-                "completed",
+                "failed_ocr_retrieval_preserved" if extraction_errors else "completed",
                 self._mean_field_confidence(document),
                 duration_ms=extraction_runtime_ms,
                 document=document,
@@ -4433,9 +5333,15 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 },
                 result_status=extraction_outcome.value,
                 notes=[
+                    *extraction_errors,
+                    *(
+                        ["OCR evidence chunking, indexing, and grounded retrieval continued."]
+                        if extraction_errors
+                        else []
+                    ),
                     "Confidence is uncalibrated and therefore cannot imply model accuracy."
                     if not bool(self.confidence_policy.get("calibration", {}).get("calibrated"))
-                    else "Confidence calibration artefact is active."
+                    else "Confidence calibration artefact is active.",
                 ],
             )
         )
@@ -4455,9 +5361,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 notes=["Candidate detection does not establish authenticity."],
             )
         )
-        document.language_analysis = vision_language_analysis_service.analyze(
-            document.ocr_words
-        )
+        document.language_analysis = vision_language_analysis_service.analyze(document.ocr_words)
         document.model_routing = self.model_registry.route_document(
             filename=filename,
             text=text,
@@ -4480,7 +5384,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             document,
             "extraction_outcome",
             (
-                f"Extraction completed: {len(document.extracted_fields)} fields extracted "
+                "Structured extraction failed; OCR evidence indexing and retrieval continued."
+                if extraction_errors
+                else f"Extraction completed: {len(document.extracted_fields)} fields extracted "
                 f"using {schema_selection.get('selected_schema', 'generic_document')} schema."
                 if document.extracted_fields
                 else "Extraction completed with no source-backed fields. Generic schema fallback was attempted."
@@ -4541,6 +5447,22 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
 
         validation_started = time.perf_counter()
         validation_risks = self._validation_risks(document, metadata)
+        if extraction_errors:
+            validation_risks.append(
+                self._risk(
+                    document,
+                    title="Structured Extraction Failure",
+                    severity=VisionRiskSeverity.high,
+                    category="processing",
+                    description=(
+                        "Structured extraction failed, but OCR evidence retrieval and indexing "
+                        "continued so source-backed review remains available."
+                    ),
+                    recommended_action="Review OCR evidence and retry structured extraction.",
+                    source_text="; ".join(extraction_errors),
+                )
+            )
+        validation_risks.extend(self._generic_semantic_risks(document, metadata))
         validation_risks.extend(self._contract_risks(document))
         self._enrich_field_confidence(document, validation_risks)
         vision_analytics_service.refresh_document(document)
@@ -4587,7 +5509,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             *duplicate_risks,
         ]
         self._run_anomaly_models(document)
-        self._transition(document, VisionProcessingStatus.validation_completed, "Completed validation and risk screening.")
+        self._transition(
+            document,
+            VisionProcessingStatus.validation_completed,
+            "Completed validation and risk screening.",
+        )
         stage_durations_ms["risk_screening"] = round(
             (time.perf_counter() - risk_screening_started) * 1000,
             3,
@@ -4604,6 +5530,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
 
         graph_started = time.perf_counter()
         document.graph = self._graph(document)
+        self.persistence.upsert_graph(
+            document.tenant_id,
+            document.document_id,
+            document.graph,
+        )
         stage_durations_ms["graph_projection"] = round(
             (time.perf_counter() - graph_started) * 1000,
             3,
@@ -4615,7 +5546,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             (time.perf_counter() - indexing_started) * 1000,
             3,
         )
-        self._transition(document, VisionProcessingStatus.indexed, "Indexed structure-aware chunks and graph projection.")
+        self._transition(
+            document,
+            VisionProcessingStatus.indexed,
+            "Indexed structure-aware chunks and graph projection.",
+        )
 
         review_routing_started = time.perf_counter()
         previous_review_id = document.metadata.pop("_reprocess_review_id", None)
@@ -4625,9 +5560,15 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 review_id=str(previous_review_id) if previous_review_id else None,
             )
             self.review_tasks[document.review_task.review_id] = document.review_task
-            self._transition(document, VisionProcessingStatus.review_required, "Document routed to human review.")
+            self._transition(
+                document, VisionProcessingStatus.review_required, "Document routed to human review."
+            )
         else:
-            self._transition(document, VisionProcessingStatus.completed, "Document completed without mandatory review.")
+            self._transition(
+                document,
+                VisionProcessingStatus.completed,
+                "Document completed without mandatory review.",
+            )
         document.metadata["pipeline_status"] = VisionProcessingStatus.completed.value
         document.metadata["decision_status"] = document.status.value
         document.metadata["status_summary"] = (
@@ -4682,7 +5623,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         document.tables = []
         document.visual_detections = []
         document.tamper_analysis = []
+        document.generic_fields = []
+        document.typed_entities = []
         document.extracted_fields = []
+        document.verified_facts = []
+        document.schema_profile = type(document.schema_profile)()
         document.confidence_summary = type(document.confidence_summary)()
         document.field_completeness = type(document.field_completeness)()
         document.language_analysis = type(document.language_analysis)()
@@ -4986,6 +5931,645 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             fields.extend(self._clause_fields(document))
         return self._dedupe_fields(fields)
 
+    def _discover_generic_intelligence(self, document: VisionDocumentRecord) -> None:
+        """Retain schema-independent OCR facts alongside deterministic extraction.
+
+        The generic layer is deliberately additive: registered-schema fields remain
+        authoritative, while unseen labels and reusable typed values stay available
+        to review, retrieval, graph, and open-set document workflows.
+        """
+        result = generic_field_discovery_engine.discover(
+            document.ocr_lines,
+            document.ocr_words,
+            document_type=document.document_type.value,
+        )
+        registered_schema = vision_schema_registry.get(document.document_type)
+        reviewed_aliases = self._feedback_aliases(document.tenant_id)
+        embedding_label_matches, embedding_mapping_diagnostics = self._embedding_schema_labels(
+            [observed.raw_label for observed in result.fields],
+            registered_schema,
+        )
+        schema_names = (
+            {item.name for item in registered_schema.fields}
+            if registered_schema is not None
+            else set()
+        )
+        evidence_by_field_id: dict[str, VisionEvidence] = {}
+        generic_fields: list[VisionGenericDiscoveredField] = []
+        rejected_candidates: list[dict[str, Any]] = []
+        rejected_field_ids: set[str] = set()
+        for observed in result.fields:
+            if self._generic_observation_in_table(document, observed):
+                rejected_candidates.append(
+                    self._generic_rejection_record(observed, "inside_structured_table")
+                )
+                rejected_field_ids.add(observed.field_id)
+                continue
+            semantic_type = self._vision_semantic_type(observed.semantic_type)
+            registered_label = self._registered_schema_label(
+                observed.raw_label,
+                registered_schema,
+            )
+            reviewed_label = reviewed_aliases.get(self._normalize_token(observed.raw_label))
+            embedding_label = embedding_label_matches.get(observed.raw_label)
+            normalized_label = (
+                registered_label
+                or reviewed_label
+                or (embedding_label[0] if embedding_label else None)
+                or observed.normalized_label
+            )
+            semantic_mapping_method = (
+                "registered_schema_alias"
+                if registered_label
+                else "reviewer_feedback_alias"
+                if reviewed_label
+                else "bge_m3_embedding_similarity"
+                if embedding_label
+                else observed.label_mapping_method
+            )
+            semantic_mapping_confidence = (
+                1.0
+                if registered_label or reviewed_label
+                else embedding_label[1]
+                if embedding_label
+                else observed.label_mapping_confidence
+            )
+            rejection_reason = self._generic_observation_rejection_reason(
+                document,
+                observed,
+                normalized_label=normalized_label,
+                registered_schema=registered_schema,
+                semantic_type=semantic_type,
+            )
+            if rejection_reason is not None:
+                rejected_candidates.append(
+                    self._generic_rejection_record(observed, rejection_reason)
+                )
+                rejected_field_ids.add(observed.field_id)
+                continue
+            evidence = VisionEvidence(
+                evidence_id=f"vis-ev-{observed.field_id}",
+                document_id=document.document_id,
+                page_number=observed.page,
+                source_text=f"{observed.raw_label}: {observed.raw_value}",
+                bounding_box=VisionBoundingBox(**observed.evidence_bbox.as_dict()),
+                model_confidence=observed.confidence,
+                model_name=generic_field_discovery_engine.adapter_id,
+                model_version=generic_field_discovery_engine.model_version,
+                processing_timestamp=utc_now_iso(),
+                metadata={
+                    "raw_label": observed.raw_label,
+                    "normalized_label": normalized_label,
+                    "generic_engine_normalized_label": observed.normalized_label,
+                    "label_mapping_method": observed.label_mapping_method,
+                    "label_mapping_confidence": observed.label_mapping_confidence,
+                    "semantic_mapping_method": semantic_mapping_method,
+                    "semantic_mapping_confidence": semantic_mapping_confidence,
+                    "extraction_strategy": observed.extraction_strategy,
+                    "source_line_ids": list(observed.source_line_ids),
+                    "label_word_ids": list(observed.label_word_ids),
+                    "value_word_ids": list(observed.value_word_ids),
+                },
+            )
+            evidence_by_field_id[observed.field_id] = evidence
+            generic_fields.append(
+                VisionGenericDiscoveredField(
+                    field_id=observed.field_id,
+                    raw_label=observed.raw_label,
+                    normalized_label=normalized_label,
+                    raw_value=observed.raw_value,
+                    normalized_value=observed.normalized_value,
+                    page=observed.page,
+                    label_bbox=VisionBoundingBox(**observed.label_bbox.as_dict()),
+                    value_bbox=VisionBoundingBox(**observed.value_bbox.as_dict()),
+                    confidence=observed.confidence,
+                    source_engine=observed.source_engine,
+                    semantic_type_if_known=semantic_type,
+                    semantic_mapping_confidence=(
+                        observed.semantic_confidence if semantic_type is not None else None
+                    ),
+                    evidence=evidence,
+                    review_required=observed.review_required,
+                    metadata={
+                        "canonical_label": observed.canonical_label,
+                        "label_mapping_method": observed.label_mapping_method,
+                        "label_mapping_confidence": observed.label_mapping_confidence,
+                        "semantic_mapping_method": semantic_mapping_method,
+                        "semantic_mapping_confidence": semantic_mapping_confidence,
+                        "extraction_strategy": observed.extraction_strategy,
+                    },
+                )
+            )
+        document.generic_fields = generic_fields
+
+        entities: list[TypedVisionEntity] = []
+        for observed in result.entities:
+            if observed.linked_field_id in rejected_field_ids:
+                continue
+            semantic_type = self._vision_semantic_type(observed.semantic_type)
+            if semantic_type is None or semantic_type == VisionSemanticType.text:
+                continue
+            linked_evidence = evidence_by_field_id.get(observed.linked_field_id or "")
+            entities.append(
+                TypedVisionEntity(
+                    entity_id=observed.entity_id,
+                    raw_value=observed.raw_value,
+                    normalized_value=observed.normalized_value,
+                    semantic_type=semantic_type,
+                    confidence=observed.confidence,
+                    context={
+                        "page": observed.page,
+                        "bounding_box": observed.bounding_box.as_dict(),
+                        "contextual_label": observed.contextual_label,
+                        "source_engine": observed.source_engine,
+                        "source_line_ids": list(observed.source_line_ids),
+                        "word_ids": list(observed.word_ids),
+                    },
+                    evidence_ids=(
+                        [linked_evidence.evidence_id] if linked_evidence is not None else []
+                    ),
+                    review_required=observed.confidence < 0.8,
+                )
+            )
+        document.typed_entities = entities
+        document.metadata["generic_discovery"] = result.as_dict()["diagnostics"]
+        document.metadata["generic_discovery"]["generic_fields_retained"] = len(
+            document.generic_fields
+        )
+        document.metadata["generic_discovery"]["candidates_rejected"] = len(rejected_candidates)
+        document.metadata["generic_discovery"]["rejected_candidates"] = rejected_candidates
+        document.metadata["generic_discovery"]["embedding_label_mapping"] = (
+            embedding_mapping_diagnostics
+        )
+        supplemental = [
+            field for field in document.generic_fields if field.normalized_label not in schema_names
+        ]
+        if schema_names and supplemental:
+            document.schema_profile.mode = "B"
+            document.schema_profile.selection_source = "registered_plus_generic"
+        elif not schema_names:
+            document.schema_profile.mode = "C"
+            document.schema_profile.schema_status = "generic"
+            document.schema_profile.selection_source = "open_set_generic"
+
+        # Mirror only out-of-schema discoveries into the established field contract
+        # so legacy consumers gain Mode B/C structure without duplicating Mode A fields.
+        existing_names = {field.name for field in document.extracted_fields}
+        for field in supplemental:
+            if field.normalized_label in existing_names:
+                continue
+            document.extracted_fields.append(
+                ExtractedVisionField(
+                    field_id=f"field-{field.field_id}",
+                    name=field.normalized_label,
+                    display_name=field.raw_label,
+                    value=field.raw_value,
+                    raw_value=field.raw_value,
+                    normalized_value=field.normalized_value,
+                    validation_status=(
+                        "valid" if field.semantic_type_if_known is not None else "not_evaluated"
+                    ),
+                    confidence=field.confidence,
+                    evidence=field.evidence,
+                    model_name=generic_field_discovery_engine.adapter_id,
+                    model_version=generic_field_discovery_engine.model_version,
+                    extractor="generic-open-set",
+                    required=False,
+                )
+            )
+            existing_names.add(field.normalized_label)
+        document.extracted_fields = self._dedupe_fields(document.extracted_fields)
+
+    def _vision_semantic_type(self, value: object) -> VisionSemanticType | None:
+        name = str(getattr(value, "name", "")).lower()
+        return VisionSemanticType.__members__.get(name)
+
+    def _resolve_semantic_entities(self, document: VisionDocumentRecord) -> None:
+        """Deduplicate observations and record only conservative tenant matches."""
+        self._load_all_documents(document.tenant_id)
+        corpus = [item for item in self.documents.values() if item.tenant_id == document.tenant_id]
+        report = conservative_entity_resolver.resolve(
+            document,
+            corpus,
+            reviewed_value_aliases=self.feedback_dataset.reviewed_value_aliases(document.tenant_id),
+        )
+        document.typed_entities = list(report.entities)
+        document.metadata["entity_resolution"] = report.as_dict()
+
+    def _semantic_type_for_reviewed_field(
+        self,
+        document: VisionDocumentRecord,
+        field: ExtractedVisionField,
+    ) -> VisionSemanticType | None:
+        generic = next(
+            (
+                item
+                for item in document.generic_fields
+                if item.evidence.evidence_id == field.evidence.evidence_id
+            ),
+            None,
+        )
+        return semantic_type_for_name(field.name) or (
+            generic.semantic_type_if_known if generic else None
+        )
+
+    def _apply_field_review_to_generic_layers(
+        self,
+        document: VisionDocumentRecord,
+        field: ExtractedVisionField,
+        *,
+        semantic_type: VisionSemanticType | None,
+    ) -> None:
+        approved = field.reviewer_status in {
+            ReviewerStatus.accepted,
+            ReviewerStatus.edited,
+        }
+        for generic in document.generic_fields:
+            if generic.evidence.evidence_id != field.evidence.evidence_id:
+                continue
+            generic.evidence.reviewer_status = field.reviewer_status
+            generic.review_required = not approved
+            generic.metadata["reviewed_field_name"] = field.name
+            generic.metadata["reviewed_value"] = field.reviewed_value
+            if approved:
+                generic.normalized_label = field.name
+                generic.normalized_value = field.normalized_value or generic.normalized_value
+                generic.semantic_type_if_known = semantic_type or generic.semantic_type_if_known
+        for index, entity in enumerate(document.typed_entities):
+            if field.evidence.evidence_id not in entity.evidence_ids:
+                continue
+            context = dict(entity.context)
+            context["reviewed_field_name"] = field.name
+            context["reviewer_status"] = field.reviewer_status.value
+            document.typed_entities[index] = entity.model_copy(
+                update={
+                    "normalized_value": (
+                        field.normalized_value or entity.normalized_value
+                        if approved
+                        else entity.normalized_value
+                    ),
+                    "semantic_type": semantic_type or entity.semantic_type,
+                    "review_required": not approved,
+                    "context": context,
+                }
+            )
+
+    def _generic_semantic_risks(
+        self,
+        document: VisionDocumentRecord,
+        metadata: dict[str, Any],
+    ) -> list[VisionRiskIndicator]:
+        self._load_all_documents(document.tenant_id)
+        corpus = [item for item in self.documents.values() if item.tenant_id == document.tenant_id]
+        findings = generic_semantic_risk_engine.evaluate(document, metadata, corpus)
+        return [self._semantic_risk_indicator(document, finding) for finding in findings]
+
+    def _semantic_risk_indicator(
+        self,
+        document: VisionDocumentRecord,
+        finding: SemanticRiskFinding,
+    ) -> VisionRiskIndicator:
+        indicator = self._risk(
+            document,
+            title=finding.title,
+            severity=finding.severity,
+            category=finding.category,
+            description=finding.description,
+            recommended_action=finding.recommended_action,
+            source_text=finding.source_text,
+            field_names=list(finding.affected_fields),
+            evidence=list(finding.evidence),
+            rule_id=finding.rule_id,
+        )
+        indicator.confidence = finding.confidence
+        indicator.model_name = "generic-semantic-risk-engine"
+        indicator.model_version = generic_semantic_risk_engine.model_version
+        indicator.model_or_rule = finding.rule_id
+        return indicator
+
+    def _generic_observation_in_table(
+        self,
+        document: VisionDocumentRecord,
+        observed: object,
+    ) -> bool:
+        box = observed.evidence_bbox
+        area = max((box.x2 - box.x1) * (box.y2 - box.y1), 1.0)
+        for table in document.tables:
+            if table.page_number != observed.page:
+                continue
+            table_box = table.bounding_box
+            overlap_width = max(0.0, min(box.x2, table_box.x2) - max(box.x1, table_box.x1))
+            overlap_height = max(0.0, min(box.y2, table_box.y2) - max(box.y1, table_box.y1))
+            if overlap_width * overlap_height / area >= 0.8:
+                return True
+        return False
+
+    def _generic_observation_rejection_reason(
+        self,
+        document: VisionDocumentRecord,
+        observed: object,
+        *,
+        normalized_label: str,
+        registered_schema: object,
+        semantic_type: VisionSemanticType | None,
+    ) -> str | None:
+        """Reject only demonstrable OCR pair noise, preserving uncertain real labels.
+
+        Weak geometry strategies can accidentally split initials or the value-bearing
+        tail of a known schema line into a second field.  Explicit delimiters and
+        semantically typed values remain eligible even when their labels are short.
+        """
+        if getattr(observed, "label_mapping_method", "") != "open_set":
+            return None
+        if self._registered_schema_label(observed.raw_label, registered_schema):
+            return None
+
+        strategy = str(getattr(observed, "extraction_strategy", ""))
+        weak_geometry = strategy in {
+            "same_line_geometry_gap",
+            "same_line_whitespace",
+            "separate_lines_horizontal",
+            "label_above_value",
+        }
+        raw_label = str(getattr(observed, "raw_label", ""))
+        raw_value = str(getattr(observed, "raw_value", ""))
+        label_tokens = re.findall(r"[a-z0-9]+", raw_label.casefold())
+        value_alnum = re.sub(r"[^a-z0-9]+", "", raw_value.casefold())
+        untyped_text = semantic_type in {None, VisionSemanticType.text}
+
+        if weak_geometry and untyped_text:
+            if label_tokens and all(len(token) <= 2 for token in label_tokens):
+                return "ocr_label_fragment"
+            if len(value_alnum) <= 1:
+                return "single_character_geometry_value"
+
+        if (
+            weak_geometry
+            and normalized_label == getattr(observed, "normalized_label", "")
+            and self._generic_label_contains_schema_prefix(raw_label, registered_schema)
+            and self._generic_observation_overlaps_extracted_field(document, observed)
+        ):
+            return "known_schema_line_value_leakage"
+        return None
+
+    def _generic_label_contains_schema_prefix(
+        self,
+        raw_label: str,
+        registered_schema: object,
+    ) -> bool:
+        if registered_schema is None:
+            return False
+        observed_words = re.findall(r"[a-z0-9]+", raw_label.casefold())
+        for field in getattr(registered_schema, "fields", ()):
+            candidates = (
+                field.name,
+                getattr(field, "display_name", ""),
+                *getattr(field, "aliases", ()),
+            )
+            for candidate in candidates:
+                candidate_words = re.findall(r"[a-z0-9]+", str(candidate).casefold())
+                if (
+                    len(candidate_words) >= 2
+                    and len(observed_words) > len(candidate_words)
+                    and observed_words[: len(candidate_words)] == candidate_words
+                ):
+                    return True
+        return False
+
+    def _generic_observation_overlaps_extracted_field(
+        self,
+        document: VisionDocumentRecord,
+        observed: object,
+    ) -> bool:
+        observed_box = observed.evidence_bbox
+        observed_area = max(
+            (observed_box.x2 - observed_box.x1) * (observed_box.y2 - observed_box.y1),
+            1.0,
+        )
+        for field in document.extracted_fields:
+            evidence_box = field.evidence.bounding_box
+            if evidence_box is None or field.evidence.page_number != observed.page:
+                continue
+            overlap_width = max(
+                0.0,
+                min(observed_box.x2, evidence_box.x2) - max(observed_box.x1, evidence_box.x1),
+            )
+            overlap_height = max(
+                0.0,
+                min(observed_box.y2, evidence_box.y2) - max(observed_box.y1, evidence_box.y1),
+            )
+            if overlap_width * overlap_height / observed_area >= 0.55:
+                return True
+        return False
+
+    def _generic_rejection_record(self, observed: object, reason: str) -> dict[str, Any]:
+        return {
+            "field_id": str(getattr(observed, "field_id", "")),
+            "raw_label": str(getattr(observed, "raw_label", "")),
+            "normalized_label": str(getattr(observed, "normalized_label", "")),
+            "raw_value": str(getattr(observed, "raw_value", "")),
+            "confidence": float(getattr(observed, "confidence", 0.0)),
+            "extraction_strategy": str(getattr(observed, "extraction_strategy", "unknown")),
+            "reason": reason,
+        }
+
+    def _registered_schema_label(self, raw_label: str, schema: object) -> str | None:
+        if schema is None:
+            return None
+        observed = self._normalize_token(raw_label)
+        for field in getattr(schema, "fields", ()):
+            candidates = (
+                field.name,
+                getattr(field, "display_name", ""),
+                *getattr(field, "aliases", ()),
+            )
+            if observed and observed in {
+                self._normalize_token(candidate) for candidate in candidates if candidate
+            }:
+                return field.name
+        return None
+
+    def _embedding_schema_labels(
+        self,
+        raw_labels: list[str],
+        schema: object,
+    ) -> tuple[dict[str, tuple[str, float]], dict[str, Any]]:
+        """Conservatively map unseen labels with BGE when that runtime is active."""
+        embedding = self.retrieval_index.embedding
+        if (
+            schema is None
+            or getattr(embedding, "adapter_id", "") != "bge-m3-embedding"
+            or not hasattr(embedding, "embed_many")
+        ):
+            return {}, {"status": "not_used", "reason": "bge_m3_not_active"}
+
+        unique_labels = list(dict.fromkeys(label.strip() for label in raw_labels if label.strip()))
+        fields = list(getattr(schema, "fields", ()))
+        if not unique_labels or not fields:
+            return {}, {"status": "not_used", "reason": "no_labels_or_schema_fields"}
+
+        schema_id = str(getattr(schema, "name", "anonymous-schema"))
+        try:
+            cached = self._semantic_label_embedding_cache.get(schema_id)
+            if cached is None:
+                candidate_texts = [
+                    (
+                        "canonical document field: "
+                        f"{field.display_name}. aliases: "
+                        + ", ".join((field.name, *getattr(field, "aliases", ())))
+                    )
+                    for field in fields
+                ]
+                candidate_vectors = embedding.embed_many(candidate_texts)
+                cached = {
+                    field.name: vector.dense
+                    for field, vector in zip(fields, candidate_vectors, strict=True)
+                }
+                self._semantic_label_embedding_cache[schema_id] = cached
+            query_vectors = embedding.embed_many(
+                [f"document field label: {label}" for label in unique_labels]
+            )
+        except Exception as exc:
+            return {}, {
+                "status": "failed_fallback_used",
+                "reason": f"{type(exc).__name__}: embedding label mapping unavailable",
+            }
+
+        matches: dict[str, tuple[str, float]] = {}
+        for label, vector in zip(unique_labels, query_vectors, strict=True):
+            ranked = sorted(
+                (
+                    (self._vector_cosine(vector.dense, candidate), field_name)
+                    for field_name, candidate in cached.items()
+                ),
+                reverse=True,
+            )
+            if not ranked:
+                continue
+            best_score, best_name = ranked[0]
+            second_score = ranked[1][0] if len(ranked) > 1 else 0.0
+            if best_score >= 0.84 and best_score - second_score >= 0.04:
+                matches[label] = (best_name, round(best_score, 4))
+        return matches, {
+            "status": "completed",
+            "engine": "bge-m3-embedding",
+            "threshold": 0.84,
+            "ambiguity_margin": 0.04,
+            "labels_considered": len(unique_labels),
+            "labels_mapped": len(matches),
+        }
+
+    def _vector_cosine(self, left: list[float], right: list[float]) -> float:
+        if not left or len(left) != len(right):
+            return 0.0
+        numerator = sum(a * b for a, b in zip(left, right, strict=True))
+        left_norm = sum(value * value for value in left) ** 0.5
+        right_norm = sum(value * value for value in right) ** 0.5
+        return numerator / (left_norm * right_norm) if left_norm and right_norm else 0.0
+
+    def _refresh_verified_facts(
+        self,
+        document: VisionDocumentRecord,
+        *,
+        reviewer: str | None = None,
+    ) -> None:
+        semantic_by_label = {
+            field.normalized_label: field.semantic_type_if_known
+            for field in document.generic_fields
+            if field.semantic_type_if_known is not None
+        }
+        document.verified_facts = [
+            VerifiedVisionFact(
+                fact_id=f"fact-{field.field_id}",
+                field_id=field.field_id,
+                name=field.name,
+                value=field.reviewed_value or field.value,
+                normalized_value=field.normalized_value,
+                semantic_type=semantic_by_label.get(field.name),
+                evidence_id=field.evidence.evidence_id,
+                reviewer_status=field.reviewer_status,
+                reviewer=reviewer,
+                verified_at=utc_now_iso(),
+            )
+            for field in document.extracted_fields
+            if field.reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited}
+        ]
+
+    def _record_active_learning_correction(
+        self,
+        document: VisionDocumentRecord,
+        field: ExtractedVisionField,
+        *,
+        original_field_name: str,
+        original_value: str,
+        comment: str,
+        reviewer: str,
+        reviewed_at: str,
+    ) -> None:
+        generic = next(
+            (
+                item
+                for item in document.generic_fields
+                if item.evidence.evidence_id == field.evidence.evidence_id
+                or item.normalized_label == original_field_name
+            ),
+            None,
+        )
+        raw_label = generic.raw_label if generic else self._source_label(field)
+        semantic_type = self._semantic_type_for_reviewed_field(document, field)
+        record = {
+            "correction_id": f"correction-{uuid4().hex[:12]}",
+            "tenant_id": document.tenant_id,
+            "document_id": document.document_id,
+            "document_type": document.document_type.value,
+            "field_id": field.field_id,
+            "raw_label": raw_label,
+            "original_field_name": original_field_name,
+            "corrected_field_name": field.name,
+            "original_value": original_value,
+            "corrected_value": field.reviewed_value or field.value,
+            "normalized_corrected_value": field.normalized_value,
+            "semantic_type": semantic_type.value if semantic_type else None,
+            "source_text": field.evidence.source_text,
+            "evidence_id": field.evidence.evidence_id,
+            "page": field.evidence.page_number,
+            "bounding_box": (
+                field.evidence.bounding_box.model_dump(mode="json")
+                if field.evidence.bounding_box
+                else None
+            ),
+            "extraction_method": field.extractor,
+            "layout_relation": (generic.metadata.get("extraction_strategy") if generic else None),
+            "source_line_ids": list(field.evidence.metadata.get("source_line_ids") or []),
+            "schema_mode": document.schema_profile.mode,
+            "schema_status": document.schema_profile.schema_status,
+            "schema_id": document.schema_profile.schema_id,
+            "processing_version": document.metadata.get(
+                "pipeline_version",
+                CURRENT_PIPELINE_VERSION,
+            ),
+            "reviewer": reviewer,
+            "reviewer_comment": comment,
+            "reviewed_at": reviewed_at,
+            "status": field.reviewer_status.value,
+            "dataset_usage": "controlled_alias_and_training_export",
+        }
+        self.feedback_dataset.append(record)
+
+    def _feedback_aliases(self, tenant_id: str) -> dict[str, str]:
+        return self.feedback_dataset.approved_label_aliases(
+            tenant_id,
+            normalizer=self._normalize_token,
+        )
+
+    def _active_learning_path(self, tenant_id: str) -> Path:
+        return self.feedback_dataset.path_for(tenant_id)
+
+    def _source_label(self, field: ExtractedVisionField) -> str:
+        source = field.evidence.source_text.strip()
+        matched = re.match(r"^\s*([^:#=]{1,100}?)\s*[:#=]", source)
+        return matched.group(1).strip() if matched else field.display_name
+
     def _clause_fields(self, document: VisionDocumentRecord) -> list[ExtractedVisionField]:
         clauses = {
             "parties": ("between the parties", "by and between", "the parties agree"),
@@ -5020,7 +6604,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 index = lower.find(keyword)
                 if index >= 0:
                     snippet = document.parsed_text[max(0, index - 90) : index + 180].strip()
-                    fields.append(self._field(document, name, snippet or keyword, snippet or keyword))
+                    fields.append(
+                        self._field(document, name, snippet or keyword, snippet or keyword)
+                    )
                     break
         return fields
 
@@ -5066,9 +6652,15 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     field_names=["invoice_date", "due_date"],
                 )
             )
-        approved_bank = metadata.get("approved_bank_identifier") or metadata.get("approved_bank_account")
+        approved_bank = metadata.get("approved_bank_identifier") or metadata.get(
+            "approved_bank_account"
+        )
         bank_identifier = fields.get("bank_account_number") or fields.get("IFSC_or_bank_code")
-        if approved_bank and bank_identifier and self._normalize(approved_bank) != self._normalize(bank_identifier):
+        if (
+            approved_bank
+            and bank_identifier
+            and self._normalize(approved_bank) != self._normalize(bank_identifier)
+        ):
             risks.append(
                 self._risk(
                     document,
@@ -5082,7 +6674,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 )
             )
         required_signature = metadata.get("required_signature") is True
-        if required_signature and not any(item.detection_class == "signature" for item in document.visual_detections):
+        if required_signature and not any(
+            item.detection_class == "signature" for item in document.visual_detections
+        ):
             risks.append(
                 self._risk(
                     document,
@@ -5110,7 +6704,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             )
         contract_terms = metadata.get("contract_payment_terms")
         payment_terms = fields.get("payment_terms")
-        if contract_terms and payment_terms and self._normalize(contract_terms) != self._normalize(payment_terms):
+        if (
+            contract_terms
+            and payment_terms
+            and self._normalize(contract_terms) != self._normalize(payment_terms)
+        ):
             risks.append(
                 self._risk(
                     document,
@@ -5131,7 +6729,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         for analysis in document.tamper_analysis:
             score = analysis.tampering_probability or analysis.screening_score
             regions = [
-                region for region in analysis.suspicious_regions if region.screening_score >= threshold
+                region
+                for region in analysis.suspicious_regions
+                if region.screening_score >= threshold
             ]
             if score < threshold or not regions:
                 continue
@@ -5225,7 +6825,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         return risks
 
     def _duplicate_candidates(self, document: VisionDocumentRecord) -> list[DuplicateCandidate]:
-        self._load_all_documents()
+        self._load_all_documents(document.tenant_id)
         candidates: list[DuplicateCandidate] = []
         exact_key = f"{document.tenant_id}:{document.file_hash}"
         existing_id = self._hash_index.get(exact_key)
@@ -5244,7 +6844,10 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                                 "Exact SHA-256 content hash match.",
                                 "sha256-duplicate-detector",
                                 1.0,
-                                metadata={"matched_document_id": existing_id, "algorithm": "SHA-256"},
+                                metadata={
+                                    "matched_document_id": existing_id,
+                                    "algorithm": "SHA-256",
+                                },
                             )
                         ],
                         reason="The source bytes have the same SHA-256 hash.",
@@ -5276,9 +6879,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             )
             if not dhash_match and not dino_match:
                 continue
-            measured = [
-                value for value in (dhash_similarity, dino_similarity) if value is not None
-            ]
+            measured = [value for value in (dhash_similarity, dino_similarity) if value is not None]
             similarity = max(measured)
             evidence: list[VisionEvidence] = []
             if dhash_similarity is not None:
@@ -5331,7 +6932,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             matched_id = self._semantic_index.get(f"{document.tenant_id}:{semantic_key}")
             if matched_id and matched_id != document.document_id:
                 existing = self.documents.get(matched_id) or self._load_document(matched_id)
-                similarity, matches, compared = self._structured_duplicate_similarity(document, existing)
+                similarity, matches, compared = self._structured_duplicate_similarity(
+                    document, existing
+                )
                 if (
                     existing
                     and existing.tenant_id == document.tenant_id
@@ -5365,7 +6968,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         related_match = self._related_document(document)
         if related_match:
             related, similarity = related_match
-            if not any(candidate.matched_document_id == related.document_id for candidate in candidates):
+            if not any(
+                candidate.matched_document_id == related.document_id for candidate in candidates
+            ):
                 candidates.append(
                     DuplicateCandidate(
                         status="related_document",
@@ -5405,7 +7010,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     self._risk(
                         document,
                         title="Duplicate Document Review",
-                        severity=VisionRiskSeverity.high if candidate.status == "exact_duplicate" else VisionRiskSeverity.medium,
+                        severity=VisionRiskSeverity.high
+                        if candidate.status == "exact_duplicate"
+                        else VisionRiskSeverity.medium,
                         category="duplicate_detection",
                         description="The document contains suspicious indicators and requires human review.",
                         recommended_action="Compare duplicate match before approval.",
@@ -5416,10 +7023,8 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         return risks
 
     def _run_anomaly_models(self, document: VisionDocumentRecord) -> None:
-        self._load_all_documents()
-        corpus = [
-            item for item in self.documents.values() if item.tenant_id == document.tenant_id
-        ]
+        self._load_all_documents(document.tenant_id)
+        corpus = [item for item in self.documents.values() if item.tenant_id == document.tenant_id]
         unsupervised = self.isolation_forest.analyze(document, corpus)
         document.anomaly_analysis.append(unsupervised)
         document.model_runs.append(
@@ -5503,7 +7108,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 self.xgboost_risk.model_version,
                 supervised.status,
                 supervised.supervised_probability,
-                notes=["XGBoost prediction is uncalibrated until validation calibration is supplied."],
+                notes=[
+                    "XGBoost prediction is uncalibrated until validation calibration is supplied."
+                ],
             )
         )
         if (
@@ -5562,10 +7169,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     description="Some OCR tokens fell below the configured reliability threshold.",
                     recommended_action="Review low-confidence words and consider advanced parsing.",
                     source_text=" ".join(word.text for word in low_words[:16]),
-                    evidence=[
-                        self._word_evidence(document, word)
-                        for word in low_words[:8]
-                    ],
+                    evidence=[self._word_evidence(document, word) for word in low_words[:8]],
                 )
             )
         if document.model_routing.get("fallback_required"):
@@ -5600,9 +7204,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 )
             )
         schema_selection = document.metadata.get("schema_selection") or {}
-        if document.field_completeness.schema_available and schema_selection.get(
-            "fallback_used"
-        ):
+        if document.field_completeness.schema_available and schema_selection.get("fallback_used"):
             selected_schema = str(schema_selection.get("selected_schema") or "generic_document")
             warnings.append(
                 self._risk(
@@ -5702,16 +7304,13 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     section=f"page_{page_number}",
                     document_type=document.document_type,
                     vendor_id=self._field_map(document).get("vendor_name"),
-                    bounding_boxes=[
-                        self._union_box([line.bounding_box for line in page_lines])
-                    ],
+                    bounding_boxes=[self._union_box([line.bounding_box for line in page_lines])],
                     source_type="page_text",
                     model_name="ocr-page-chunker",
                     model_version="v1",
                     text=page_text[:6000],
                     confidence=round(
-                        sum((line.mean_confidence or 0.0) for line in page_lines)
-                        / len(page_lines),
+                        sum((line.mean_confidence or 0.0) for line in page_lines) / len(page_lines),
                         4,
                     ),
                     metadata=common_metadata,
@@ -5760,7 +7359,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     section=field.name,
                     document_type=document.document_type,
                     vendor_id=self._field_map(document).get("vendor_name"),
-                    bounding_boxes=[field.evidence.bounding_box] if field.evidence.bounding_box else [],
+                    bounding_boxes=[field.evidence.bounding_box]
+                    if field.evidence.bounding_box
+                    else [],
                     source_type="field",
                     review_status=field.reviewer_status,
                     model_name=field.model_name,
@@ -5772,6 +7373,120 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                         "evidence_id": field.evidence.evidence_id,
                         "verification_status": field.reviewer_status.value,
                         "schema_field": field.schema_field,
+                    },
+                )
+            )
+        for field in document.generic_fields:
+            chunks.append(
+                VisionEvidenceChunk(
+                    chunk_id=self._chunk_id(
+                        document,
+                        field.page,
+                        f"generic_field:{field.normalized_label}",
+                        field.normalized_value,
+                    ),
+                    document_id=document.document_id,
+                    tenant_id=document.tenant_id,
+                    page_number=field.page,
+                    section=field.normalized_label,
+                    document_type=document.document_type,
+                    vendor_id=self._field_map(document).get("vendor_name"),
+                    bounding_boxes=[field.evidence.bounding_box]
+                    if field.evidence.bounding_box
+                    else [],
+                    source_type="generic_field",
+                    model_name=generic_field_discovery_engine.adapter_id,
+                    model_version=generic_field_discovery_engine.model_version,
+                    text=f"{field.raw_label}: {field.raw_value}",
+                    confidence=field.confidence,
+                    metadata={
+                        **common_metadata,
+                        "evidence_id": field.evidence.evidence_id,
+                        "raw_label": field.raw_label,
+                        "normalized_label": field.normalized_label,
+                        "semantic_type": (
+                            field.semantic_type_if_known.value
+                            if field.semantic_type_if_known is not None
+                            else None
+                        ),
+                        "review_required": field.review_required,
+                    },
+                )
+            )
+        for entity in document.typed_entities:
+            page_number = max(1, int(entity.context.get("page", 1)))
+            raw_box = entity.context.get("bounding_box")
+            entity_box = VisionBoundingBox(**raw_box) if isinstance(raw_box, dict) else None
+            chunks.append(
+                VisionEvidenceChunk(
+                    chunk_id=self._chunk_id(
+                        document,
+                        page_number,
+                        f"typed_entity:{entity.semantic_type.value}",
+                        entity.normalized_value,
+                    ),
+                    document_id=document.document_id,
+                    tenant_id=document.tenant_id,
+                    page_number=page_number,
+                    section=str(entity.context.get("contextual_label") or "typed_entity"),
+                    document_type=document.document_type,
+                    vendor_id=self._field_map(document).get("vendor_name"),
+                    bounding_boxes=[entity_box] if entity_box is not None else [],
+                    source_type="typed_entity",
+                    model_name=str(
+                        entity.context.get("source_engine")
+                        or generic_field_discovery_engine.adapter_id
+                    ),
+                    model_version=generic_field_discovery_engine.model_version,
+                    text=(
+                        f"{entity.context.get('contextual_label')}: {entity.raw_value}"
+                        if entity.context.get("contextual_label")
+                        else entity.raw_value
+                    ),
+                    confidence=entity.confidence,
+                    metadata={
+                        **common_metadata,
+                        "entity_id": entity.entity_id,
+                        "semantic_type": entity.semantic_type.value,
+                        "evidence_ids": entity.evidence_ids,
+                        "review_required": entity.review_required,
+                    },
+                )
+            )
+        evidence_by_id = {
+            field.evidence.evidence_id: field.evidence for field in document.extracted_fields
+        }
+        for fact in document.verified_facts:
+            evidence = evidence_by_id.get(fact.evidence_id)
+            chunks.append(
+                VisionEvidenceChunk(
+                    chunk_id=self._chunk_id(
+                        document,
+                        evidence.page_number if evidence else 1,
+                        f"verified_fact:{fact.name}",
+                        fact.value,
+                    ),
+                    document_id=document.document_id,
+                    tenant_id=document.tenant_id,
+                    page_number=evidence.page_number if evidence else 1,
+                    section=fact.name,
+                    document_type=document.document_type,
+                    vendor_id=self._field_map(document).get("vendor_name"),
+                    bounding_boxes=(
+                        [evidence.bounding_box] if evidence and evidence.bounding_box else []
+                    ),
+                    source_type="verified_fact",
+                    review_status=fact.reviewer_status,
+                    model_name="human-review",
+                    model_version="v1",
+                    text=f"{fact.name}: {fact.value}",
+                    confidence=1.0,
+                    metadata={
+                        **common_metadata,
+                        "evidence_id": fact.evidence_id,
+                        "verification_status": fact.reviewer_status.value,
+                        "verified_at": fact.verified_at,
+                        "reviewer": fact.reviewer,
                     },
                 )
             )
@@ -5815,10 +7530,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         text: str,
     ) -> str:
         identity = hash_document(
-            (
-                f"{document.document_id}|{page_number}|{source_type}|"
-                f"{self._normalize(text)}"
-            ).encode()
+            (f"{document.document_id}|{page_number}|{source_type}|{self._normalize(text)}").encode()
         )
         return f"vis-chk-{identity[:16]}"
 
@@ -5864,9 +7576,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 "tenant_id": document.tenant_id,
             }
             source, target = (
-                (node_id, document.document_id)
-                if reverse
-                else (document.document_id, node_id)
+                (node_id, document.document_id) if reverse else (document.document_id, node_id)
             )
             verified = field.reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited}
             edges.append(
@@ -5880,9 +7590,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     "source_page": field.evidence.page_number,
                     "evidence_id": field.evidence.evidence_id,
                     "evidence_text": field.evidence.source_text,
-                    "bounding_boxes": [
-                        field.evidence.bounding_box.model_dump(mode="json")
-                    ]
+                    "bounding_boxes": [field.evidence.bounding_box.model_dump(mode="json")]
                     if field.evidence.bounding_box
                     else [],
                     "confidence": field.confidence,
@@ -5914,7 +7622,8 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                         "target": bank_id,
                         "type": "PAID_TO",
                         "status": "verified"
-                        if evidence_field.reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited}
+                        if evidence_field.reviewer_status
+                        in {ReviewerStatus.accepted, ReviewerStatus.edited}
                         else "proposed",
                         "source_document": document.document_id,
                         "source_page": evidence_field.evidence.page_number,
@@ -5941,15 +7650,14 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     "target": tax_id,
                     "type": "REGISTERED_WITH",
                     "status": "verified"
-                    if evidence_field.reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited}
+                    if evidence_field.reviewer_status
+                    in {ReviewerStatus.accepted, ReviewerStatus.edited}
                     else "proposed",
                     "source_document": document.document_id,
                     "source_page": evidence_field.evidence.page_number,
                     "evidence_id": evidence_field.evidence.evidence_id,
                     "evidence_text": evidence_field.evidence.source_text,
-                    "bounding_boxes": [
-                        evidence_field.evidence.bounding_box.model_dump(mode="json")
-                    ]
+                    "bounding_boxes": [evidence_field.evidence.bounding_box.model_dump(mode="json")]
                     if evidence_field.evidence.bounding_box
                     else [],
                     "confidence": evidence_field.confidence,
@@ -6039,7 +7747,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         reasons = []
         if document.model_routing.get("fallback_required"):
             reasons.extend(document.model_routing.get("reasons", []))
-        reasons.extend(risk.title for risk in document.risk_indicators if risk.severity in {VisionRiskSeverity.high, VisionRiskSeverity.critical})
+        reasons.extend(
+            risk.title
+            for risk in document.risk_indicators
+            if risk.severity in {VisionRiskSeverity.high, VisionRiskSeverity.critical}
+        )
         reasons.extend(
             warning.title
             for warning in document.processing_warnings
@@ -6061,9 +7773,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             "document_type": document.document_type,
             "page_count": document.page_count,
             "confidence_status": (
-                "available"
-                if document.confidence_summary.confidence_available
-                else "not_available"
+                "available" if document.confidence_summary.confidence_available else "not_available"
             ),
             "confidence_value": document.confidence_summary.mean_field_confidence,
             "expected_required_fields": document.field_completeness.expected_required_count,
@@ -6078,7 +7788,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             document,
             "review_task_created",
             "Human review task created from evidence-backed routing rules.",
-            metadata={"review_id": task.review_id, "priority": severity.value, "reasons": task.reasons},
+            metadata={
+                "review_id": task.review_id,
+                "priority": severity.value,
+                "reasons": task.reasons,
+            },
         )
         task.history.append(event)
         return task
@@ -6106,7 +7820,10 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             and document.field_completeness.unresolved_required_count
         ):
             return True
-        if any(risk.severity in {VisionRiskSeverity.high, VisionRiskSeverity.critical} for risk in document.risk_indicators):
+        if any(
+            risk.severity in {VisionRiskSeverity.high, VisionRiskSeverity.critical}
+            for risk in document.risk_indicators
+        ):
             return True
         if any(
             field.confidence is None
@@ -6134,7 +7851,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         evidence_items = evidence or []
         if not evidence_items:
             fields = [
-                field for field in document.extracted_fields if not field_names or field.name in field_names
+                field
+                for field in document.extracted_fields
+                if not field_names or field.name in field_names
             ]
             evidence_items.extend(field.evidence for field in fields[:6])
         if extra_evidence:
@@ -6179,8 +7898,12 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             affected_fields=field_names or [],
         )
 
-    def _field(self, document: VisionDocumentRecord, name: str, value: str, source_text: str) -> ExtractedVisionField:
-        box = self._box_for_text(value, document.ocr_words) or self._box_for_text(source_text, document.ocr_words)
+    def _field(
+        self, document: VisionDocumentRecord, name: str, value: str, source_text: str
+    ) -> ExtractedVisionField:
+        box = self._box_for_text(value, document.ocr_words) or self._box_for_text(
+            source_text, document.ocr_words
+        )
         confidence, components = self._field_confidence(value, document.ocr_words, box)
         evidence = self._evidence(
             document,
@@ -6199,11 +7922,13 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             schema_field=name,
             display_name=(
                 schema_field.display_name
-                if (schema_field := (
-                    vision_schema_registry.get(document.document_type).field(name)
-                    if vision_schema_registry.get(document.document_type)
-                    else None
-                ))
+                if (
+                    schema_field := (
+                        vision_schema_registry.get(document.document_type).field(name)
+                        if vision_schema_registry.get(document.document_type)
+                        else None
+                    )
+                )
                 else name.replace("_", " ").title()
             ),
             value=value,
@@ -6324,7 +8049,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         document.updated_at = event.created_at
         return event
 
-    def _transition(self, document: VisionDocumentRecord, status: VisionProcessingStatus, message: str) -> None:
+    def _transition(
+        self, document: VisionDocumentRecord, status: VisionProcessingStatus, message: str
+    ) -> None:
         document.status = status
         self._audit(document, status.value.lower(), message)
         self._persist_document(document)
@@ -6373,7 +8100,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             reason=reason,
         )
 
-    def _field_matches(self, question: str, documents: list[VisionDocumentRecord]) -> list[ExtractedVisionField]:
+    def _field_matches(
+        self, question: str, documents: list[VisionDocumentRecord]
+    ) -> list[ExtractedVisionField]:
         question_tokens = set(re.findall(r"[a-z0-9_]+", question))
         requested_names = self._requested_field_names(question)
         matches = []
@@ -6464,20 +8193,26 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             "confidentiality_clause": ("confidentiality", "non-disclosure"),
             "indemnification_clause": ("indemnification", "indemnity"),
         }
-        return {
-            name for name, terms in aliases.items() if any(term in lower for term in terms)
-        }
+        return {name for name, terms in aliases.items() if any(term in lower for term in terms)}
 
     def _logical_requested_field(self, question: str) -> str | None:
         lower = question.lower()
         terms = (
             ("sample_number", ("sample number", "sample no", "sample id")),
-            ("product_type", ("product type", "type of product", "type of cigarette", "sample type")),
+            (
+                "product_type",
+                ("product type", "type of product", "type of cigarette", "sample type"),
+            ),
             ("batch_size", ("batch size", "lot size", "quantity")),
             ("requested_by", ("original request", "requested by", "requester", "requestor")),
             (
                 "specifications_written_by",
-                ("sample specifications", "specifications written by", "specifications by", "who wrote"),
+                (
+                    "sample specifications",
+                    "specifications written by",
+                    "specifications by",
+                    "who wrote",
+                ),
             ),
             ("fax_number", ("fax", "facsimile", "telefax")),
             ("phone_number", ("phone", "telephone", "contact number")),
@@ -6547,7 +8282,10 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                                         [line.bounding_box, candidate.bounding_box]
                                     ),
                                     "mean_confidence": round(
-                                        ((line.mean_confidence or 0.0) + (candidate.mean_confidence or 0.0))
+                                        (
+                                            (line.mean_confidence or 0.0)
+                                            + (candidate.mean_confidence or 0.0)
+                                        )
                                         / 2,
                                         4,
                                     ),
@@ -6555,6 +8293,14 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                             )
                 if not value:
                     continue
+                if logical in {"phone_number", "fax_number"}:
+                    validation = semantic_value_registry.validate(
+                        SemanticValueType.PHONE,
+                        value,
+                        SemanticContext(label=line.text),
+                    )
+                    if not validation.valid:
+                        continue
                 key = (document.document_id, self._normalize(value))
                 if key in seen:
                     continue
@@ -6648,9 +8394,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             for token in re.findall(r"[a-z0-9]+", question.lower())
             if len(token) >= 3 and token not in stopwords
         }
-        advanced_embedding = (
-            self.retrieval_index.embedding.adapter_id != "local-hashing-embedding"
-        )
+        advanced_embedding = self.retrieval_index.embedding.adapter_id != "local-hashing-embedding"
         retained = []
         for hit in hits:
             chunk_tokens = set(re.findall(r"[a-z0-9]+", hit.chunk.text.lower()))
@@ -6716,9 +8460,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         if not compared:
             return 0.0, [], 0
         matches = [
-            name
-            for name in compared
-            if self._normalize(left[name]) == self._normalize(right[name])
+            name for name in compared if self._normalize(left[name]) == self._normalize(right[name])
         ]
         denominator = sum(weights[name] for name in compared)
         score = sum(weights[name] for name in matches) / denominator
@@ -6728,7 +8470,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         self,
         document: VisionDocumentRecord,
     ) -> tuple[VisionDocumentRecord, float] | None:
-        self._load_all_documents()
+        self._load_all_documents(document.tenant_id)
         tokens = set(re.findall(r"[a-z0-9]+", document.parsed_text.lower()))
         if not tokens:
             return None
@@ -6827,9 +8569,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         )
         audit_payload = self._read_json(self._state_root / "system_audit.json") or {}
         self.system_audit_events.extend(
-            dict(value)
-            for value in audit_payload.get("events", [])
-            if isinstance(value, dict)
+            dict(value) for value in audit_payload.get("events", []) if isinstance(value, dict)
         )
 
     def _system_audit(
@@ -6875,16 +8615,34 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             return None
 
     def _persist_document(self, document: VisionDocumentRecord) -> None:
+        self._document_tenant_index[document.document_id] = document.tenant_id
         self.persistence.save_document(document)
         self._write_json(
             self._state_file("documents", document.document_id),
             document.model_dump(mode="json"),
         )
 
-    def _load_document(self, document_id: str) -> VisionDocumentRecord | None:
+    def _load_document(
+        self,
+        document_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> VisionDocumentRecord | None:
         payload = self._read_json(self._state_file("documents", document_id))
         if not payload:
             return None
+        payload_tenant = str(payload.get("tenant_id") or "tenant-local")
+        self._document_tenant_index[document_id] = payload_tenant
+        if tenant_id and payload_tenant != tenant_id:
+            return None
+        cached = self.documents.get(document_id)
+        if (
+            cached is not None
+            and cached.tenant_id == payload_tenant
+            and cached.updated_at == payload.get("updated_at")
+            and cached.data_version == int(payload.get("data_version", 1))
+        ):
+            return cached
         try:
             document = VisionDocumentRecord.model_validate(payload)
         except ValueError:
@@ -6895,11 +8653,27 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         self._index_document(document)
         return document
 
-    def _load_all_documents(self) -> None:
+    def _load_all_documents(self, tenant_id: str | None = None) -> None:
+        index_changed = False
         for path in (self._state_root / "documents").glob("*.json"):
             document_id = path.stem
-            if document_id not in self.documents:
-                self._load_document(document_id)
+            cached = self.documents.get(document_id)
+            if cached is not None:
+                self._document_tenant_index[document_id] = cached.tenant_id
+                if tenant_id and cached.tenant_id != tenant_id:
+                    continue
+                self._load_document(document_id, tenant_id=tenant_id)
+                continue
+            known_tenant = self._document_tenant_index.get(document_id)
+            if tenant_id and known_tenant and known_tenant != tenant_id:
+                continue
+            previous_tenant = known_tenant
+            self._load_document(document_id, tenant_id=tenant_id)
+            index_changed = index_changed or (
+                previous_tenant != self._document_tenant_index.get(document_id)
+            )
+        if index_changed:
+            self._persist_indexes()
 
     def _remove_document(self, document_id: str) -> None:
         self.retrieval_index.remove_document(document_id)
@@ -6919,7 +8693,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
 
     def _persist_review(self, review: VisionReviewTask) -> None:
         self.review_tasks[review.review_id] = review
-        self._write_json(self._state_file("reviews", review.review_id), review.model_dump(mode="json"))
+        self._write_json(
+            self._state_file("reviews", review.review_id), review.model_dump(mode="json")
+        )
         document = self.documents.get(review.document_id)
         if document:
             self.persistence.save_review(review, document.tenant_id)
@@ -6954,7 +8730,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         pending_dir = self._state_root / "pending" / document_id
         pending_dir.mkdir(parents=True, exist_ok=True)
         (pending_dir / "content.bin").write_bytes(content)
-        self._write_json(pending_dir / "metadata.json", {"filename": filename, "metadata": metadata})
+        self._write_json(
+            pending_dir / "metadata.json", {"filename": filename, "metadata": metadata}
+        )
 
     def _load_pending_content(self, document_id: str) -> tuple[str, bytes, dict[str, Any]] | None:
         pending_dir = self._state_root / "pending" / document_id
@@ -6998,6 +8776,49 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         )
         self.persistence.save_narrative(narrative)
 
+    def _mark_derived_artifacts_stale(
+        self,
+        document: VisionDocumentRecord,
+        *,
+        actor: str,
+    ) -> dict[str, list[str]]:
+        """Invalidate outputs whose evidence snapshot predates a reprocess.
+
+        The records remain durable for audit/version history, but normal listings
+        no longer present them as current evidence-backed outputs.
+        """
+        stale_narratives: list[str] = []
+        stale_reports: list[str] = []
+        for narrative in self.list_finance_narratives(document.tenant_id):
+            source_ids = narrative.source_document_ids or narrative.document_ids
+            if document.document_id not in source_ids:
+                continue
+            narrative.status = "stale"
+            self._persist_finance_narrative(narrative)
+            stale_narratives.append(narrative.narrative_id)
+        for report in self.list_reports(document.tenant_id):
+            if document.document_id not in report.document_ids:
+                continue
+            report.status = "stale"
+            self._persist_report_record(report)
+            stale_reports.append(report.report_id)
+        if stale_narratives or stale_reports:
+            self._audit(
+                document,
+                "derived_artifacts_invalidated",
+                "Marked evidence-derived narratives and reports stale before reprocessing.",
+                actor=actor,
+                metadata={
+                    "narrative_ids": stale_narratives,
+                    "report_ids": stale_reports,
+                    "source_data_version": document.data_version,
+                },
+            )
+        return {
+            "narrative_ids": stale_narratives,
+            "report_ids": stale_reports,
+        }
+
     def _persist_report_record(self, report: VisionReportRecord) -> None:
         self.reports[report.report_id] = report
         self._write_json(
@@ -7027,8 +8848,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                         field.reviewer_status.value,
                     )
                     for field in document.extracted_fields
-                    if field.reviewer_status
-                    in {ReviewerStatus.accepted, ReviewerStatus.edited}
+                    if field.reviewer_status in {ReviewerStatus.accepted, ReviewerStatus.edited}
                 ),
             }
             for document in sorted(documents, key=lambda item: item.document_id)
@@ -7058,6 +8878,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 "idempotency": self._idempotency_index,
                 "hash": self._hash_index,
                 "semantic": self._semantic_index,
+                "document_tenants": self._document_tenant_index,
             },
         )
 
@@ -7066,6 +8887,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         self._idempotency_index.update(dict(payload.get("idempotency") or {}))
         self._hash_index.update(dict(payload.get("hash") or {}))
         self._semantic_index.update(dict(payload.get("semantic") or {}))
+        self._document_tenant_index.update(dict(payload.get("document_tenants") or {}))
 
     def _field_confidence(
         self,
@@ -7093,11 +8915,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         risks: list[VisionRiskIndicator],
     ) -> None:
         weights = self.confidence_policy["field_confidence_weights"]
-        risk_evidence_ids = {
-            evidence.evidence_id
-            for risk in risks
-            for evidence in risk.evidence
-        }
+        risk_evidence_ids = {evidence.evidence_id for risk in risks for evidence in risk.evidence}
         donut = document.model_routing.get("donut_comparison") or {}
         donut_output = json.dumps(donut.get("output") or {}, sort_keys=True).lower()
         donut_disagreements = {
@@ -7133,9 +8951,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                     components.setdefault("layoutlmv3_probability", field.confidence)
             normalized_value = self._normalize(field.reviewed_value or field.value)
             if donut_output and field.name.lower() in donut_output:
-                components["donut_agreement"] = (
-                    0.0 if field.name in donut_disagreements else 1.0
-                )
+                components["donut_agreement"] = 0.0 if field.name in donut_disagreements else 1.0
             if advanced_text and normalized_value:
                 components["visual_parser_agreement"] = float(
                     normalized_value in self._normalize(advanced_text)
@@ -7163,8 +8979,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
             if document.evidence_chunks:
                 components["retrieval_evidence_quality"] = float(
                     any(
-                        normalized_value
-                        and normalized_value in self._normalize(chunk.text)
+                        normalized_value and normalized_value in self._normalize(chunk.text)
                         for chunk in document.evidence_chunks
                     )
                 )
@@ -7192,9 +9007,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
                 if agreement_values
                 else None
             )
-            field.calibrated_confidence = (
-                field.confidence if field.calibrated else None
-            )
+            field.calibrated_confidence = field.confidence if field.calibrated else None
             field.evidence.model_confidence = field.confidence
             field.evidence.metadata["confidence_components"] = components
 
@@ -7210,8 +9023,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         }
         denominator = sum(active_weights.values())
         score = (
-            sum(components[key] * weight for key, weight in active_weights.items())
-            / denominator
+            sum(components[key] * weight for key, weight in active_weights.items()) / denominator
             if denominator
             else 0.0
         )
@@ -7220,24 +9032,22 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
     def _mean_word_confidence(self, document: VisionDocumentRecord) -> float | None:
         if not document.ocr_words:
             return None
-        return round(sum(word.confidence for word in document.ocr_words) / len(document.ocr_words), 3)
+        return round(
+            sum(word.confidence for word in document.ocr_words) / len(document.ocr_words), 3
+        )
 
     def _text_from_ocr(self, words: list[OCRWord]) -> str:
         lines = ocr_line_reconstructor.reconstruct(words)
         pages: dict[int, list[str]] = {}
         for line in lines:
             pages.setdefault(line.page, []).append(line.text)
-        return "\n\n".join(
-            "\n".join(pages[page_number]) for page_number in sorted(pages)
-        )
+        return "\n\n".join("\n".join(pages[page_number]) for page_number in sorted(pages))
 
     def _mean_field_confidence(self, document: VisionDocumentRecord) -> float | None:
         if not document.extracted_fields:
             return None
         values = [
-            field.confidence
-            for field in document.extracted_fields
-            if field.confidence is not None
+            field.confidence for field in document.extracted_fields if field.confidence is not None
         ]
         return round(sum(values) / len(values), 3) if values else None
 
@@ -7251,7 +9061,11 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
     def _layout_confidence(self, document: VisionDocumentRecord) -> float | None:
         if not document.layout_regions:
             return None
-        return round(sum(region.confidence for region in document.layout_regions) / len(document.layout_regions), 3)
+        return round(
+            sum(region.confidence for region in document.layout_regions)
+            / len(document.layout_regions),
+            3,
+        )
 
     def _review_threshold(
         self,
@@ -7280,8 +9094,7 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
 
     def _review_priority(self, document: VisionDocumentRecord) -> VisionRiskSeverity:
         severities = [
-            item.severity
-            for item in [*document.risk_indicators, *document.processing_warnings]
+            item.severity for item in [*document.risk_indicators, *document.processing_warnings]
         ]
         if VisionRiskSeverity.critical in severities:
             return VisionRiskSeverity.critical
@@ -7321,7 +9134,9 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         return "business_risk"
 
     def _rule_id(self, category: str, title: str) -> str:
-        prefix = "cross_document" if category == "cross_document" else self._indicator_category(category)
+        prefix = (
+            "cross_document" if category == "cross_document" else self._indicator_category(category)
+        )
         slug = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
         return f"{prefix}.{slug}"
 
@@ -7411,7 +9226,15 @@ Suspicious indicators require human review. Only an authorised reviewer may set 
         if not value:
             return None
         cleaned = value.strip().rstrip(".")
-        formats = ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%m-%d-%Y", "%b %d, %Y", "%B %d, %Y")
+        formats = (
+            "%Y-%m-%d",
+            "%d/%m/%Y",
+            "%m/%d/%Y",
+            "%d-%m-%Y",
+            "%m-%d-%Y",
+            "%b %d, %Y",
+            "%B %d, %Y",
+        )
         for fmt in formats:
             try:
                 return datetime.strptime(cleaned, fmt)

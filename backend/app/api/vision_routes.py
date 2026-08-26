@@ -115,7 +115,7 @@ async def retry_vision_job(
 ) -> dict:
     _require_reviewer(user)
     try:
-        job = vision_ai_service.retry_job(job_id, user.tenant_id)
+        job = vision_ai_service.retry_job(job_id, user.tenant_id, actor=user.email)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="job_id not found") from exc
     job["dispatch"] = _dispatch_or_background(background_tasks, job_id, user.tenant_id)
@@ -149,7 +149,11 @@ async def delete_vision_document(
 ) -> dict:
     _require_reviewer(user)
     try:
-        document = vision_ai_service.delete_document(document_id, user.tenant_id)
+        document = vision_ai_service.delete_document(
+            document_id,
+            user.tenant_id,
+            actor=user.email,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _envelope({"status": "deleted", "document_id": document_id}, document.case_id)
@@ -164,7 +168,9 @@ async def reprocess_vision_document(
     _require_reviewer(user)
     document = _document_or_404(document_id, user.tenant_id)
     if not document.original_storage_path:
-        raise HTTPException(status_code=400, detail="Original file is not available for reprocessing")
+        raise HTTPException(
+            status_code=400, detail="Original file is not available for reprocessing"
+        )
     try:
         with open(document.original_storage_path, "rb") as source:
             content = source.read()
@@ -198,8 +204,12 @@ async def vision_document_status(
             "status": document.status.value,
             "updated_at": document.updated_at,
             "model_routing": document.model_routing,
-            "review_task": document.review_task.model_dump(mode="json") if document.review_task else None,
-            "audit_events": [event.model_dump(mode="json") for event in document.audit_events[-12:]],
+            "review_task": document.review_task.model_dump(mode="json")
+            if document.review_task
+            else None,
+            "audit_events": [
+                event.model_dump(mode="json") for event in document.audit_events[-12:]
+            ],
         },
         document.case_id,
     )
@@ -298,8 +308,12 @@ async def vision_document_pages(
             ],
             "quality": [item.model_dump(mode="json") for item in document.quality],
             "ocr_words": [word.model_dump(mode="json") for word in document.ocr_words],
-            "layout_regions": [region.model_dump(mode="json") for region in document.layout_regions],
-            "visual_detections": [item.model_dump(mode="json") for item in document.visual_detections],
+            "layout_regions": [
+                region.model_dump(mode="json") for region in document.layout_regions
+            ],
+            "visual_detections": [
+                item.model_dump(mode="json") for item in document.visual_detections
+            ],
         },
         document.case_id,
     )
@@ -496,7 +510,9 @@ async def vision_document_risk(
             "document_id": document_id,
             "total": len(document.risk_indicators),
             "risk_indicators": [risk.model_dump(mode="json") for risk in document.risk_indicators],
-            "duplicate_candidates": [candidate.model_dump(mode="json") for candidate in document.duplicate_candidates],
+            "duplicate_candidates": [
+                candidate.model_dump(mode="json") for candidate in document.duplicate_candidates
+            ],
             "review_required": document.review_task is not None,
         },
         document.case_id,
@@ -532,8 +548,7 @@ async def vision_document_warnings(
             "document_id": document_id,
             "total": len(document.processing_warnings),
             "warnings": [
-                warning.model_dump(mode="json")
-                for warning in document.processing_warnings
+                warning.model_dump(mode="json") for warning in document.processing_warnings
             ],
         },
         document.case_id,
@@ -549,9 +564,13 @@ async def vision_document_related(
     return _envelope(
         {
             "document_id": document_id,
-            "duplicates": [candidate.model_dump(mode="json") for candidate in document.duplicate_candidates],
+            "duplicates": [
+                candidate.model_dump(mode="json") for candidate in document.duplicate_candidates
+            ],
             "graph_edges": [
-                edge for edge in document.graph.edges if edge.get("type") in {"DUPLICATE_OF", "MATCHES", "CONFLICTS_WITH"}
+                edge
+                for edge in document.graph.edges
+                if edge.get("type") in {"DUPLICATE_OF", "MATCHES", "CONFLICTS_WITH"}
             ],
         },
         document.case_id,
@@ -624,6 +643,7 @@ async def patch_vision_field(
             review_id,
             field_id,
             reviewed_value=field_request.reviewed_value,
+            reviewed_field_name=field_request.reviewed_field_name,
             reviewer_status=field_request.reviewer_status,
             comment=field_request.comment,
             actor=user.email,
@@ -684,7 +704,9 @@ async def escalate_vision_review(
     user: AuthUser = Depends(require_user),
 ) -> dict:
     _require_reviewer(user)
-    return _review_decision(review_id, VisionProcessingStatus.under_review, request, user, http_request)
+    return _review_decision(
+        review_id, VisionProcessingStatus.under_review, request, user, http_request
+    )
 
 
 @router.post("/reviews/{review_id}/confirm-error")
@@ -695,7 +717,9 @@ async def confirm_vision_error(
     user: AuthUser = Depends(require_user),
 ) -> dict:
     _require_reviewer(user)
-    return _review_decision(review_id, VisionProcessingStatus.confirmed_error, request, user, http_request)
+    return _review_decision(
+        review_id, VisionProcessingStatus.confirmed_error, request, user, http_request
+    )
 
 
 @router.post("/reviews/{review_id}/confirm-fraud")
@@ -706,7 +730,9 @@ async def confirm_vision_fraud(
     user: AuthUser = Depends(require_user),
 ) -> dict:
     _require_fraud_confirmer(user)
-    return _review_decision(review_id, VisionProcessingStatus.confirmed_fraud, request, user, http_request)
+    return _review_decision(
+        review_id, VisionProcessingStatus.confirmed_fraud, request, user, http_request
+    )
 
 
 @router.post("/ask")
@@ -846,12 +872,16 @@ async def get_vision_report(
         except ValueError:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         if format == "md":
-            return PlainTextResponse(vision_ai_service.render_report_markdown(report_id, user.tenant_id))
+            return PlainTextResponse(
+                vision_ai_service.render_report_markdown(report_id, user.tenant_id)
+            )
         if format == "pdf":
             return Response(
                 content=vision_ai_service.render_pdf_bytes(report_id, user.tenant_id),
                 media_type="application/pdf",
-                headers={"Content-Disposition": f'attachment; filename="{report_id}-vision-report.pdf"'},
+                headers={
+                    "Content-Disposition": f'attachment; filename="{report_id}-vision-report.pdf"'
+                },
             )
         return JSONResponse(
             content=_envelope(
@@ -895,7 +925,11 @@ async def download_vision_report(
         tenant_id=user.tenant_id,
         actor=user.email,
     )
-    return Response(content=content, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/finance-narratives")
@@ -1060,7 +1094,9 @@ def _dispatch_or_background(
     return dispatch
 
 
-def _envelope(data: Any, case_id: str | None = None, errors: list[str] | None = None) -> dict[str, Any]:
+def _envelope(
+    data: Any, case_id: str | None = None, errors: list[str] | None = None
+) -> dict[str, Any]:
     return {
         "success": not errors,
         "case_id": case_id,

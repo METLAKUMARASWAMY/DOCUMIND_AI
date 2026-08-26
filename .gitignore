@@ -20,5 +20,9 @@ coverage/
 *.egg-info/
 var/
 backend/var/
+!backend/var/
+backend/var/*
+!backend/var/test_fixtures/
+!backend/var/test_fixtures/**
 .idea/
 .vscode/

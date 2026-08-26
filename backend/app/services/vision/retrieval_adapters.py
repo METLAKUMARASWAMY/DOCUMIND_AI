@@ -6,6 +6,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from itertools import pairwise
+from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -117,28 +118,39 @@ class BGEM3EmbeddingAdapter(VisionAdapter):
         )
 
     def embed(self, text: str) -> HybridVector:
+        return self.embed_many([text])[0]
+
+    def embed_many(self, texts: list[str]) -> list[HybridVector]:
+        if not texts:
+            return []
         self.ensure_ready()
         model = self._load()
         output = model.encode(
-            [text],
+            texts,
             return_dense=True,
             return_sparse=True,
             return_colbert_vecs=False,
         )
-        dense = np.asarray(output["dense_vecs"][0], dtype=np.float32)
-        lexical = output.get("lexical_weights", [{}])[0]
-        return HybridVector(
-            dense=dense.tolist(),
-            sparse={str(key): float(value) for key, value in dict(lexical).items()},
-        )
+        dense_vectors = np.asarray(output["dense_vecs"], dtype=np.float32)
+        lexical_vectors = output.get("lexical_weights", [{} for _ in texts])
+        return [
+            HybridVector(
+                dense=dense.tolist(),
+                sparse={str(key): float(value) for key, value in dict(lexical).items()},
+            )
+            for dense, lexical in zip(dense_vectors, lexical_vectors, strict=True)
+        ]
 
     def _load(self) -> Any:
         if self._model is None:
             from FlagEmbedding import BGEM3FlagModel
 
+            local_checkpoint = local_or_hf_cached_checkpoint(settings.bge_m3_checkpoint)
+            checkpoint = str(local_checkpoint or settings.bge_m3_checkpoint)
             self._model = BGEM3FlagModel(
-                settings.bge_m3_checkpoint,
+                checkpoint,
                 use_fp16=settings.paddleocr_device != "cpu",
+                trust_remote_code=False,
             )
         return self._model
 
@@ -156,8 +168,8 @@ class BGERerankerAdapter(VisionAdapter):
         enabled = settings.enable_heavy_models and settings.enable_bge_m3
         checkpoint = settings.bge_reranker_checkpoint
         local_checkpoint = local_or_hf_cached_checkpoint(checkpoint)
-        active = enabled and installed and (
-            local_checkpoint is not None or settings.bge_allow_download
+        active = (
+            enabled and installed and (local_checkpoint is not None or settings.bge_allow_download)
         )
         return AdapterStatus(
             adapter_id=self.adapter_id,
@@ -192,13 +204,62 @@ class BGERerankerAdapter(VisionAdapter):
 
     def _load(self) -> Any:
         if self._model is None:
-            from FlagEmbedding import FlagReranker
-
-            self._model = FlagReranker(
-                settings.bge_reranker_checkpoint,
-                use_fp16=settings.paddleocr_device != "cpu",
-            )
+            local_checkpoint = local_or_hf_cached_checkpoint(settings.bge_reranker_checkpoint)
+            checkpoint = str(local_checkpoint or settings.bge_reranker_checkpoint)
+            self._model = _LocalSequenceReranker(checkpoint)
         return self._model
+
+
+class _LocalSequenceReranker:
+    """Minimal safe reranker compatible with current Transformers tokenizers.
+
+    FlagEmbedding 1.x calls the removed ``prepare_for_model`` tokenizer API on
+    Transformers 5.  Loading the same sequence-classification checkpoint through
+    the public paired-text tokenizer path preserves exact model inference while
+    allowing patched Transformers releases.  Cached assets are passed as concrete
+    paths and remote model code is never trusted.
+    """
+
+    def __init__(self, checkpoint: str) -> None:
+        import torch
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+        self._torch = torch
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            checkpoint,
+            local_files_only=Path(checkpoint).exists(),
+            trust_remote_code=False,
+        )
+        self._model = AutoModelForSequenceClassification.from_pretrained(
+            checkpoint,
+            local_files_only=Path(checkpoint).exists(),
+            trust_remote_code=False,
+        )
+        self._model.eval()
+
+    def compute_score(
+        self,
+        sentence_pairs: list[list[str]],
+        *,
+        normalize: bool = True,
+    ) -> list[float]:
+        if not sentence_pairs:
+            return []
+        queries = [item[0] for item in sentence_pairs]
+        passages = [item[1] for item in sentence_pairs]
+        encoded = self._tokenizer(
+            queries,
+            passages,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors="pt",
+        )
+        with self._torch.inference_mode():
+            logits = self._model(**encoded, return_dict=True).logits.reshape(-1).float()
+        if normalize:
+            logits = self._torch.sigmoid(logits)
+        return [float(value) for value in logits.cpu().tolist()]
 
 
 class LocalHybridRetrievalIndex:
@@ -329,11 +390,7 @@ class LocalHybridRetrievalIndex:
         candidates.sort(key=lambda item: item.score, reverse=True)
         first_stage = candidates[:30]
         rerank_candidates = first_stage[:15]
-        if (
-            rerank_candidates
-            and not self.force_local
-            and self.reranker.status().status == "active"
-        ):
+        if rerank_candidates and not self.force_local and self.reranker.status().status == "active":
             scores = self.reranker.rerank(
                 query,
                 [item.chunk.text for item in rerank_candidates],
@@ -366,7 +423,9 @@ class LocalHybridRetrievalIndex:
         left_array = np.asarray(left, dtype=np.float32)
         right_array = np.asarray(right, dtype=np.float32)
         denominator = float(np.linalg.norm(left_array) * np.linalg.norm(right_array))
-        return max(0.0, float(np.dot(left_array, right_array) / denominator)) if denominator else 0.0
+        return (
+            max(0.0, float(np.dot(left_array, right_array) / denominator)) if denominator else 0.0
+        )
 
     def _sparse_cosine(self, left: dict[str, float], right: dict[str, float]) -> float:
         if not left or not right:
@@ -407,7 +466,9 @@ class QdrantHybridBackend(VisionAdapter):
         return AdapterStatus(
             adapter_id=self.adapter_id,
             stage=self.stage,
-            status="active" if enabled and installed else ("disabled" if not enabled else "unavailable"),
+            status="active"
+            if enabled and installed
+            else ("disabled" if not enabled else "unavailable"),
             reason=(
                 "Qdrant client is configured."
                 if enabled and installed
@@ -498,10 +559,11 @@ class QdrantHybridBackend(VisionAdapter):
         vectors: list[HybridVector],
     ) -> None:
         if not chunks or len(chunks) != len(vectors):
-            raise ValueError("A document replacement requires matching non-empty chunks and vectors")
+            raise ValueError(
+                "A document replacement requires matching non-empty chunks and vectors"
+            )
         if any(
-            chunk.document_id != document_id or chunk.tenant_id != tenant_id
-            for chunk in chunks
+            chunk.document_id != document_id or chunk.tenant_id != tenant_id for chunk in chunks
         ):
             raise ValueError("Replacement chunks must match the scoped tenant and document")
         vector_size = len(vectors[0].dense)
@@ -568,9 +630,7 @@ class QdrantHybridBackend(VisionAdapter):
         }
 
     def _collection_for_dimension(self, vector_size: int) -> str:
-        return (
-            f"{self.base_collection_name}__{self.vector_namespace}__d{vector_size}_v1"
-        )
+        return f"{self.base_collection_name}__{self.vector_namespace}__d{vector_size}_v1"
 
     def _slug(self, value: str) -> str:
         normalized = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
