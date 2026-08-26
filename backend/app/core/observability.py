@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import secrets
 import time
 from typing import Any
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
+
+from app.core.config import settings
 
 try:
     from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -47,7 +50,30 @@ def install_observability(app: FastAPI) -> None:
         return response
 
     @app.get("/metrics", include_in_schema=False)
-    async def metrics() -> Any:
+    async def metrics(request: Request) -> Any:
+        # Metrics expose the route inventory and traffic shape. They are for the
+        # scraper, not the internet: require a bearer token when one is
+        # configured, and otherwise serve only to loopback.
+        if not _metrics_access_allowed(request):
+            return Response(
+                content="metrics access requires METRICS_AUTH_TOKEN\n",
+                media_type="text/plain",
+                status_code=403,
+            )
         if generate_latest is None:
             return Response(content="prometheus-client unavailable\n", media_type="text/plain", status_code=503)
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+def _metrics_access_allowed(request: Request) -> bool:
+    token = settings.metrics_auth_token
+    if token:
+        header = request.headers.get("authorization", "")
+        scheme, _, presented = header.partition(" ")
+        if scheme.lower() != "bearer" or not presented:
+            return False
+        return secrets.compare_digest(presented, token)
+    # No token configured: allow loopback only, so an unconfigured deployment
+    # cannot silently publish its metrics.
+    host = request.client.host if request.client else ""
+    return host in {"127.0.0.1", "::1", "localhost"}

@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     rate_limit_requests: int = Field(default=180, alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     trust_proxy_headers: bool = Field(default=False, alias="TRUST_PROXY_HEADERS")
+    metrics_auth_token: str | None = Field(default=None, alias="METRICS_AUTH_TOKEN")
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
     frontend_port: int = Field(default=5174, alias="FRONTEND_PORT")
