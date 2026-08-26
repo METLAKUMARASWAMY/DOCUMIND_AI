@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - name: Install backend
         working-directory: backend
         run: |
@@ -24,7 +24,10 @@ jobs:
         run: ruff check app tests
       - name: Test backend
         working-directory: backend
-        run: pytest
+        # The suite runs real Tesseract OCR over image fixtures and takes several
+        # minutes; the timeout stops a hang from burning a full job slot.
+        timeout-minutes: 25
+        run: pytest -q --durations=15
 
   frontend:
     runs-on: ubuntu-latest
@@ -76,6 +79,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Validate Kubernetes manifests
-        run: kubectl apply --dry-run=client -f k8s/
+        run: kubectl apply --dry-run=client -f infra/k8s/
       - name: Deployment handoff
         run: echo "Attach cluster credentials and registry push settings before enabling production apply."

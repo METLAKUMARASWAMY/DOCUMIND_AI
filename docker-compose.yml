@@ -7,11 +7,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?Run python scripts/generate_local_env.py}:${POSTGRES_PASSWORD:?Run python scripts/generate_local_env.py}@postgres:5432/${POSTGRES_DB:?Run python scripts/generate_local_env.py}
       DOCUMIND_DATASET_PATH: /data/documind_ai_synthetic_dataset
       ENABLE_CHROMA: "false"
-      ENABLE_NEO4J: ${ENABLE_NEO4J:-false}
+      ENABLE_NEO4J: ${ENABLE_NEO4J:-true}
       ENABLE_MONGODB: "false"
       ENABLE_REDIS: "true"
       ENABLE_MINIO: "false"
-      ENABLE_QDRANT: ${ENABLE_QDRANT:-false}
+      ENABLE_QDRANT: ${ENABLE_QDRANT:-true}
       MONGODB_URI: mongodb://mongodb:27017/documind
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
@@ -23,11 +23,43 @@ services:
     volumes:
       - ./dataset/documind_ai_synthetic_dataset:/data/documind_ai_synthetic_dataset:ro
       - ./var:/app/var
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
     depends_on:
-      - postgres
-      - neo4j
-      - redis
-      - qdrant
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: ./backend
+    # PostgreSQL only runs /docker-entrypoint-initdb.d on a FRESH volume, so
+    # migrations added after the first `up` were never applied to an existing
+    # database. This service applies them explicitly on every start; the
+    # migration runner is idempotent and tracked in documind_schema_migrations.
+    command: ["python", "/app/scripts/migrate_postgres.py", "--execute"]
+    environment:
+      DOCUMIND_AUTH_SECRET: ${DOCUMIND_AUTH_SECRET:?Run python scripts/generate_local_env.py}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?Run python scripts/generate_local_env.py}:${POSTGRES_PASSWORD:?Run python scripts/generate_local_env.py}@postgres:5432/${POSTGRES_DB:?Run python scripts/generate_local_env.py}
+      NEO4J_AUTH: ${NEO4J_AUTH:?Run python scripts/generate_local_env.py}
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./infra:/app/infra:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   worker:
     build:
@@ -46,11 +78,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?Run python scripts/generate_local_env.py}:${POSTGRES_PASSWORD:?Run python scripts/generate_local_env.py}@postgres:5432/${POSTGRES_DB:?Run python scripts/generate_local_env.py}
       DOCUMIND_DATASET_PATH: /data/documind_ai_synthetic_dataset
       ENABLE_CHROMA: "false"
-      ENABLE_NEO4J: ${ENABLE_NEO4J:-false}
+      ENABLE_NEO4J: ${ENABLE_NEO4J:-true}
       ENABLE_MONGODB: "false"
       ENABLE_REDIS: "true"
       ENABLE_MINIO: "false"
-      ENABLE_QDRANT: ${ENABLE_QDRANT:-false}
+      ENABLE_QDRANT: ${ENABLE_QDRANT:-true}
       MONGODB_URI: mongodb://mongodb:27017/documind
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
@@ -61,10 +93,16 @@ services:
       - ./dataset/documind_ai_synthetic_dataset:/data/documind_ai_synthetic_dataset:ro
       - ./var:/app/var
     depends_on:
-      - postgres
-      - neo4j
-      - redis
-      - qdrant
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
 
   frontend:
     build:
@@ -73,7 +111,8 @@ services:
     ports:
       - "127.0.0.1:5174:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   postgres:
     image: postgres:16-alpine

@@ -26,3 +26,6 @@ backend/var/*
 !backend/var/test_fixtures/**
 .idea/
 .vscode/
+
+# Prompt/scratch dumps kept out of the tree
+docs/prompts/
