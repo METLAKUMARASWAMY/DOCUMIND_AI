@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import logging
 import math
 import re
+import time
+import urllib.request
 from collections import Counter
 from dataclasses import dataclass
 from itertools import pairwise
@@ -16,6 +19,8 @@ from app.core.config import settings
 from app.models.vision import ReviewerStatus, VisionEvidenceChunk
 from app.services.vision.adapters import AdapterStatus, VisionAdapter
 from app.services.vision.checkpoint_utils import local_or_hf_cached_checkpoint
+
+LOGGER = logging.getLogger("documind.retrieval")
 
 TOKEN_PATTERN = re.compile(r"[\w][\w.-]*", re.UNICODE)
 
@@ -280,6 +285,8 @@ class LocalHybridRetrievalIndex:
             expected_vector_size=self.embedding.dimensions,
         )
         self._external_error: str | None = None
+        self._external_error_at: float | None = None
+        self._external_failures = 0
 
     def upsert_document(self, document_id: str, chunks: list[VisionEvidenceChunk]) -> None:
         tenant_ids = {chunk.tenant_id for chunk in chunks}
@@ -302,9 +309,9 @@ class LocalHybridRetrievalIndex:
                     chunks=chunks,
                     vectors=[self._vectors[chunk.chunk_id] for chunk in chunks],
                 )
-                self._external_error = None
+                self._record_external_success()
             except Exception as exc:
-                self._external_error = f"{type(exc).__name__}: {exc}"
+                self._record_external_failure("upsert_document", exc)
 
     def remove_document(self, document_id: str) -> None:
         existing_ids = self._document_chunks.pop(document_id, set())
@@ -320,9 +327,9 @@ class LocalHybridRetrievalIndex:
             try:
                 for tenant_id in tenant_ids:
                     self.qdrant.delete_document(document_id, tenant_id=tenant_id)
-                self._external_error = None
+                self._record_external_success()
             except Exception as exc:
-                self._external_error = f"{type(exc).__name__}: {exc}"
+                self._record_external_failure("delete_document", exc)
 
     def search(
         self,
@@ -339,8 +346,8 @@ class LocalHybridRetrievalIndex:
         external_scores: dict[str, float] = {}
         if (
             not self.force_local
+            and self._external_backoff_elapsed()
             and self.qdrant.status().status == "active"
-            and self._external_error is None
         ):
             try:
                 external_scores = self.qdrant.candidate_scores(
@@ -349,8 +356,9 @@ class LocalHybridRetrievalIndex:
                     document_ids=document_ids,
                     limit=30,
                 )
+                self._record_external_success()
             except Exception as exc:
-                self._external_error = f"{type(exc).__name__}: {exc}"
+                self._record_external_failure("candidate_scores", exc)
         source_items = (
             (
                 (chunk_id, self._chunks[chunk_id])
@@ -406,15 +414,84 @@ class LocalHybridRetrievalIndex:
             ]
         return first_stage[:top_k]
 
+    #: A failed Qdrant call must not disable the mirror for the process lifetime.
+    #: Retries are held off for this long, then attempted again.
+    external_retry_backoff_seconds: float = 30.0
+
+    def _external_backoff_elapsed(self) -> bool:
+        if self._external_error is None:
+            return True
+        if self._external_error_at is None:
+            return True
+        return (time.monotonic() - self._external_error_at) >= self.external_retry_backoff_seconds
+
+    def _record_external_success(self) -> None:
+        if self._external_error is not None:
+            LOGGER.info(
+                "qdrant mirror recovered",
+                extra={
+                    "context": {
+                        "component": "retrieval_index",
+                        "previous_error": self._external_error,
+                        "consecutive_failures": self._external_failures,
+                    }
+                },
+            )
+        self._external_error = None
+        self._external_error_at = None
+        self._external_failures = 0
+
+    def _record_external_failure(self, operation: str, exc: Exception) -> None:
+        self._external_error = f"{type(exc).__name__}: {exc}"
+        self._external_error_at = time.monotonic()
+        self._external_failures += 1
+        # The mirror is optional, but a silent downgrade is not acceptable: the
+        # degradation is logged here and reported by status()/retrieval traces.
+        LOGGER.warning(
+            "qdrant mirror unavailable; serving retrieval from the local hybrid index",
+            extra={
+                "context": {
+                    "component": "retrieval_index",
+                    "operation": operation,
+                    "error": self._external_error,
+                    "consecutive_failures": self._external_failures,
+                    "retry_after_seconds": self.external_retry_backoff_seconds,
+                }
+            },
+        )
+        self.qdrant.invalidate_liveness_cache()
+
     def status(self) -> dict[str, Any]:
+        qdrant_status = self.qdrant.status()
+        degraded = self._external_error is not None
         return {
             "embedding": self.embedding.status().__dict__,
             "reranker": self.reranker.status().__dict__,
             "chunks": len(self._chunks),
             "documents": len(self._document_chunks),
             "pipeline": "top30_hybrid_then_top15_rerank_then_top5_to_8",
-            "qdrant": self.qdrant.status().__dict__,
+            "qdrant": qdrant_status.__dict__,
             "external_error": self._external_error,
+            "external_consecutive_failures": self._external_failures,
+            "external_retry_after_seconds": (
+                None
+                if not degraded
+                else max(
+                    0.0,
+                    round(
+                        self.external_retry_backoff_seconds
+                        - (time.monotonic() - (self._external_error_at or 0.0)),
+                        2,
+                    ),
+                )
+            ),
+            # The authoritative statement of what actually served this index.
+            "vector_backend": (
+                "qdrant_mirrored_local_hybrid"
+                if qdrant_status.status == "active" and not degraded
+                else "local_hybrid_only"
+            ),
+            "degraded": degraded,
         }
 
     def _dense_cosine(self, left: list[float], right: list[float]) -> float:
@@ -442,6 +519,12 @@ class QdrantHybridBackend(VisionAdapter):
     stage = "vector_store"
     model_version = "Qdrant"
 
+    #: A configured client proves nothing about the server. ``status()`` is called on
+    #: every upsert and search, so the liveness result is cached for this many seconds
+    #: rather than probing per call.
+    liveness_cache_seconds: float = 5.0
+    liveness_timeout_seconds: float = 1.5
+
     def __init__(
         self,
         collection_name: str = "vision_evidence_chunks",
@@ -459,34 +542,93 @@ class QdrantHybridBackend(VisionAdapter):
             else collection_name
         )
         self._client: Any | None = None
+        self._liveness: tuple[float, bool, str] | None = None
 
     def status(self) -> AdapterStatus:
         installed = importlib.util.find_spec("qdrant_client") is not None
         enabled = settings.enable_qdrant
+        metadata: dict[str, Any] = {
+            "base_collection": self.base_collection_name,
+            "collection": self.collection_name,
+            "collection_template": (
+                f"{self.base_collection_name}__{self.vector_namespace}__d{{dimensions}}_v1"
+            ),
+            "expected_vector_size": self.expected_vector_size,
+            "schema_policy": "non-destructive-dimension-versioned-v1",
+        }
+        if not enabled:
+            return AdapterStatus(
+                adapter_id=self.adapter_id,
+                stage=self.stage,
+                status="disabled",
+                reason="Enable Qdrant with ENABLE_QDRANT=true.",
+                enabled=enabled,
+                installed=installed,
+                model_version=self.model_version,
+                metadata={**metadata, "server_reachable": None},
+            )
+        if not installed:
+            return AdapterStatus(
+                adapter_id=self.adapter_id,
+                stage=self.stage,
+                status="unavailable",
+                reason="Qdrant is enabled but the qdrant-client package is not installed.",
+                enabled=enabled,
+                installed=installed,
+                model_version=self.model_version,
+                metadata={**metadata, "server_reachable": None},
+            )
+        reachable, detail = self._server_reachable()
         return AdapterStatus(
             adapter_id=self.adapter_id,
             stage=self.stage,
-            status="active"
-            if enabled and installed
-            else ("disabled" if not enabled else "unavailable"),
+            status="active" if reachable else "unavailable",
             reason=(
-                "Qdrant client is configured."
-                if enabled and installed
-                else "Enable Qdrant and install qdrant-client."
+                f"Qdrant client is configured and the server answered a liveness probe ({detail})."
+                if reachable
+                else f"Qdrant is configured but the server did not answer a liveness probe: {detail}."
             ),
             enabled=enabled,
             installed=installed,
             model_version=self.model_version,
             metadata={
-                "base_collection": self.base_collection_name,
-                "collection": self.collection_name,
-                "collection_template": (
-                    f"{self.base_collection_name}__{self.vector_namespace}__d{{dimensions}}_v1"
-                ),
-                "expected_vector_size": self.expected_vector_size,
-                "schema_policy": "non-destructive-dimension-versioned-v1",
+                **metadata,
+                "server_reachable": reachable,
+                "liveness_detail": detail,
+                "liveness_probe": "GET /readyz",
+                "liveness_cache_seconds": self.liveness_cache_seconds,
             },
         )
+
+    def _server_reachable(self) -> tuple[bool, str]:
+        """Bounded, cached ``GET /readyz`` against the configured Qdrant endpoint.
+
+        Configuration alone must never be reported as ``active``: a badge that
+        outlives the server it describes is worse than no badge at all.
+        """
+
+        now = time.monotonic()
+        cached = self._liveness
+        if cached is not None and now - cached[0] < self.liveness_cache_seconds:
+            return cached[1], cached[2]
+        endpoint = f"{settings.qdrant_url.rstrip('/')}/readyz"
+        try:
+            request = urllib.request.Request(endpoint, method="GET")
+            with urllib.request.urlopen(  # operator-configured endpoint
+                request,
+                timeout=self.liveness_timeout_seconds,
+            ) as response:
+                code = int(response.status)
+            reachable = 200 <= code < 300
+            detail = f"HTTP {code}"
+        except Exception as exc:
+            reachable = False
+            detail = type(exc).__name__
+        self._liveness = (now, reachable, detail)
+        return reachable, detail
+
+    def invalidate_liveness_cache(self) -> None:
+        self._liveness = None
 
     def ensure_collection(self, vector_size: int) -> None:
         self.ensure_ready()
