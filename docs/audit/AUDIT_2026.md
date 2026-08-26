@@ -564,3 +564,192 @@ not support the question.
 | **D-16** | P2 | **OPEN.** `app/services/vision/service.py` remains 9,273 lines in one class. Splitting it is the right call but is a large, risky refactor that deserves its own change set. |
 | **D-17** | P2 | **OPEN.** `GenericIntelligencePanel` still emits a 385 kB chunk from 174 source lines; the heavy import has not been traced. |
 | **D-19b** | P2 | **OPEN.** The suite is still slow. The top eight OCR tests dominate; fixture-level caching of the Tesseract pass is the fix. The CI timeout now bounds the damage. |
+
+---
+
+# Phase 2 — Proving the unproven claims
+
+The Phase 1 report deliberately listed claims it would not make. Closing them
+surfaced six further defects, four of them P0. Every one was invisible to the
+existing 302-test suite because that suite exercises the shipped fixtures; these
+were found by writing tests against documents authored for the test.
+
+## D-21 · Graph retrieval could only reach a hardcoded allowlist — **CLOSED (P0)**
+
+`GRAPH_QUERY_INTENTS` was a frozen map whose entries came from one fixture,
+including the literal alias `"type of cigarette"`. Only relationship types named
+in it could reach Cypher — so the field-derived edges introduced by the D-05 fix
+(`HAS_POLICY_NUMBER`, `HAS_CONSIGNEE_NAME`, …) were **unreachable through the
+knowledge graph no matter what the user asked**. My own D-05 fix had created a
+dead end one layer down.
+
+Candidates are now derived from the same vocabulary and naming rule the graph
+builder uses to *create* the edges. Two derivations, both general: a field label
+in the question maps to its edge, and an agent question (`"who …"`) offers the
+derivable `*_BY` set — irregular verbs make phrase-to-verb mapping unreliable, so
+Cypher filters to what the graph actually holds.
+
+Injection safety preserved and now tested: candidates must match
+`^[A-Z][A-Z0-9_]{0,63}$` before reaching Cypher, user text is never interpolated,
+the set is bounded at 24, and hostile inputs are covered by tests.
+
+**Live proof (Neo4j 5.22 running):**
+
+```
+'which documents are related to this vendor'
+   retriever='neo4j-evidence-path-v1'  paths=4
+   neo4j-proof-invoice.txt → ISSUED BY → Meridian Logistics
+'what is this document linked to'
+   retriever='neo4j-evidence-path-v1'  paths=2
+```
+
+Neo4j genuinely serves retrieval. Field-lookup questions still short-circuit to
+the structured store first, which is the intended cheapest-correct-handler order,
+not a failure.
+
+## D-22 · The base-case bug, found at last — **CLOSED (P0)**
+
+Phase 1 reported no evidence of hardcoding behind the §45 symptom, and that was
+correct — but it was not the whole story. The symptom is real and this is its
+cause:
+
+> `_relevant_semantic_hits` retained a chunk if **any single** query token
+> appeared in it.
+
+"How many employees does the contractor have" returned `answer_status=supported`
+with a contract clause, purely because the clause contains the word
+*"contractor"*. Sharing one word with a question is not answering it, and
+presenting unrelated prose as an answer is the exact failure §45 describes.
+
+Replaced with a three-valued coverage verdict — full / partial / insufficient —
+applied consistently at the semantic handler, the not-found cascade **and** the
+structured handler. Purely lexical coverage cannot decide this perfectly (a
+legitimate paraphrase such as *"describe the arrangement"* also leaves words
+unmatched), so the middle case reports `partially_supported` and names the part
+it could not cover, rather than either claiming full support or discarding good
+evidence. **Overclaiming is the failure mode worth preventing.**
+
+## D-23 · Corpus-blind support claims — **CLOSED (P0)**
+
+`"what was the share price on the invoice date"` matched `invoice_date` and was
+returned as **fully supported**, though nothing in the corpus concerns share
+prices. A corpus-grounded qualifier now downgrades when two or more of the
+question's content words appear in no field, field name or chunk in scope.
+Presence is *measured* against the corpus, not guessed. One unmatched word is
+treated as phrasing, not a subject, so `"which vendor issued this"` is unaffected.
+
+## D-24 · Clause detection corrupted correctly-extracted fields — **CLOSED (P0)**
+
+`_clause_fields` searched raw text for clause keywords and stored a ±270-character
+snippet of document text as the field **value**. On an ordinary contract this
+produced:
+
+```
+agreement_date = '2026-01-05'                       <- correct
+agreement_date = 'tract Number: CTR-E2E-3300\nParty: …'   <- 161 chars of the document
+payment_terms  = 'Net 30'                           <- correct
+payment_terms  = 'cs\nContractor: Kestrel …'        <- 134 chars, starts mid-word
+```
+
+Those values flowed into chunks, graph nodes and citations. The snippet is now
+*evidence*; the value is the matched clause phrase; and clause detection can no
+longer displace a field the deterministic extractor already located precisely.
+
+## D-25 · A fuzzy label match asserted an impossible field — **CLOSED (P1)**
+
+`"Contract Number"` is one edit from the alias `"contact number"`, so a contract
+reference was adopted as `phone_number` — a name the value `CTR-E2E-3300` can
+never satisfy, and `contract_number` was never extracted at all. `expected_types`
+was declared on every canonical label but used only as a *classification
+preference*, never as a constraint.
+
+A fuzzy match must now be corroborated by the value's semantic type and otherwise
+degrades to the observed label. Exact alias hits are unaffected. Result:
+`contract_number = 'CTR-E2E-3300'` and real phone numbers still classify.
+
+## D-26 · Requested-field resolution was name-exact — **CLOSED (P1)**
+
+`"what is the bank account number"` resolved to `bank_account_number` while the
+extractor produced `account_number`, so an exact-name filter dropped the field and
+the question fell through to **not-found despite the value being extracted
+correctly**. Exact names still win; only when none match are token sets compared.
+
+*(This resolver was the third hardcoded fixture-shaped alias table found in the
+codebase — it also contained `"type of cigarette"`.)*
+
+## Tenant isolation — **PROVEN**
+
+32 adversarial tests build two real tenants, put a document in each, and attack
+from the other side: direct id access across 13 document routes, delete,
+reprocess, review approve/reject/escalate, the review queue, graph query, the RAG
+path, the `document_ids` scoping attack, unauthenticated access to 9 routes, a
+forged token, and a header attempting to override the token's tenant. **All
+refused.** The subtlest of these — retrieval leaking another tenant's evidence
+into an answer — is explicitly covered.
+
+## D-27 · The backend Docker image could not build — **CLOSED (P0)**
+
+`backend/requirements.txt` contains exactly one line, `-r requirements/dev.txt`,
+but the Dockerfile copied only `requirements.txt` and `pyproject.toml` — never the
+`requirements/` directory. `pip install -r requirements.txt` could not resolve its
+own include.
+
+Verified against the previous commit: `COPY requirements ` appears **zero** times.
+The image build failed at the dependency step. Fixed, and the build now proceeds
+past that step; the dependency install was also moved ahead of the source copy so
+a code change no longer invalidates the dependency layer.
+
+## Measured evaluation (§44)
+
+`scripts/run_evaluation.py` runs the pipeline over a labelled corpus authored in
+the script — not drawn from `var/test_fixtures` or `dataset/` — and reports only
+values computed in that process. Anything it cannot compute is reported as
+`not_measured` with a reason.
+
+It earned its place immediately by finding D-23 and D-26.
+
+Measured with the local hashing embedding, Qdrant disabled:
+
+| Metric | Value |
+|---|---|
+| extraction accuracy | **100 %** (9/9 labelled fields) |
+| answer accuracy | **100 %** (5/5) |
+| citation correctness | **100 %** (5/5) |
+| grounding fidelity | **100 %** — every claimed answer carried evidence |
+| abstention correctness | **100 %** (3/3) |
+| overclaims | **0** |
+| answer latency | mean ≈ 30 ms, p95 ≈ 40 ms |
+| ingest latency | mean ≈ 2.8 s per document |
+| failure rate | 0 % |
+
+One corpus expectation was wrong rather than the system: bank identifiers are
+deliberately masked before reaching an answer (§33), so the expected value is the
+visible suffix. An evaluation demanding the full number would have been scoring
+the system for leaking it.
+
+## D-15 · Unreviewable frontend formatting — **CLOSED (P2)**
+
+Single JSX lines reached **1,820 characters** (`AdminSettingsPage`), 1,502
+(`ModelLabPage`) and 1,039 (`AuditHistoryPage`), passing lint cleanly because no
+rule constrained length. Formatted with Prettier at `printWidth: 100`; the
+longest line is now **198**. `npm run lint` runs `prettier --check`, so it cannot
+return.
+
+## Status after Phase 2
+
+| Check | Result |
+|---|---|
+| Backend tests | **372 passed** (218 at audit start) |
+| Frontend tests | **55 passed** (23 at audit start) |
+| ruff / eslint / prettier / build / npm audit | clean |
+| Evaluation harness | 0 overclaims, all metrics measured |
+
+### Still open
+
+| ID | Sev | Status |
+|---|---|---|
+| **D-16** | P2 | **OPEN.** `service.py` is still ~9,300 lines in one class. Splitting it deserves its own change set. |
+| **D-17** | P2 | **OPEN.** `GenericIntelligencePanel` still emits a 385 kB chunk from 174 source lines; the heavy import is untraced. |
+| **D-19b** | P2 | **OPEN.** Cold-cache suite runtime is ~7 min; warm ~3.5 min. Fixture-level OCR caching would fix it. The CI timeout bounds the damage. |
+| — | — | **Playwright has not been run.** No claim here covers browser runtime behaviour. |
+| — | — | **No LLM.** No local checkpoint and no approved endpoint, so the grounded template generator is the shipping path; the LLM path is exercised only through stubs. |
