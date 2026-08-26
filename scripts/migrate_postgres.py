@@ -22,7 +22,14 @@ from typing import Any, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+# The repository keeps the application under backend/; the container image copies
+# it to the image root. Resolve whichever layout is actually present instead of
+# assuming the repository one -- assuming it made this script unusable inside the
+# image, which is exactly where the compose migrate step runs it.
 BACKEND_ROOT = PROJECT_ROOT / "backend"
+if not (BACKEND_ROOT / "app").is_dir() and (PROJECT_ROOT / "app").is_dir():
+    BACKEND_ROOT = PROJECT_ROOT
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
