@@ -4,9 +4,23 @@ DocuMind AI is an enterprise document intelligence platform for banks, insurers,
 
 The repository is intentionally production-shaped: a FastAPI backend, React analyst console, deployment assets, CI, test strategy, security architecture, MLOps plan, research framing, and portfolio material are included.
 
-## Phase-Driven Delivery
+## Where the real system lives
 
-The DocuMind AI 2.0 brief is being handled phase by phase. Current phase status:
+The document-intelligence implementation is `backend/app/services/vision/`.
+
+`backend/app/legacy/` holds 25 modules that are **not reachable in the shipping
+configuration** — they are mounted only when `ENABLE_DEMO_API=true` (default
+`false`). They were moved out of `app/services/` because they carry the names a
+reader searches for (`rag.py`, `retrieval.py`, `knowledge_graph.py`,
+`vector_store.py`, `embedding.py`, `ocr.py`) while the running application never
+executes them. See `backend/app/legacy/README.md` for the mapping from each
+capability to its real implementation.
+
+Note when reading the backend test count: `backend/conftest.py` sets
+`ENABLE_DEMO_API=true` for the test session, so nine test files still exercise
+the legacy stack.
+
+## Phase-Driven Delivery
 
 - Phase 1, Software Requirements Specification: complete.
 - Phase 2, System Architecture: complete.
@@ -34,16 +48,20 @@ Phases 4-29 source of truth: [Continuous Completion Package](docs/phases/PHASE_0
 ## Repository Layout
 
 ```text
-backend/                 FastAPI application and AI service layer
-frontend/                React/Vite analyst dashboard
-dataset/                 Synthetic DocuMind AI cases, documents, labels, evidence, RAG questions
-demo-data/               Legacy seed contract, invoice, PO, and bank-change email documents
-docs/                    SRS, architecture, API, research, security, MLOps, portfolio docs
-infra/docker/            Database init SQL
-infra/k8s/               Kubernetes manifests
-infra/nginx/             Nginx reverse proxy config
-.github/workflows/       CI pipeline
-scripts/                 Utility scripts
+backend/app/services/vision/   THE SHIPPING SYSTEM: OCR, extraction, retrieval, graph, RAG
+backend/app/services/          auth, classification, ingestion, model_registry, readiness
+backend/app/legacy/            flag-gated research stack, off by default (see its README)
+backend/app/api/               routes; vision_routes.py is canonical, vision_alias_routes.py is the UI surface
+frontend/                      React/Vite analyst console
+dataset/                       Synthetic cases, documents, labels, evidence, RAG questions
+demo_data/                     Finance case-study fixtures (used only by app/legacy)
+docs/                          SRS, architecture, API, research, security, MLOps docs
+docs/audit/AUDIT_2026.md       Full audit + remediation log with per-defect evidence
+infra/docker/                  Database init SQL
+infra/k8s/                     Kubernetes manifests (the only set; CI validates these)
+infra/nginx/                   Nginx reverse proxy config
+.github/workflows/             CI pipeline
+scripts/                       Utility scripts
 ```
 
 ## Quick Start
@@ -217,6 +235,31 @@ npm audit
 ```
 
 The complete security, model-smoke, Playwright, performance, migration, screenshot, and acceptance evidence is in the [Final Acceptance Report](docs/FINAL_ACCEPTANCE_REPORT.md).
+
+### What the suites cover
+
+| Suite | Covers |
+|---|---|
+| `test_end_to_end_scenarios.py` | The six §56 scenarios, on documents authored for the test rather than shipped fixtures |
+| `test_tenant_isolation_attacks.py` | Two real tenants attacking each other across 13 document routes, review actions, the RAG path, and the `document_ids` scoping attack |
+| `test_retrieval_backend_honesty.py` | Qdrant must not report `active` without a live probe; a transient failure must not latch |
+| `test_graph_retrieval_participation.py` | Question -> Cypher relationship derivation, including hostile-input safety |
+| `test_answer_degradation_disclosure.py` | Every fallback is disclosed on the response, never silent |
+| `test_query_router_generalization.py` | Word-boundary matching; vocabulary derived from the schema registry |
+| `test_graph_ontology_generalization.py` | Typed edges derived from field names, for schemas never enumerated |
+| `test_api_hardening.py` | Error envelope, correlated logging, rate-limit memory bound, `/metrics` auth |
+
+### Honest limitations of the evidence
+
+- The Playwright end-to-end suite has **not** been run in this environment; no
+  claim here covers browser runtime behaviour beyond the unit tests and a clean
+  production build.
+- No local LLM checkpoint and no approved external endpoint are available, so
+  the grounded template generator is the shipping path. The LLM-backed
+  generation path is exercised only through stubs.
+- Heavy adapters (LayoutLMv3, Donut, YOLO, DINOv2, DeBERTa-CUAD, XGBoost) have
+  no project-trained checkpoints and correctly report `disabled` or
+  `unavailable` rather than being simulated.
 
 ## Production AI Upgrade Path
 
