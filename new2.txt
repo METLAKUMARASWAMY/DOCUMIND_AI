@@ -1,0 +1,1173 @@
+=====================================================================
+DOCUMIND VISION AI — GENERALIZATION-FIRST FINAL SYSTEM DIRECTIVE
+=====================================================================
+
+CRITICAL CORRECTION TO ALL PREVIOUS IMPLEMENTATION INSTRUCTIONS
+---------------------------------------------------------------
+
+Do NOT build DocuMind around the currently uploaded screenshots, filenames,
+document templates, OCR strings, or known examples.
+
+The named documents supplied during development are REGRESSION TESTS ONLY.
+
+The final DocuMind system must generalize to NEW, PREVIOUSLY UNSEEN enterprise
+documents without requiring a developer to add another hard-coded extraction
+rule for every new image.
+
+The primary engineering objective is therefore:
+
+"Build a document-understanding pipeline, not a collection of document-specific
+parsers."
+
+=====================================================================
+1. NON-NEGOTIABLE GENERALIZATION REQUIREMENT
+=====================================================================
+
+A newly uploaded document that has never existed in the development dataset
+must still go through the complete pipeline.
+
+The system must never require logic like:
+
+if filename == ...
+if OCR text contains this exact known sentence ...
+if document_id == ...
+return known fields ...
+
+Never hard-code:
+
+- filenames
+- document IDs
+- expected field values
+- known OCR output
+- page numbers from test files
+- positions from one template
+- vendor-specific values
+- screenshot-specific coordinates
+
+The system must instead generalize through:
+
+- OCR
+- layout
+- semantic labels
+- aliases
+- spatial relations
+- entity recognition
+- table understanding
+- document classification
+- schema selection
+- schema inference
+- type validation
+- confidence scoring
+- retrieval
+- graph relationships
+- human feedback
+
+=====================================================================
+2. THE SYSTEM MUST SUPPORT THREE DOCUMENT MODES
+=====================================================================
+
+Every uploaded document must enter exactly one conceptual mode.
+
+MODE A — KNOWN DOCUMENT TYPE + KNOWN SCHEMA
+-------------------------------------------
+Example:
+
+invoice
+purchase_order
+contract
+bank_document
+
+Use the registered semantic schema.
+
+MODE B — RECOGNISED DOCUMENT FAMILY BUT UNKNOWN VARIANT
+--------------------------------------------------------
+Example:
+
+a business form with labels and values that does not match any existing
+template.
+
+Use:
+
+known schema fields
++
+generic field discovery
++
+entity extraction
++
+table extraction.
+
+Do NOT discard information merely because the exact template is new.
+
+MODE C — COMPLETELY UNKNOWN DOCUMENT TYPE
+------------------------------------------
+The system must still process it.
+
+Do NOT return:
+
+"0 fields"
+
+simply because no schema exists.
+
+Instead produce a generic document understanding result containing, where
+supported:
+
+document title
+dates
+organisations
+persons
+identifiers
+amounts
+currencies
+addresses
+phone numbers
+email addresses
+account-like identifiers
+key/value pairs
+tables
+sections
+signatures/stamps
+document references
+important text blocks
+
+Mark:
+
+schema_status = "inferred" or "generic"
+
+and route uncertain semantic interpretations to review.
+
+=====================================================================
+3. SEPARATE OCR FROM SEMANTICS
+=====================================================================
+
+The system must maintain separate layers.
+
+LAYER 1
+-------
+Raw visual evidence
+
+LAYER 2
+-------
+OCR words
+
+LAYER 3
+-------
+OCR lines
+
+LAYER 4
+-------
+layout regions
+
+LAYER 5
+-------
+generic key/value pairs
+
+LAYER 6
+-------
+typed entities
+
+LAYER 7
+-------
+document-specific schema fields
+
+LAYER 8
+-------
+verified facts
+
+Never allow errors in Layer 7 to destroy information from Layers 1–6.
+
+For example:
+
+Even if document classification fails, the OCR lines must still be searchable
+through Ask Documents.
+
+This is essential.
+
+=====================================================================
+4. GENERIC KEY/VALUE DISCOVERY
+=====================================================================
+
+Build a generic field discovery engine independent of document type.
+
+It should detect patterns such as:
+
+Label: Value
+
+Label    Value
+
+Label
+Value
+
+and table-style:
+
+Label | Value
+
+Candidate label detection should consider:
+
+- trailing colon
+- typographic emphasis
+- left/right geometry
+- vertical alignment
+- short noun-like phrases
+- nearby values
+- repeated row structure
+- OCR line boundaries
+- layout region
+- known label vocabulary
+- semantic similarity
+
+Examples:
+
+Date: 12/03/2026
+Customer ID: ABC-123
+Requested By: John
+Account Number: XXXX
+Quantity: 50 kg
+
+must be discoverable without writing a parser specifically for that document.
+
+Store generic discovered fields as:
+
+{
+  raw_label,
+  normalized_label,
+  raw_value,
+  normalized_value,
+  page,
+  label_bbox,
+  value_bbox,
+  confidence,
+  source_engine,
+  semantic_type_if_known
+}
+
+=====================================================================
+5. SEMANTIC FIELD NORMALISATION
+=====================================================================
+
+Generic labels should map to canonical concepts.
+
+Examples:
+
+"Invoice No"
+"Invoice #"
+"Invoice Number"
+"Inv No."
+
+→ invoice_number
+
+"Requested By"
+"Request Made By"
+"Original Request Made By"
+
+→ requested_by
+
+"PO"
+"Purchase Order"
+"PO Number"
+"P.O. No."
+
+→ purchase_order_number
+
+Do NOT manually write aliases for every document.
+
+Use a combination of:
+
+1. curated high-value aliases
+2. normalized tokens
+3. fuzzy similarity
+4. embedding similarity when BGE is active
+5. surrounding context
+6. document type
+7. spatial relation
+
+Alias matching must have confidence thresholds.
+
+Low-confidence semantic mappings stay generic and enter review.
+
+=====================================================================
+6. TYPE SYSTEM
+=====================================================================
+
+Create reusable semantic value types.
+
+At minimum:
+
+DATE
+DATETIME
+PERSON
+ORGANISATION
+MONEY
+NUMBER
+QUANTITY
+PERCENTAGE
+PHONE
+EMAIL
+ADDRESS
+BANK_ACCOUNT
+IDENTIFIER
+DOCUMENT_REFERENCE
+CURRENCY
+PRODUCT
+TEXT
+BOOLEAN
+URL
+
+Each type must have independent validation.
+
+For example:
+
+PHONE validator must reject:
+
+3/14/90
+2/15/90
+2026-08-10
+
+DATE validator should recognise them when appropriate.
+
+This logic must work across every document.
+
+Do NOT fix a date/phone bug only for one screenshot.
+
+Fix the TYPE SYSTEM.
+
+=====================================================================
+7. VALUE CLASSIFICATION MUST USE CONTEXT
+=====================================================================
+
+Never classify solely from regex.
+
+The same token can mean different things.
+
+Use:
+
+value pattern
++
+label
++
+surrounding words
++
+layout
++
+document type
++
+section
++
+other nearby entities.
+
+Example:
+
+"123456789"
+
+near:
+
+Account Number
+
+should favour ACCOUNT/IDENTIFIER.
+
+Near:
+
+Phone
+
+should favour PHONE.
+
+Near:
+
+Invoice No.
+
+should favour DOCUMENT_REFERENCE.
+
+=====================================================================
+8. OPEN-SET DOCUMENT CLASSIFICATION
+=====================================================================
+
+Do not force every document into a known class.
+
+Classifier output:
+
+{
+    predicted_type,
+    confidence,
+    candidate_types[],
+    reasons[],
+    schema_mode
+}
+
+Possible:
+
+invoice
+purchase_order
+contract
+bank_document
+business_form
+sample_form
+product_specification
+letter
+email
+statement
+receipt
+report
+generic_form
+unknown
+
+If confidence is below threshold:
+
+predicted_type = unknown
+
+but continue extracting generic content.
+
+"unknown" must NOT mean "unusable".
+
+=====================================================================
+9. SCHEMA REGISTRY MUST BE EXTENSIBLE
+=====================================================================
+
+Known document schemas should live in structured configuration rather than
+scattered conditional code.
+
+Example conceptual structure:
+
+schemas/
+    invoice.yaml
+    purchase_order.yaml
+    contract.yaml
+    bank_document.yaml
+    business_form.yaml
+    sample_form.yaml
+
+Each schema describes:
+
+fields
+aliases
+types
+required status
+relationship expectations
+validation
+normalisation
+graph semantics
+
+Adding a future document family should generally mean adding/configuring a
+schema, NOT rewriting the extraction engine.
+
+=====================================================================
+10. SCHEMA INFERENCE FOR UNKNOWN DOCUMENTS
+=====================================================================
+
+When no known schema matches:
+
+discover generic labels
+    ↓
+map semantic concepts where confident
+    ↓
+detect typed entities
+    ↓
+discover table structures
+    ↓
+construct inferred schema instance
+    ↓
+retain raw evidence
+    ↓
+mark uncertain fields
+    ↓
+send relevant uncertainty to review
+
+For example an unseen form:
+
+Reference ID: A98X
+Submission Date: 10 Aug 2026
+Requested By: Example Person
+Department: Engineering
+
+should still yield meaningful structured information even if there is no
+"submission form" schema.
+
+=====================================================================
+11. TABLES MUST ALSO GENERALIZE
+=====================================================================
+
+Table extraction must not depend on fixed coordinates.
+
+Determine tables using:
+
+- aligned OCR boxes
+- repeated X positions
+- repeated row gaps
+- border/line detection
+- header geometry
+- layout regions
+- structure model when available
+
+Support previously unseen column names.
+
+Example:
+
+Item | Qty | Rate | Total
+
+and
+
+Description | Units | Unit Price | Amount
+
+should both become structured tables.
+
+Semantic normalisation can later map compatible columns.
+
+=====================================================================
+12. OCR MUST HANDLE NEW IMAGE CONDITIONS
+=====================================================================
+
+Do not optimise preprocessing only for current scans.
+
+Use an adaptive OCR strategy.
+
+Measure:
+
+- image size
+- contrast
+- skew
+- noise
+- OCR confidence
+- text density
+
+Then choose preprocessing.
+
+Possible variants:
+
+original
+grayscale
+contrast-enhanced
+deskewed
+thresholded
+denoised
+upscaled crop
+
+Only trigger expensive alternatives when useful.
+
+Critical low-confidence regions should receive local OCR retries.
+
+=====================================================================
+13. OCR CONSENSUS
+=====================================================================
+
+When multiple OCR passes exist:
+
+do not simply select the longest string.
+
+Compare:
+
+- confidence
+- character plausibility
+- semantic type validation
+- neighbouring words
+- agreement between passes
+
+Maintain alternatives when confidence remains low.
+
+=====================================================================
+14. INFORMATION MUST NEVER DISAPPEAR BECAUSE EXTRACTION FAILED
+=====================================================================
+
+This is mandatory.
+
+Even if:
+
+classification fails,
+schema routing fails,
+structured extraction fails,
+advanced models are unavailable,
+
+DocuMind must still retain:
+
+OCR lines
+layout blocks
+raw page text
+generic key/value candidates
+tables where detected
+
+These must still be indexed for Ask Documents.
+
+Therefore:
+
+STRUCTURED EXTRACTION FAILURE != RAG FAILURE.
+
+=====================================================================
+15. ASK DOCUMENTS MUST WORK ON UNSEEN DOCUMENTS
+=====================================================================
+
+Ask Documents must search multiple layers.
+
+Priority cascade:
+
+1. human-verified structured facts
+2. reviewed structured facts
+3. high-confidence schema fields
+4. generic discovered key/value pairs
+5. tables
+6. exact identifier matches
+7. OCR lines
+8. layout blocks
+9. semantic chunks
+10. vector retrieval
+11. graph facts
+12. visual/risk evidence
+
+Therefore a user should be able to upload a new document and immediately ask:
+
+"What is this document about?"
+
+"What date is shown?"
+
+"Who created this?"
+
+"What reference number appears?"
+
+"What are the important values?"
+
+"Summarise this document."
+
+"What tables are present?"
+
+"Does it mention an account number?"
+
+even when no predefined schema exists.
+
+=====================================================================
+16. RAW OCR MUST BE INDEXED
+=====================================================================
+
+Never index only extracted fields.
+
+Index:
+
+- meaningful OCR lines
+- paragraphs
+- layout sections
+- tables
+- fields
+- verified values
+
+Otherwise every extraction error becomes a RAG failure.
+
+Use metadata:
+
+tenant_id
+document_id
+page
+bbox/region
+content_type
+verification status
+processing version
+
+=====================================================================
+17. SEMANTIC RETRIEVAL
+=====================================================================
+
+Use BGE-M3 when operational.
+
+Fallback:
+
+local lexical/hash retrieval.
+
+But both retrieval paths must consume GENERIC DOCUMENT CONTENT, not only
+predefined schema fields.
+
+Qdrant must index unseen documents automatically during processing.
+
+No developer intervention should be needed.
+
+=====================================================================
+18. GENERATION MUST NOT BE THE EXTRACTOR
+=====================================================================
+
+The LLM must not invent structured fields.
+
+LLM usage:
+
+retrieved evidence
++
+verified facts
++
+graph facts
++
+deterministic calculations
++
+conversation state
+
+→ natural-language response.
+
+Document extraction remains independently auditable.
+
+=====================================================================
+19. KNOWLEDGE GRAPH MUST ALSO GENERALIZE
+=====================================================================
+
+Do not require a custom Neo4j relationship for every newly discovered label.
+
+Use two semantic levels.
+
+LEVEL A — generic
+
+(Document)-[:HAS_ATTRIBUTE]->(Attribute)
+
+Attribute:
+{
+  name,
+  semantic_type,
+  value
+}
+
+LEVEL B — recognised semantic relationships
+
+Document -> ISSUED_BY -> Organisation
+Document -> REQUESTED_BY -> Person
+Invoice -> REFERENCES -> PurchaseOrder
+Document -> HAS_DATE -> Date
+Document -> HAS_AMOUNT -> Amount
+
+Promote generic relationships to specific relationships only when semantic
+confidence is sufficient.
+
+This allows unseen documents to still enter the graph.
+
+=====================================================================
+20. ENTITY RESOLUTION
+=====================================================================
+
+Cross-document relationships must not depend only on identical strings.
+
+Entity resolution should consider:
+
+normalised text
+identifier equality
+email
+phone
+bank account
+address
+vendor ID
+semantic similarity
+reviewed aliases
+
+Examples:
+
+ABC Pvt. Ltd.
+ABC Private Limited
+ABC PVT LTD
+
+may represent one organisation.
+
+Do not merge entities solely because names are slightly similar.
+
+Use confidence and evidence.
+
+=====================================================================
+21. HUMAN REVIEW MUST IMPROVE FUTURE PROCESSING
+=====================================================================
+
+Human correction should not become filename-specific code.
+
+Store:
+
+original extraction
+corrected value
+corrected semantic field
+document type
+label text
+context
+layout relation
+reviewer
+
+Use approved corrections to:
+
+- improve alias vocabulary
+- improve schema statistics
+- improve classifier examples
+- create future labelled datasets
+- improve confidence calibration
+
+Do NOT silently retrain production models after every review.
+
+Build an explicit feedback dataset.
+
+=====================================================================
+22. GENERAL RISK ENGINE
+=====================================================================
+
+Risk rules must operate on semantic facts, not fixed templates.
+
+Example:
+
+IF
+document contains requested_payment_account
+
+AND
+organisation has approved_bank_account
+
+AND
+normalised accounts differ
+
+THEN
+BANK_ACCOUNT_MISMATCH
+
+This should work regardless of invoice layout.
+
+Similarly:
+
+duplicate invoice numbers
+amount mismatch
+missing approval
+date inconsistencies
+cross-document conflicts
+
+must operate on semantic entities.
+
+=====================================================================
+23. MODEL INDEPENDENCE
+=====================================================================
+
+The architecture must continue functioning when optional models are unavailable.
+
+Example:
+
+PP-OCR unavailable
+→ Tesseract
+
+PP-Structure unavailable
+→ geometry layout
+
+LayoutLM unavailable
+→ generic/deterministic semantic extraction
+
+BGE unavailable
+→ lexical retrieval
+
+Qdrant unavailable
+→ local vector store
+
+Qwen unavailable
+→ grounded template generator
+
+YOLO unavailable
+→ OpenCV visual cues
+
+Advanced model activation should IMPROVE the system.
+
+It must not be necessary for basic correctness.
+
+=====================================================================
+24. UNSEEN DOCUMENT TESTING
+=====================================================================
+
+THIS IS MANDATORY.
+
+Current development documents must be divided conceptually into:
+
+development examples
+regression examples
+unseen/holdout examples
+
+Do not inspect holdout expected answers while implementing extraction logic.
+
+After implementation:
+
+select several documents that were not used for parser tuning.
+
+Test:
+
+classification
+generic field discovery
+semantic typing
+tables
+OCR
+RAG
+graph
+review
+
+Measure how the pipeline behaves.
+
+A valid generalisation test is more important than making one known screenshot
+perfect.
+
+=====================================================================
+25. PROPERTY-BASED / GENERIC TESTS
+=====================================================================
+
+Add tests for invariants rather than exact documents only.
+
+Examples:
+
+Any valid MM/DD/YY date should not be classified as PHONE.
+
+Any email address should satisfy email type validation.
+
+Every extracted field must have evidence.
+
+No evidence span may be assigned to mutually incompatible semantic fields
+without conflict metadata.
+
+Every tenant-indexed vector must contain tenant_id.
+
+Every graph node derived from documents must preserve tenant_id.
+
+Every RAG citation must resolve to an existing evidence object.
+
+Reprocessing must not duplicate current graph/vector facts.
+
+=====================================================================
+26. DOCUMENT VARIATION TESTS
+=====================================================================
+
+Test robustness against variations such as:
+
+different fonts
+slightly rotated pages
+low contrast
+different image resolution
+colon/no-colon labels
+label above value
+label left of value
+table layouts
+multi-column pages
+scanned PDFs
+PNG/JPEG/TIFF
+multi-page PDFs
+
+The extraction logic must rely on semantic/layout principles rather than exact
+pixel coordinates.
+
+=====================================================================
+27. CONFIDENCE / ABSTENTION
+=====================================================================
+
+The system must be allowed to say:
+
+unknown
+uncertain
+not found
+review required
+
+This is better than confidently returning the wrong field.
+
+Implement confidence thresholds for:
+
+classification
+field mapping
+entity typing
+entity resolution
+graph relation
+risk indicators
+
+=====================================================================
+28. NEW DOCUMENT EXPERIENCE
+=====================================================================
+
+The expected flow for ANY new document is:
+
+UPLOAD
+  ↓
+file validated
+  ↓
+pages rendered
+  ↓
+preprocessing
+  ↓
+OCR
+  ↓
+layout
+  ↓
+document classification
+  ↓
+known-schema OR inferred-schema
+  ↓
+generic key/value discovery
+  ↓
+semantic entity typing
+  ↓
+table extraction
+  ↓
+structured extraction
+  ↓
+evidence validation
+  ↓
+risk analysis
+  ↓
+vector indexing
+  ↓
+Neo4j projection
+  ↓
+review routing
+  ↓
+available in Ask Documents
+  ↓
+available in Knowledge Graph
+  ↓
+available in Analytics
+  ↓
+available for Reports/Narratives where applicable
+
+No manual code modification should be necessary between UPLOAD and these
+features.
+
+=====================================================================
+29. SPECIALIZED MODULES SHOULD BE CONDITIONAL
+=====================================================================
+
+Not every document needs every module.
+
+Example:
+
+invoice
+→ finance validation relevant
+
+contract
+→ clause extraction relevant
+
+generic form
+→ CUAD not relevant
+
+plain letter
+→ table parser may find zero tables
+
+bank document
+→ bank identifiers relevant
+
+Do not run irrelevant models merely because they exist.
+
+Build routing based on document characteristics.
+
+=====================================================================
+30. CURRENT DOCUMENTS ARE TESTS, NOT THE PRODUCT
+=====================================================================
+
+Examples including:
+
+87093315_87093318.png
+00093726.png
+
+must remain regression tests.
+
+Passing them is required.
+
+However:
+
+DO NOT optimize exclusively for them.
+
+After both pass, immediately validate on OTHER documents.
+
+If the solution works only for the named documents, the task is NOT complete.
+
+=====================================================================
+31. SUCCESS CRITERIA
+=====================================================================
+
+The implementation succeeds when:
+
+[ ] A newly uploaded image requires no code change.
+
+[ ] OCR text is accessible even when schema is unknown.
+
+[ ] Unknown documents still produce generic structured information.
+
+[ ] Known schemas produce richer typed fields.
+
+[ ] Dates are distinguished from phones globally.
+
+[ ] Semantic fields use layout/context instead of only regex.
+
+[ ] Tables support unseen headings.
+
+[ ] Ask Documents works from OCR even when structured extraction fails.
+
+[ ] Semantic retrieval automatically indexes new documents.
+
+[ ] Neo4j represents new documents without requiring custom code.
+
+[ ] Risk rules operate on semantic facts.
+
+[ ] Review corrections are stored as reusable training/feedback evidence.
+
+[ ] Optional heavy models improve the pipeline but are not required for
+    baseline operation.
+
+[ ] Multiple unseen documents are tested after implementation.
+
+=====================================================================
+32. FINAL ENGINEERING PRINCIPLE
+=====================================================================
+
+DO NOT SOLVE DOCUMENTS.
+
+SOLVE DOCUMENT UNDERSTANDING.
+
+The implementation should learn/generalize from:
+
+visual structure
+text semantics
+spatial relationships
+data types
+schemas
+entities
+cross-document relationships
+retrieval
+review feedback
+
+rather than from known screenshots.
+
+Every time you are about to write a document-specific rule, ask:
+
+"Will this work on another document expressing the same concept in a different
+layout?"
+
+If the answer is NO, redesign the rule.
+
+=====================================================================
+33. EXECUTION DIRECTIVE
+=====================================================================
+
+Apply this generalisation architecture throughout the EXISTING DocuMind
+repository.
+
+Do not merely document it.
+
+Inspect current extraction, schema, classification, RAG and graph
+implementations and refactor them where necessary.
+
+Then process:
+
+1. known regression documents,
+2. different documents from the repository,
+3. previously unused representative documents.
+
+Compare behaviour.
+
+Continue correcting SYSTEMIC causes.
+
+Do not correct isolated outputs.
+
+A bug such as:
+
+date interpreted as phone
+
+must be fixed in reusable semantic typing/validation.
+
+A bug such as:
+
+new business form becomes unknown
+
+must be fixed in open-set classification/schema inference.
+
+A bug such as:
+
+question cannot be answered because field extraction failed
+
+must be fixed by multi-layer retrieval over raw OCR and semantic chunks.
+
+A bug such as:
+
+new field missing from graph
+
+must be fixed using generic graph projection.
+
+The final application must handle future uploaded documents through the same
+pipeline without developer intervention.
+
+=====================================================================
+END GENERALIZATION-FIRST DIRECTIVE
+=====================================================================

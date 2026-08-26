@@ -92,22 +92,110 @@ GRAPH_RELATIONSHIP_TYPES = frozenset(
     }
 )
 
+#: Relationship types whose natural-language phrasing does not match their field
+#: name, so they cannot be derived and must be stated. Field-derived relations
+#: (HAS_SAMPLE_NUMBER, HAS_POLICY_NUMBER, REQUESTED_BY, ...) are resolved
+#: dynamically by :func:`graph_relationship_candidates` instead of being listed
+#: here, so a schema this project has never seen is still reachable through the
+#: graph.
 GRAPH_QUERY_INTENTS: dict[str, tuple[str, ...]] = {
-    "REQUESTED_BY": ("who requested", "requested by", "requester"),
-    "SPECIFICATIONS_WRITTEN_BY": ("who wrote", "specifications written by"),
-    "HAS_SAMPLE_NUMBER": ("sample number", "sample no", "sample id"),
-    "HAS_PRODUCT_TYPE": ("product type", "type of product", "type of cigarette"),
-    "HAS_BATCH_SIZE": ("batch size", "lot size", "quantity"),
-    "HAS_DATE": ("what date", "document date", "form date"),
-    "HAS_REQUEST_DATE": ("request date", "when was the request", "request made"),
-    "HAS_PURPOSE": ("purpose", "what was the purpose"),
-    "HAS_BANK_ACCOUNT": ("bank account", "paid to", "payment account"),
     "ISSUED_BY": ("issued by", "vendor", "supplier"),
     "ISSUED_TO": ("issued to", "buyer", "customer"),
     "REFERENCES": ("references", "linked", "related"),
+    "GOVERNED_BY": ("contract", "governed by", "agreement"),
+    "PAID_TO": ("paid to", "payment account", "bank account"),
+    "LOCATED_AT": ("address", "located at", "location"),
+    "REGISTERED_WITH": ("tax id", "registered with", "gstin"),
+    "HAS_CONTACT": ("contact", "who do i contact"),
+    "HAS_PHONE": ("phone", "telephone", "mobile"),
+    "HAS_FAX": ("fax",),
     "HAS_RISK": ("risk", "suspicious", "warning"),
     "HAS_ATTRIBUTE": ("attribute", "property", "field"),
+    "SENT_TO": ("sent to", "recipient", "addressed to"),
+    "SENT": ("sent by", "sender", "from whom"),
+    "SUBMITTED": ("submitted by", "organisation", "organization"),
+    "MATCHES": ("matches", "same as", "duplicate"),
+    "DUPLICATE_OF": ("duplicate of", "copy of"),
+    "HAS_TITLE": ("title", "form title"),
+    "HAS_DATE": ("what date", "document date", "form date"),
 }
+
+#: Cypher only ever receives relationship names matching this shape. User text is
+#: never interpolated; candidates are derived and then filtered through it.
+_SAFE_RELATIONSHIP = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+
+
+def graph_relationship_candidates(question: str) -> list[str]:
+    """Relationship types a question could plausibly be asking about.
+
+    Combines the stated intents above with relationship names *derived* from the
+    document field vocabulary, using the same naming rule the graph builder uses
+    when it creates the edges. That keeps question -> edge resolution working for
+    field names nobody enumerated in advance.
+
+    Every candidate is validated against :data:`_SAFE_RELATIONSHIP` before it can
+    reach Cypher, so this stays injection-safe even though the vocabulary is
+    dynamic.
+    """
+
+    normalized = " ".join(question.casefold().split())
+    if not normalized:
+        return []
+    candidates: list[str] = [
+        relationship
+        for relationship, aliases in GRAPH_QUERY_INTENTS.items()
+        if any(alias in normalized for alias in aliases)
+    ]
+    candidates.extend(_derived_relationship_candidates(normalized))
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in candidates:
+        if item in seen or not _SAFE_RELATIONSHIP.match(item):
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered
+
+
+#: Bound on derived candidates so one broad question cannot widen the Cypher
+#: relationship filter without limit.
+_MAX_DERIVED_RELATIONSHIPS = 24
+
+
+def _derived_relationship_candidates(normalized: str) -> list[str]:
+    """Map field labels mentioned in the question to their edge names.
+
+    Two derivations, both general:
+
+    * a field label appearing in the question maps to its own edge name
+      ("policy number" -> ``HAS_POLICY_NUMBER``);
+    * an agent question ("who ...") offers every ``*_BY`` edge the vocabulary can
+      produce ("who requested" -> ``REQUESTED_BY``, "who wrote" ->
+      ``SPECIFICATIONS_WRITTEN_BY``). Irregular verbs make phrase-to-verb mapping
+      unreliable, so the agent relations are offered as a set and Cypher filters
+      to whatever the graph actually holds.
+    """
+
+    try:
+        from app.services.vision.graph_builder import EvidenceGraphBuilder
+        from app.services.vision.query_router import VisionQueryRouter
+
+        terms = VisionQueryRouter().field_terms()
+        asks_who = re.search(r"(?<![\w-])who(?![\w-])", normalized) is not None
+        derived: list[str] = []
+        agent_relations: list[str] = []
+        for term in terms:
+            relationship = EvidenceGraphBuilder._derived_relationship(term.replace(" ", "_"))
+            if not relationship:
+                continue
+            # Word-bounded so "tax" cannot fire on "taxonomy".
+            if re.search(rf"(?<![\w-]){re.escape(term)}(?![\w-])", normalized):
+                derived.append(relationship)
+            elif asks_who and relationship.endswith("_BY"):
+                agent_relations.append(relationship)
+        return (derived + agent_relations)[:_MAX_DERIVED_RELATIONSHIPS]
+    except Exception:  # pragma: no cover - vocabulary is a hint, never required
+        return []
 
 
 class VisionPersistenceCoordinator:
@@ -631,12 +719,7 @@ class VisionPersistenceCoordinator:
         """
         if not settings.enable_neo4j or not tenant_id or not document_ids:
             return []
-        normalized = " ".join(question.casefold().split())
-        relationships = [
-            relationship
-            for relationship, aliases in GRAPH_QUERY_INTENTS.items()
-            if any(alias in normalized for alias in aliases)
-        ]
+        relationships = graph_relationship_candidates(question)
         if not relationships:
             return []
         try:
