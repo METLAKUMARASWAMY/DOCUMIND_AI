@@ -1,5 +1,5 @@
+from app.legacy.pipeline import DocumentIntelligencePipeline
 from app.models.schemas import TextAnalysisRequest
-from app.services.pipeline import DocumentIntelligencePipeline
 
 
 def test_customer_is_not_classified_as_vendor_and_vendor_is_clean():

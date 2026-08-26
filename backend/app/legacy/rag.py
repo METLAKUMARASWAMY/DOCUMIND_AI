@@ -1,5 +1,5 @@
+from app.legacy.retrieval import VectorIntelligenceLayer
 from app.models.schemas import QueryCitation, QueryResponse
-from app.services.retrieval import VectorIntelligenceLayer
 
 
 class RAGEngine:

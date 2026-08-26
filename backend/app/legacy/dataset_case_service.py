@@ -2,6 +2,9 @@ from pathlib import Path
 from typing import Any
 
 from app.core.security import hash_document, utc_now_iso
+from app.legacy.dataset_loader import DatasetLoader, dataset_loader
+from app.legacy.report import ReportGenerationService
+from app.legacy.scoring import ScoringService
 from app.models.schemas import (
     AgentDecision,
     AnalysisResponse,
@@ -18,9 +21,6 @@ from app.models.schemas import (
     WorkflowAction,
     WorkflowState,
 )
-from app.services.dataset_loader import DatasetLoader, dataset_loader
-from app.services.report import ReportGenerationService
-from app.services.scoring import ScoringService
 
 
 class DatasetCaseService:

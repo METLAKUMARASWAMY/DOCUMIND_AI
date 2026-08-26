@@ -1,5 +1,5 @@
+from app.legacy.pipeline import DocumentIntelligencePipeline
 from app.models.schemas import TextAnalysisRequest
-from app.services.pipeline import DocumentIntelligencePipeline
 
 
 def test_pipeline_extracts_and_scores_invoice_case():
@@ -29,7 +29,7 @@ def test_rag_returns_citation_after_indexing():
         )
     )
 
-    from app.services.rag import RAGEngine
+    from app.legacy.rag import RAGEngine
 
     answer = RAGEngine(service.retrieval).answer("What law governs the contract?", response.case_id)
     assert answer.citations

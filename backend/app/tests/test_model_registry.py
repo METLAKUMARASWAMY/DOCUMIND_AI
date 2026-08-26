@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
+from app.legacy.pipeline import DocumentIntelligencePipeline
 from app.main import create_app
 from app.models.schemas import TextAnalysisRequest
-from app.services.pipeline import DocumentIntelligencePipeline
 
 client = TestClient(create_app())
 

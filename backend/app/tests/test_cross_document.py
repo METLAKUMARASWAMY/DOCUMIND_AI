@@ -1,4 +1,4 @@
-from app.services.pipeline import DocumentIntelligencePipeline
+from app.legacy.pipeline import DocumentIntelligencePipeline
 
 
 def test_cross_document_engine_detects_mismatch_conflict_and_exception():

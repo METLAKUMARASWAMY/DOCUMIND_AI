@@ -1,5 +1,5 @@
+from app.legacy.scoring import ScoringService
 from app.models.schemas import ComplianceFinding, Evidence, FraudSignal, RiskLevel, WorkflowAction
-from app.services.scoring import ScoringService
 
 
 def _evidence() -> Evidence:

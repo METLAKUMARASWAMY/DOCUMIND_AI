@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
+from app.legacy.finance_workflow_service import FinanceReviewGuardrailError, finance_workflow
 from app.models.schemas import (
     EvaluationRunRequest,
     FinanceDocumentType,
@@ -11,7 +12,6 @@ from app.models.schemas import (
     HumanReviewRequest,
     RiskLevel,
 )
-from app.services.finance_workflow_service import FinanceReviewGuardrailError, finance_workflow
 
 router = APIRouter(prefix="/finance", tags=["finance-project6"])
 

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
+from app.legacy.pipeline import DocumentIntelligencePipeline
 from app.main import create_app
-from app.services.pipeline import DocumentIntelligencePipeline
 from app.tests.auth_helpers import auth_headers
 
 client = TestClient(create_app())

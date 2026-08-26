@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from app.core.security import hash_document
+from app.legacy.finance_evaluation_service import FinanceEvaluationService
+from app.legacy.finance_extraction_service import FinanceExtractionService
+from app.legacy.finance_narrative_service import FinanceNarrativeService
+from app.legacy.vector_store import FinanceVectorStore
 from app.models.schemas import (
     DemoCase,
     EvaluationResult,
@@ -21,11 +25,7 @@ from app.models.schemas import (
     RiskLevel,
     VectorRecord,
 )
-from app.services.finance_evaluation_service import FinanceEvaluationService
-from app.services.finance_extraction_service import FinanceExtractionService
-from app.services.finance_narrative_service import FinanceNarrativeService
 from app.services.ingestion import DocumentIngestionService
-from app.services.vector_store import FinanceVectorStore
 
 
 class FinanceReviewGuardrailError(ValueError):

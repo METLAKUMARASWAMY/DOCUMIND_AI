@@ -5,13 +5,13 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
+from app.legacy.vector_store import FinanceVectorStore
 from app.models.schemas import (
     EvaluationResult,
     ExtractedFinanceFields,
     FinanceNarrative,
     HumanReview,
 )
-from app.services.vector_store import FinanceVectorStore
 
 
 class FinanceEvaluationService:

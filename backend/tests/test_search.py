@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
+from app.legacy.pipeline import DocumentIntelligencePipeline
+from app.legacy.rag import RAGEngine
 from app.main import create_app
-from app.services.pipeline import DocumentIntelligencePipeline
-from app.services.rag import RAGEngine
 
 client = TestClient(create_app())
 

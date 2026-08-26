@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+from app.legacy.embedding import LocalEmbeddingService
 from app.models.schemas import FinanceDocumentType, FinanceWorkflowStatus, RiskLevel, VectorRecord
-from app.services.embedding import LocalEmbeddingService
 
 
 @dataclass

@@ -1,8 +1,8 @@
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
+from app.legacy.embedding import LocalEmbeddingService
 from app.models.schemas import Evidence, EvidenceChunk, QueryCitation
-from app.services.embedding import LocalEmbeddingService
 
 
 @dataclass

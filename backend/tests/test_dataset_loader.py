@@ -1,5 +1,5 @@
-from app.services import dataset_loader as loader_module
-from app.services.dataset_loader import DatasetLoader
+from app.legacy import dataset_loader as loader_module
+from app.legacy.dataset_loader import DatasetLoader
 
 
 def test_dataset_loads_cases_documents_and_evidence():

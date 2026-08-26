@@ -2,6 +2,22 @@ from typing import Any
 from uuid import uuid4
 
 from app.core.security import hash_document
+from app.legacy.agents import MultiAgentReasoningSystem
+from app.legacy.audit import AuditService
+from app.legacy.chunking import EvidenceChunkingService
+from app.legacy.compliance import ComplianceEngine
+from app.legacy.cross_document import CrossDocumentVerificationService
+from app.legacy.dataset_case_service import DatasetCaseService
+from app.legacy.extraction import KnowledgeExtractionService
+from app.legacy.fraud import FraudDetectionEngine
+from app.legacy.knowledge_graph import KnowledgeGraphEngine
+from app.legacy.ocr import OCRLayoutService
+from app.legacy.predictive import PredictiveIntelligenceService
+from app.legacy.report import ReportGenerationService
+from app.legacy.retrieval import VectorIntelligenceLayer
+from app.legacy.scoring import ScoringService
+from app.legacy.workflow import WorkflowEngine
+from app.legacy.xai import ExplainabilityLayer
 from app.models.schemas import (
     AnalysisResponse,
     DocumentRecord,
@@ -14,25 +30,9 @@ from app.repositories.document_repository import DocumentRepository
 from app.repositories.evidence_repository import EvidenceRepository
 from app.repositories.finding_repository import FindingRepository
 from app.repositories.graph_repository import GraphRepository
-from app.services.agents import MultiAgentReasoningSystem
-from app.services.audit import AuditService
-from app.services.chunking import EvidenceChunkingService
 from app.services.classification import DocumentClassificationService
-from app.services.compliance import ComplianceEngine
-from app.services.cross_document import CrossDocumentVerificationService
-from app.services.dataset_case_service import DatasetCaseService
-from app.services.extraction import KnowledgeExtractionService
-from app.services.fraud import FraudDetectionEngine
 from app.services.ingestion import DocumentIngestionService
-from app.services.knowledge_graph import KnowledgeGraphEngine
 from app.services.model_registry import ModelRegistryService
-from app.services.ocr import OCRLayoutService
-from app.services.predictive import PredictiveIntelligenceService
-from app.services.report import ReportGenerationService
-from app.services.retrieval import VectorIntelligenceLayer
-from app.services.scoring import ScoringService
-from app.services.workflow import WorkflowEngine
-from app.services.xai import ExplainabilityLayer
 
 
 class DocumentIntelligencePipeline:

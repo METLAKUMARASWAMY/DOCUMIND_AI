@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import ValidationError
 
 from app.core.config import settings
+from app.legacy.pipeline import pipeline
+from app.legacy.rag import RAGEngine
 from app.models.schemas import (
     AnalysisResponse,
     AuthUser,
@@ -22,8 +24,6 @@ from app.models.schemas import (
     WorkflowDecisionRequest,
 )
 from app.services.auth import require_user
-from app.services.pipeline import pipeline
-from app.services.rag import RAGEngine
 from app.services.readiness import PhaseReadinessService
 from app.services.vision import vision_ai_service
 

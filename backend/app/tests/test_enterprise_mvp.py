@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
 
+from app.legacy.pipeline import DocumentIntelligencePipeline
+from app.legacy.rag import RAGEngine
 from app.main import create_app
 from app.models.schemas import TextAnalysisRequest
-from app.services.pipeline import DocumentIntelligencePipeline
-from app.services.rag import RAGEngine
 from app.tests.auth_helpers import auth_headers
 
 client = TestClient(create_app())
