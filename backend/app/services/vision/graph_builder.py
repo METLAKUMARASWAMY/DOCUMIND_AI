@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, ClassVar
 
 from app.core.security import hash_document
 from app.models.vision import (
@@ -271,13 +271,6 @@ class EvidenceGraphBuilder:
         sender = self._first_entity("sender_name")
         recipient_company = self._first_entity("recipient_company")
         client_number = self._first_entity("client_number", "reference_number")
-        sample_number = self._first_entity("sample_number")
-        product_type = self._first_entity("product_type")
-        batch_size = self._first_entity("batch_size")
-        requested_by = self._first_entity("requested_by")
-        specifications_written_by = self._first_entity("specifications_written_by")
-        request_date = self._first_entity("request_date")
-        purpose = self._first_entity("purpose")
 
         if title:
             self._field_relationship(
@@ -327,56 +320,6 @@ class EvidenceGraphBuilder:
                 "client_number",
                 "reference_number",
             )
-        if sample_number:
-            self._field_relationship(
-                document_node,
-                sample_number,
-                "HAS_SAMPLE_NUMBER",
-                "sample_number",
-            )
-        if product_type:
-            self._field_relationship(
-                document_node,
-                product_type,
-                "HAS_PRODUCT_TYPE",
-                "product_type",
-            )
-        if batch_size:
-            self._field_relationship(
-                document_node,
-                batch_size,
-                "HAS_BATCH_SIZE",
-                "batch_size",
-            )
-        if requested_by:
-            self._field_relationship(
-                document_node,
-                requested_by,
-                "REQUESTED_BY",
-                "requested_by",
-            )
-        if specifications_written_by:
-            self._field_relationship(
-                document_node,
-                specifications_written_by,
-                "SPECIFICATIONS_WRITTEN_BY",
-                "specifications_written_by",
-            )
-        if request_date:
-            self._field_relationship(
-                document_node,
-                request_date,
-                "HAS_REQUEST_DATE",
-                "request_date",
-            )
-        if purpose:
-            self._field_relationship(
-                document_node,
-                purpose,
-                "HAS_PURPOSE",
-                "purpose",
-            )
-
         if organisation:
             self._field_relationship(
                 organisation,
@@ -467,6 +410,98 @@ class EvidenceGraphBuilder:
                 relationship,
                 field_name,
             )
+
+        self._add_derived_field_relationships(document_node)
+
+    #: Field names consumed by the enterprise ontology above. Anything else is
+    #: given a typed edge derived from its own name instead of being dropped or
+    #: flattened into an untyped HAS_FIELD.
+    ONTOLOGY_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "organisation_name",
+            "company_name",
+            "recipient_company",
+            "sender_company",
+            "vendor_name",
+            "buyer_name",
+            "customer_name",
+            "contact_name",
+            "person_name",
+            "recipient_name",
+            "sender_name",
+            "authorised_signer",
+            "authorized_signer",
+            "signature_name",
+            "invoice_number",
+            "purchase_order_number",
+            "contract_number",
+            "parties",
+            "bank_account_number",
+            "account_number",
+            "IFSC_or_bank_code",
+            "vendor_tax_id",
+            "tax_identifier",
+            "address",
+            "vendor_address",
+            "payment_reference",
+            "total_amount",
+            "phone_number",
+            "fax_number",
+            "recipient_phone",
+            "sender_phone",
+            "recipient_fax",
+            "sender_fax",
+            "visible_phone_numbers",
+            "visible_fax_numbers",
+            "email",
+            "document_title",
+            "form_title",
+            "title",
+            "date",
+            "visible_dates",
+            "invoice_date",
+            "effective_date",
+            "client_number",
+            "reference_number",
+        }
+    )
+
+    def _add_derived_field_relationships(self, document_node: str) -> None:
+        """Type every remaining schema field from its own name.
+
+        Previously this method enumerated the field names of one lab-request-form
+        fixture (``sample_number``, ``product_type``, ``batch_size``,
+        ``requested_by``, ``specifications_written_by``, ``request_date``,
+        ``purpose``) to emit ``HAS_SAMPLE_NUMBER``-style edges. A document whose
+        schema used different names got nothing typed.
+
+        The naming rule below reproduces every one of those edges exactly, and
+        extends the same treatment to any field of any schema:
+
+        ``requested_by``   -> ``REQUESTED_BY``   (agent relations keep their verb)
+        ``sample_number``  -> ``HAS_SAMPLE_NUMBER``
+        ``purpose``        -> ``HAS_PURPOSE``
+        """
+
+        for field_name, entity in sorted(self.entities_by_field.items()):
+            if field_name in self.ONTOLOGY_FIELDS:
+                continue
+            relationship = self._derived_relationship(field_name)
+            if relationship is None:
+                continue
+            self._field_relationship(document_node, entity, relationship, field_name)
+
+    @staticmethod
+    def _derived_relationship(field_name: str) -> str | None:
+        normalized = re.sub(r"[^0-9a-zA-Z]+", "_", str(field_name)).strip("_")
+        if not normalized:
+            return None
+        upper = normalized.upper()
+        # "*_by" reads as an agent relation ("REQUESTED_BY"); everything else is
+        # an attribute of the document ("HAS_BATCH_SIZE").
+        if upper.endswith("_BY"):
+            return upper
+        return f"HAS_{upper}"
 
     def _add_visual_signatures(self, document_node: str) -> None:
         signer = self._first_entity(
