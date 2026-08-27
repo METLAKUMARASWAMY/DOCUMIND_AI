@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from app.core.answer_policy import UNSUPPORTED_ANSWER
 from app.core.config import settings
+from app.core.evidence_text import compose_evidence_text
 from app.core.security import hash_document, utc_now_iso
 from app.models.vision import (
     ExtractedVisionField,
@@ -694,7 +695,7 @@ class AnsweringMixin:
             for hit in hits
         ]
         response = VisionAskResponse(
-            answer=" ".join(hit.chunk.text for hit in hits)[:1200],
+            answer=compose_evidence_text(hit.chunk.text for hit in hits),
             answer_status="supported",
             citations=citations,
             confidence=round(sum(hit.chunk.confidence for hit in hits) / len(hits), 4),

@@ -8,6 +8,7 @@ from typing import Any
 
 from app.core.answer_policy import UNSUPPORTED_ANSWER
 from app.core.config import settings
+from app.core.evidence_text import compose_evidence_text
 from app.services.vision.adapters import AdapterStatus, VisionAdapter
 from app.services.vision.checkpoint_utils import local_or_hf_cached_checkpoint
 
@@ -133,7 +134,7 @@ class GroundedTemplateGeneratorAdapter(VisionAdapter):
             }
         selected = usable[:3]
         return {
-            "answer": " ".join(str(item["text"]).strip() for item in selected)[:1200],
+            "answer": compose_evidence_text(str(item["text"]) for item in selected),
             "answer_status": "supported",
             "citation_ids": [str(item["id"]) for item in selected],
             "reasoning_summary": "Composed directly from the selected evidence blocks.",
