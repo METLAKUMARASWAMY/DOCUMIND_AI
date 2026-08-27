@@ -7,6 +7,7 @@ import json
 import mimetypes
 import re
 import threading
+import time
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -208,6 +209,7 @@ class VisionPersistenceCoordinator:
         self._lock = threading.RLock()
         self._initialized = False
         self._errors: dict[str, str] = {}
+        self._neo4j_unavailable_since: float | None = None
 
     def initialize(self) -> dict[str, Any]:
         with self._lock:
@@ -243,13 +245,17 @@ class VisionPersistenceCoordinator:
             return None
         try:
             client = self._minio_client()
-            object_key = f"{document.tenant_id}/{document.document_id}/original/{Path(filename).name}"
+            object_key = (
+                f"{document.tenant_id}/{document.document_id}/original/{Path(filename).name}"
+            )
             client.put_object(
                 settings.minio_bucket,
                 object_key,
                 BytesIO(content),
                 length=len(content),
-                content_type=content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream",
+                content_type=content_type
+                or mimetypes.guess_type(filename)[0]
+                or "application/octet-stream",
             )
             self._errors.pop("minio", None)
             return f"s3://{settings.minio_bucket}/{object_key}"
@@ -271,9 +277,15 @@ class VisionPersistenceCoordinator:
                     protected,
                     upsert=True,
                 )
-                self._replace_many(database.pages, document, payload.get("page_artifacts", []), "page_number")
-                self._replace_many(database.ocr_results, document, payload.get("ocr_words", []), "word_id")
-                self._replace_many(database.ocr_lines, document, payload.get("ocr_lines", []), "line_id")
+                self._replace_many(
+                    database.pages, document, payload.get("page_artifacts", []), "page_number"
+                )
+                self._replace_many(
+                    database.ocr_results, document, payload.get("ocr_words", []), "word_id"
+                )
+                self._replace_many(
+                    database.ocr_lines, document, payload.get("ocr_lines", []), "line_id"
+                )
                 self._replace_many(
                     database.extracted_fields,
                     document,
@@ -308,7 +320,9 @@ class VisionPersistenceCoordinator:
                     ),
                     upsert=True,
                 )
-                self._replace_many(database.model_runs, document, payload.get("model_runs", []), "run_id")
+                self._replace_many(
+                    database.model_runs, document, payload.get("model_runs", []), "run_id"
+                )
                 self._insert_audits(database, document)
                 self._errors.pop("mongodb", None)
             except Exception as exc:
@@ -444,7 +458,9 @@ class VisionPersistenceCoordinator:
             try:
                 client = self._minio_client()
                 prefix = f"{tenant_id}/{document_id}/"
-                for item in client.list_objects(settings.minio_bucket, prefix=prefix, recursive=True):
+                for item in client.list_objects(
+                    settings.minio_bucket, prefix=prefix, recursive=True
+                ):
                     client.remove_object(settings.minio_bucket, item.object_name)
                 self._errors.pop("minio", None)
             except Exception as exc:
@@ -466,9 +482,7 @@ class VisionPersistenceCoordinator:
                 self._redis_client().hset(
                     f"vision:jobs:{job.get('tenant_id')}:{job['job_id']}",
                     mapping={
-                        key: json.dumps(value)
-                        if isinstance(value, dict | list)
-                        else str(value)
+                        key: json.dumps(value) if isinstance(value, dict | list) else str(value)
                         for key, value in job.items()
                     },
                 )
@@ -675,9 +689,7 @@ class VisionPersistenceCoordinator:
         if not settings.enable_redis:
             return {}
         try:
-            value = self._redis_client().hgetall(
-                f"vision:documents:{tenant_id}:{document_id}"
-            )
+            value = self._redis_client().hgetall(f"vision:documents:{tenant_id}:{document_id}")
             self._errors.pop("redis", None)
             return dict(value)
         except Exception as exc:
@@ -690,7 +702,7 @@ class VisionPersistenceCoordinator:
         document_id: str,
         graph: VisionGraphProjection,
     ) -> None:
-        if not settings.enable_neo4j:
+        if not settings.enable_neo4j or self._neo4j_circuit_open():
             return
         try:
             with self._neo4j_driver().session(database=settings.neo4j_database) as session:
@@ -700,9 +712,9 @@ class VisionPersistenceCoordinator:
                     document_id,
                     graph.model_dump(mode="json"),
                 )
-            self._errors.pop("neo4j", None)
+            self._neo4j_recovered()
         except Exception as exc:
-            self._record_error("neo4j", exc)
+            self._neo4j_failed(exc)
 
     def query_graph_paths(
         self,
@@ -718,6 +730,8 @@ class VisionPersistenceCoordinator:
         user text is never interpolated into the query.
         """
         if not settings.enable_neo4j or not tenant_id or not document_ids:
+            return []
+        if self._neo4j_circuit_open():
             return []
         relationships = graph_relationship_candidates(question)
         if not relationships:
@@ -746,10 +760,10 @@ class VisionPersistenceCoordinator:
                     limit=max(1, min(int(limit), 20)),
                 )
                 result = [dict(row) for row in rows]
-            self._errors.pop("neo4j", None)
+            self._neo4j_recovered()
             return result
         except Exception as exc:
-            self._record_error("neo4j", exc)
+            self._neo4j_failed(exc)
             return []
 
     def health(self) -> dict[str, Any]:
@@ -764,6 +778,10 @@ class VisionPersistenceCoordinator:
                 "qdrant": settings.enable_qdrant,
             },
             "errors": dict(self._errors),
+            "neo4j_circuit": {
+                "state": "open" if self._neo4j_circuit_open() else "closed",
+                "retry_after_seconds": settings.neo4j_retry_backoff_seconds,
+            },
             "status": "degraded" if self._errors else "ready",
         }
 
@@ -843,9 +861,7 @@ class VisionPersistenceCoordinator:
         timing = document.metadata.get("processing_timing")
         if isinstance(timing, dict):
             pipeline_version = str(
-                timing.get("pipeline_version")
-                or document.metadata.get("pipeline_version")
-                or ""
+                timing.get("pipeline_version") or document.metadata.get("pipeline_version") or ""
             ).strip()
             if pipeline_version:
                 await connection.execute(
@@ -918,9 +934,7 @@ class VisionPersistenceCoordinator:
         diagnostics = document.metadata.get("extraction_diagnostics")
         diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
         default_extractor = str(
-            diagnostics.get("extractor")
-            or document.metadata.get("pipeline_version")
-            or "unknown"
+            diagnostics.get("extractor") or document.metadata.get("pipeline_version") or "unknown"
         )
         resolutions: list[dict[str, Any]] = []
         for field in document.extracted_fields:
@@ -1071,19 +1085,13 @@ class VisionPersistenceCoordinator:
             "conversation_id": str(payload["conversation_id"]),
             "user_id": str(payload["user_id"]),
             "organisation_id": str(payload["tenant_id"]),
-            "selected_scope": self._unprotect(
-                _decoded_json(payload.get("selected_scope"), {})
-            ),
+            "selected_scope": self._unprotect(_decoded_json(payload.get("selected_scope"), {})),
             "pending_clarification": self._unprotect(
                 _decoded_json(payload.get("pending_clarification"), {})
             ),
             "last_query_type": str(payload.get("last_query_type") or ""),
-            "last_resolved_question": str(
-                payload.get("last_resolved_question") or ""
-            ),
-            "last_answer": self._unprotect(
-                _decoded_json(payload.get("last_answer"), {})
-            ),
+            "last_resolved_question": str(payload.get("last_resolved_question") or ""),
+            "last_answer": self._unprotect(_decoded_json(payload.get("last_answer"), {})),
             "turns": self._unprotect(_decoded_json(payload.get("turns"), [])),
             "expires_at": (
                 expires_at.isoformat() if isinstance(expires_at, datetime) else str(expires_at)
@@ -1147,11 +1155,15 @@ class VisionPersistenceCoordinator:
             database.documents.create_index([("tenant_id", 1), ("filename", 1)])
             database.documents.create_index([("tenant_id", 1), ("document_type", 1)])
             database.documents.create_index([("tenant_id", 1), ("updated_at", -1)])
-            database.extracted_fields.create_index([("tenant_id", 1), ("document_id", 1), ("name", 1)])
+            database.extracted_fields.create_index(
+                [("tenant_id", 1), ("document_id", 1), ("name", 1)]
+            )
             database.ocr_lines.create_index(
                 [("tenant_id", 1), ("document_id", 1), ("page", 1), ("reading_order", 1)]
             )
-            database.extracted_fields.create_index([("tenant_id", 1), ("name", 1), ("value_hash", 1)])
+            database.extracted_fields.create_index(
+                [("tenant_id", 1), ("name", 1), ("value_hash", 1)]
+            )
             database.review_tasks.create_index([("tenant_id", 1), ("priority", -1), ("status", 1)])
             database.review_tasks.create_index([("tenant_id", 1), ("filename", 1)])
             database.risk_indicators.create_index(
@@ -1225,16 +1237,18 @@ class VisionPersistenceCoordinator:
                     "CREATE CONSTRAINT vision_document IF NOT EXISTS "
                     "FOR (d:VisionDocument) REQUIRE (d.tenant_id, d.document_id) IS UNIQUE"
                 ).consume()
-            self._errors.pop("neo4j", None)
+            self._neo4j_recovered()
         except Exception as exc:
-            self._record_error("neo4j", exc)
+            self._neo4j_failed(exc)
 
     def _mongo_database_handle(self) -> Any:
         if self._mongo_database is None:
             from pymongo import MongoClient
 
             self._mongo_client = MongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
-            database_name = urlsplit(settings.mongodb_uri).path.strip("/").split("/", 1)[0] or "documind"
+            database_name = (
+                urlsplit(settings.mongodb_uri).path.strip("/").split("/", 1)[0] or "documind"
+            )
             self._mongo_database = self._mongo_client[database_name]
         return self._mongo_database
 
@@ -1271,7 +1285,17 @@ class VisionPersistenceCoordinator:
                 if settings.neo4j_user and settings.neo4j_password
                 else None
             )
-            self._neo4j = GraphDatabase.driver(settings.neo4j_uri, auth=auth)
+            # Without these bounds the driver retries a failed transaction for
+            # 30 seconds before surfacing the error, so an unreachable Neo4j
+            # turns every graph write into a 30-second hang instead of an
+            # immediate, disclosed degradation.
+            self._neo4j = GraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=auth,
+                max_transaction_retry_time=settings.neo4j_transaction_retry_seconds,
+                connection_timeout=settings.neo4j_connection_timeout_seconds,
+                connection_acquisition_timeout=settings.neo4j_connection_timeout_seconds,
+            )
         return self._neo4j
 
     def _replace_many(
@@ -1286,16 +1310,16 @@ class VisionPersistenceCoordinator:
         )
         if records:
             prepared = [
-                    self._protect(
-                        {
-                            "tenant_id": document.tenant_id,
-                            "document_id": document.document_id,
-                            **record,
-                        }
-                    )
-                    for record in records
-                    if record.get(identity_key) is not None
-                ]
+                self._protect(
+                    {
+                        "tenant_id": document.tenant_id,
+                        "document_id": document.document_id,
+                        **record,
+                    }
+                )
+                for record in records
+                if record.get(identity_key) is not None
+            ]
             if prepared:
                 collection.insert_many(prepared)
 
@@ -1338,10 +1362,7 @@ class VisionPersistenceCoordinator:
                     path = Path(raw_path)
                     if not path.is_file():
                         continue
-                    key = (
-                        f"{document.tenant_id}/{document.document_id}/pages/"
-                        f"{kind}/{path.name}"
-                    )
+                    key = f"{document.tenant_id}/{document.document_id}/pages/{kind}/{path.name}"
                     marker = f"{kind}:{artifact.page_number}"
                     if marker in stored:
                         continue
@@ -1388,11 +1409,7 @@ class VisionPersistenceCoordinator:
         if isinstance(value, dict):
             if set(value) == {"__encrypted__"}:
                 return self._decrypt(str(value["__encrypted__"]))
-            return {
-                key: self._unprotect(child)
-                for key, child in value.items()
-                if key != "_id"
-            }
+            return {key: self._unprotect(child) for key, child in value.items() if key != "_id"}
         if isinstance(value, list):
             return [self._unprotect(child) for child in value]
         return value
@@ -1534,6 +1551,30 @@ class VisionPersistenceCoordinator:
                 properties=properties,
             ).consume()
 
+    def _neo4j_circuit_open(self) -> bool:
+        """True while the breaker is holding graph calls off after a failure.
+
+        Bounding the driver's own retry is not enough on its own: every call
+        would still pay the connection timeout. Once Neo4j has failed, skip
+        straight to the degraded path until the backoff window elapses, then
+        let one call through to find out whether it came back.
+        """
+        if self._neo4j_unavailable_since is None:
+            return False
+        elapsed = time.monotonic() - self._neo4j_unavailable_since
+        if elapsed >= settings.neo4j_retry_backoff_seconds:
+            self._neo4j_unavailable_since = None
+            return False
+        return True
+
+    def _neo4j_failed(self, exc: Exception) -> None:
+        self._neo4j_unavailable_since = time.monotonic()
+        self._record_error("neo4j", exc)
+
+    def _neo4j_recovered(self) -> None:
+        self._neo4j_unavailable_since = None
+        self._errors.pop("neo4j", None)
+
     def _record_error(self, backend: str, exc: Exception) -> None:
         message = re.sub(
             r"(?i)(password|pwd|secret|token|key)=([^&\s]+)",
@@ -1624,8 +1665,7 @@ def _neo4j_properties(payload: dict[str, Any]) -> dict[str, Any]:
         if value is None or isinstance(value, str | int | float | bool):
             properties[key] = value
         elif isinstance(value, list) and all(
-            item is None or isinstance(item, str | int | float | bool)
-            for item in value
+            item is None or isinstance(item, str | int | float | bool) for item in value
         ):
             properties[key] = value
         else:

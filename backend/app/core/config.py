@@ -23,6 +23,19 @@ class Settings(BaseSettings):
     neo4j_user: str | None = Field(default=None, alias="NEO4J_USER")
     neo4j_password: str | None = Field(default=None, alias="NEO4J_PASSWORD")
     neo4j_database: str = Field(default="neo4j", alias="NEO4J_DATABASE")
+    # The driver retries a failed transaction for max_transaction_retry_time
+    # before giving up — 30s by default. Against an unreachable Neo4j that is
+    # 30 seconds of sleeping per graph write, so every upload would hang rather
+    # than degrade. Bound it, and let the circuit breaker below absorb the rest.
+    neo4j_transaction_retry_seconds: float = Field(
+        default=2.0, alias="NEO4J_TRANSACTION_RETRY_SECONDS"
+    )
+    neo4j_connection_timeout_seconds: float = Field(
+        default=3.0, alias="NEO4J_CONNECTION_TIMEOUT_SECONDS"
+    )
+    # After a failure, hold calls off for this long instead of paying the
+    # connection timeout again on every request.
+    neo4j_retry_backoff_seconds: float = Field(default=30.0, alias="NEO4J_RETRY_BACKOFF_SECONDS")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
     documind_dataset_path: str = Field(
@@ -140,7 +153,19 @@ class Settings(BaseSettings):
     upload_dir: str = Field(default="var/uploads", alias="UPLOAD_DIR")
     max_upload_bytes: int = Field(default=25 * 1024 * 1024, alias="MAX_UPLOAD_BYTES")
     allowed_file_extensions: list[str] = Field(
-        default=[".pdf", ".docx", ".txt", ".eml", ".md", ".csv", ".png", ".jpg", ".jpeg", ".tif", ".tiff"]
+        default=[
+            ".pdf",
+            ".docx",
+            ".txt",
+            ".eml",
+            ".md",
+            ".csv",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".tif",
+            ".tiff",
+        ]
     )
     allowed_mime_types: list[str] = Field(
         default=[
@@ -197,7 +222,9 @@ class Settings(BaseSettings):
                 self.neo4j_password = password
         if self.app_env.lower() in {"production", "prod"}:
             if not self.auth_secret or len(self.auth_secret) < 32:
-                raise ValueError("DOCUMIND_AUTH_SECRET must contain at least 32 characters in production")
+                raise ValueError(
+                    "DOCUMIND_AUTH_SECRET must contain at least 32 characters in production"
+                )
             if not self.data_encryption_key:
                 raise ValueError("DOCUMIND_DATA_ENCRYPTION_KEY is required in production")
             if self.enable_minio and (not self.minio_access_key or not self.minio_secret_key):
