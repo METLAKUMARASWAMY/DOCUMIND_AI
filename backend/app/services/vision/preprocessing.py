@@ -267,7 +267,9 @@ class DocumentPreprocessor:
         gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
         blur_variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
         contrast_std = float(gray.std())
-        block_mean = cv2.blur(gray, (max(9, gray.shape[1] // 20 | 1), max(9, gray.shape[0] // 20 | 1)))
+        block_mean = cv2.blur(
+            gray, (max(9, gray.shape[1] // 20 | 1), max(9, gray.shape[0] // 20 | 1))
+        )
         illumination_variation = float(block_mean.std())
         rotation = self._estimate_rotation(gray)
         crop_box = self._content_box(gray)
@@ -379,8 +381,12 @@ class DocumentPreprocessor:
             if len(polygon) != 4 or cv2.contourArea(polygon) < page_area * 0.70:
                 continue
             points = self._order_points(polygon.reshape(4, 2).astype(np.float32))
-            width = int(max(np.linalg.norm(points[2] - points[3]), np.linalg.norm(points[1] - points[0])))
-            height = int(max(np.linalg.norm(points[1] - points[2]), np.linalg.norm(points[0] - points[3])))
+            width = int(
+                max(np.linalg.norm(points[2] - points[3]), np.linalg.norm(points[1] - points[0]))
+            )
+            height = int(
+                max(np.linalg.norm(points[1] - points[2]), np.linalg.norm(points[0] - points[3]))
+            )
             if width < 100 or height < 100:
                 break
             destination = np.array(

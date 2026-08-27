@@ -43,7 +43,5 @@ def test_risk_and_graph_node_identity_is_stable_across_reprocessing() -> None:
     second_graph = service._graph(document)
 
     assert first.risk_id == second.risk_id
-    assert {node["id"] for node in first_graph.nodes} == {
-        node["id"] for node in second_graph.nodes
-    }
+    assert {node["id"] for node in first_graph.nodes} == {node["id"] for node in second_graph.nodes}
     assert len({node["id"] for node in second_graph.nodes}) == len(second_graph.nodes)

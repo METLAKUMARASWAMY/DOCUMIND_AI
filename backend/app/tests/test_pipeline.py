@@ -34,4 +34,3 @@ def test_rag_returns_citation_after_indexing():
     answer = RAGEngine(service.retrieval).answer("What law governs the contract?", response.case_id)
     assert answer.citations
     assert "contract.txt" in answer.citations[0].source_document
-

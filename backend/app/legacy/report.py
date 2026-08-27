@@ -62,38 +62,57 @@ class ReportGenerationService:
                 "risk_score": analysis.risk_score,
                 "fraud_probability": analysis.fraud_probability,
                 "fraud_confidence": analysis.fraud_confidence,
-                "risk_severity": analysis.scores.get("risk_severity") if analysis.scores else analysis.workflow.status,
+                "risk_severity": analysis.scores.get("risk_severity")
+                if analysis.scores
+                else analysis.workflow.status,
                 "approval_blocked": analysis.workflow.approval_blocked,
             },
-            "compliance_report": [finding.model_dump(mode="json") for finding in analysis.compliance_findings],
+            "compliance_report": [
+                finding.model_dump(mode="json") for finding in analysis.compliance_findings
+            ],
             "fraud_report": [signal.model_dump(mode="json") for signal in analysis.fraud_signals],
             "risk_report": {
-                "cross_document_checks": [check.model_dump(mode="json") for check in analysis.cross_document_checks],
+                "cross_document_checks": [
+                    check.model_dump(mode="json") for check in analysis.cross_document_checks
+                ],
                 "workflow": analysis.workflow.model_dump(mode="json"),
             },
-            "agent_decisions": [decision.model_dump(mode="json") for decision in analysis.agent_decisions],
+            "agent_decisions": [
+                decision.model_dump(mode="json") for decision in analysis.agent_decisions
+            ],
             "audit_trail": [event.model_dump(mode="json") for event in analysis.audit_events],
-            "evidence_citations": [chunk.model_dump(mode="json") for chunk in analysis.evidence_chunks],
+            "evidence_citations": [
+                chunk.model_dump(mode="json") for chunk in analysis.evidence_chunks
+            ],
         }
 
     def render_markdown(self, analysis: AnalysisResponse) -> str:
         payload = self.render_payload(analysis)
-        findings = "\n".join(
-            f"| {finding.title} | {self._humanize(str(finding.severity.value))} | {finding.framework} | "
-            f"{self._humanize(finding.clause_or_policy)} | {'Yes' if finding.approval_blocking else 'No'} | "
-            f"{self._evidence_ids(finding.evidence)} |"
-            for finding in analysis.compliance_findings
-        ) or "| None | - | - | - | - | - |"
-        fraud = "\n".join(
-            f"| {signal.title} | {self._humanize(str(signal.severity.value))} | {signal.probability:.0%} | "
-            f"{self._evidence_ids(signal.evidence)} | {signal.recommendation} |"
-            for signal in analysis.fraud_signals
-        ) or "| None | - | - | - | - |"
-        cross_checks = "\n".join(
-            f"| {check.title} | {self._humanize(check.status)} | {check.confidence:.0%} | "
-            f"{check.left_value or '-'} | {check.right_value or '-'} |"
-            for check in analysis.cross_document_checks
-        ) or "| None | - | - | - | - |"
+        findings = (
+            "\n".join(
+                f"| {finding.title} | {self._humanize(str(finding.severity.value))} | {finding.framework} | "
+                f"{self._humanize(finding.clause_or_policy)} | {'Yes' if finding.approval_blocking else 'No'} | "
+                f"{self._evidence_ids(finding.evidence)} |"
+                for finding in analysis.compliance_findings
+            )
+            or "| None | - | - | - | - | - |"
+        )
+        fraud = (
+            "\n".join(
+                f"| {signal.title} | {self._humanize(str(signal.severity.value))} | {signal.probability:.0%} | "
+                f"{self._evidence_ids(signal.evidence)} | {signal.recommendation} |"
+                for signal in analysis.fraud_signals
+            )
+            or "| None | - | - | - | - |"
+        )
+        cross_checks = (
+            "\n".join(
+                f"| {check.title} | {self._humanize(check.status)} | {check.confidence:.0%} | "
+                f"{check.left_value or '-'} | {check.right_value or '-'} |"
+                for check in analysis.cross_document_checks
+            )
+            or "| None | - | - | - | - |"
+        )
         documents = "\n".join(
             f"| {doc.filename} | {self._humanize(doc.document_type.value)} | {doc.pages} | {doc.checksum[:12]} |"
             for doc in analysis.documents
@@ -108,10 +127,13 @@ class ReportGenerationService:
             f"| {chunk.chunk_id} | {chunk.source_document} | {chunk.page_number} | {chunk.confidence:.0%} |"
             for chunk in analysis.evidence_chunks[:30]
         )
-        audit = "\n".join(
-            f"| {event.created_at} | {self._humanize(event.event_type)} | {event.actor} | {event.message} |"
-            for event in analysis.audit_events
-        ) or "| None | - | - | - |"
+        audit = (
+            "\n".join(
+                f"| {event.created_at} | {self._humanize(event.event_type)} | {event.actor} | {event.message} |"
+                for event in analysis.audit_events
+            )
+            or "| None | - | - | - |"
+        )
         final_recommendation = (
             "Do not release payment until bank details are independently verified and approval-blocking findings are resolved."
             if analysis.workflow.approval_blocked
@@ -124,9 +146,9 @@ class ReportGenerationService:
 | --- | --- |
 | Case ID | {analysis.case_id} |
 | Tenant | {analysis.tenant_id} |
-| Industry | {analysis.industry or '-'} |
-| Company | {analysis.company or '-'} |
-| Vendor | {analysis.vendor or '-'} |
+| Industry | {analysis.industry or "-"} |
+| Company | {analysis.company or "-"} |
+| Vendor | {analysis.vendor or "-"} |
 
 ## Executive Summary
 {analysis.executive_summary}
@@ -138,7 +160,7 @@ class ReportGenerationService:
 | Risk | {analysis.risk_score}/100 |
 | Fraud Probability | {analysis.fraud_probability:.0%} |
 | Fraud Confidence | {self._humanize(analysis.fraud_confidence)} |
-| Approval Gate | {'Blocked' if analysis.workflow.approval_blocked else 'Open'} |
+| Approval Gate | {"Blocked" if analysis.workflow.approval_blocked else "Open"} |
 
 ## Uploaded Documents
 | Document | Type | Pages | Checksum |

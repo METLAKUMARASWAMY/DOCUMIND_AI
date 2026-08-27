@@ -78,9 +78,7 @@ def test_status_reports_disabled_without_probing(monkeypatch: pytest.MonkeyPatch
     assert status.metadata["server_reachable"] is None
 
 
-def test_liveness_probe_result_is_cached(
-    qdrant_enabled, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_liveness_probe_result_is_cached(qdrant_enabled, monkeypatch: pytest.MonkeyPatch) -> None:
     """status() runs on every upsert and search; it must not probe every call."""
 
     monkeypatch.setattr(settings, "qdrant_url", DEAD_ENDPOINT)
@@ -259,6 +257,4 @@ def test_probe_is_bounded_in_time(qdrant_enabled, monkeypatch: pytest.MonkeyPatc
     backend.status()
     elapsed = time.perf_counter() - started
 
-    assert elapsed < backend.liveness_timeout_seconds + 1.0, (
-        f"liveness probe took {elapsed:.2f}s"
-    )
+    assert elapsed < backend.liveness_timeout_seconds + 1.0, f"liveness probe took {elapsed:.2f}s"

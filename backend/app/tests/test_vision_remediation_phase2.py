@@ -92,9 +92,7 @@ def test_open_set_fields_survive_in_mode_b_and_mode_c_downstream_contracts():
         "quantum_tuning",
         "custodian_code",
     }
-    assert any(
-        item["source_type"] == "generic_field" for item in unknown["evidence_chunks"]
-    )
+    assert any(item["source_type"] == "generic_field" for item in unknown["evidence_chunks"])
     assert any(item["type"] == "HAS_ATTRIBUTE" for item in unknown["graph"]["edges"])
 
     invoice = _analyse(
@@ -127,9 +125,7 @@ def test_reviewed_semantic_correction_becomes_tenant_scoped_feedback_alias(
         ),
         tenant_id=tenant_id,
     )
-    field = next(
-        item for item in first.extracted_fields if item.name == "supplier_designation"
-    )
+    field = next(item for item in first.extracted_fields if item.name == "supplier_designation")
     assert first.review_task is not None
     service.patch_field(
         first.review_task.review_id,
@@ -150,8 +146,7 @@ def test_reviewed_semantic_correction_becomes_tenant_scoped_feedback_alias(
         tenant_id=tenant_id,
     )
     assert any(
-        item.raw_label == "Supplier Designation"
-        and item.normalized_label == "corporate_contact"
+        item.raw_label == "Supplier Designation" and item.normalized_label == "corporate_contact"
         for item in second.generic_fields
     )
     assert any(item.name == "corporate_contact" for item in second.extracted_fields)
@@ -234,9 +229,7 @@ def test_reprocess_reuses_document_fields_chunks_and_review_identity():
         headers=_headers(),
     )
     assert second_response.status_code == 200
-    second = client.get(
-        f"/api/v1/documents/{document_id}", headers=_headers()
-    ).json()["data"]
+    second = client.get(f"/api/v1/documents/{document_id}", headers=_headers()).json()["data"]
 
     assert sorted(item["field_id"] for item in second["extracted_fields"]) == sorted(
         first_reprocess_field_ids

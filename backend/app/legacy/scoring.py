@@ -68,7 +68,9 @@ class ScoringService:
         reasons = []
         if any(finding.severity == RiskLevel.critical for finding in findings):
             reasons.append("Critical compliance finding is open.")
-        if any(finding.severity == RiskLevel.high and finding.approval_blocking for finding in findings):
+        if any(
+            finding.severity == RiskLevel.high and finding.approval_blocking for finding in findings
+        ):
             reasons.append("High approval-blocking finding is open.")
         if fraud_probability_score >= 60:
             reasons.append("Fraud probability is above 60%.")

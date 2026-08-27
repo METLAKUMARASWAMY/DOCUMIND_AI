@@ -71,14 +71,32 @@ class KnowledgeExtractionService:
                 cleaner=self._clean_party_value,
             )
         )
-        fields.extend(self._extract_many("invoice_number", self.invoice_pattern.finditer(text), document, group=1))
-        fields.extend(self._extract_many("purchase_order_number", self.po_pattern.finditer(text), document, group=1))
-        fields.extend(self._extract_many("bank_account_holder", self.bank_holder_pattern.finditer(text), document, group=1))
-        fields.extend(self._extract_many("bank_identifier", self.bank_identifier_pattern.finditer(text), document, group=1))
+        fields.extend(
+            self._extract_many(
+                "invoice_number", self.invoice_pattern.finditer(text), document, group=1
+            )
+        )
+        fields.extend(
+            self._extract_many(
+                "purchase_order_number", self.po_pattern.finditer(text), document, group=1
+            )
+        )
+        fields.extend(
+            self._extract_many(
+                "bank_account_holder", self.bank_holder_pattern.finditer(text), document, group=1
+            )
+        )
+        fields.extend(
+            self._extract_many(
+                "bank_identifier", self.bank_identifier_pattern.finditer(text), document, group=1
+            )
+        )
 
         lower = text.lower()
         for name, keywords in self.clause_keywords.items():
-            match = next((keyword for keyword in keywords if self._affirmed_keyword(lower, keyword)), None)
+            match = next(
+                (keyword for keyword in keywords if self._affirmed_keyword(lower, keyword)), None
+            )
             if match:
                 fields.append(
                     ExtractedField(
@@ -86,7 +104,9 @@ class KnowledgeExtractionService:
                         value=match,
                         normalized_value=self._normalize(match),
                         confidence=0.79,
-                        evidence=self._evidence(document, match, f"Detected {name.replace('_', ' ')}."),
+                        evidence=self._evidence(
+                            document, match, f"Detected {name.replace('_', ' ')}."
+                        ),
                     )
                 )
         return self._dedupe(fields)
@@ -112,7 +132,9 @@ class KnowledgeExtractionService:
                     value=value,
                     normalized_value=self._normalize(value),
                     confidence=0.76,
-                    evidence=self._evidence(document, value, f"Extracted {name} using pattern and context."),
+                    evidence=self._evidence(
+                        document, value, f"Extracted {name} using pattern and context."
+                    ),
                 )
             )
         return fields

@@ -17,6 +17,7 @@ import { useNavigate } from "../router";
 import { api, protectedBlob } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { DegradationNotice } from "../components/DegradationNotice";
+import { RetrievalBackendNote } from "../components/RetrievalBackendNote";
 import { StatusChip } from "../components/StatusChip";
 import type { AskResponse, Citation, VisionDocument } from "../types/api";
 
@@ -197,6 +198,7 @@ export function AskDocumentsPage() {
                         ms.
                       </Typography>
                     ) : null}
+                    <RetrievalBackendNote trace={turn.response.retrieval_trace} />
                     <Box className="answer-feedback">
                       <Typography variant="caption">Was this supported?</Typography>
                       <Tooltip title="Helpful">

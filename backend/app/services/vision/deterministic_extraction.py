@@ -450,10 +450,7 @@ class DeterministicSchemaExtractor:
             item
             for item in candidates
             if self._valid_candidate(item)
-            and (
-                not spec.extraction_strategies
-                or item.strategy in spec.extraction_strategies
-            )
+            and (not spec.extraction_strategies or item.strategy in spec.extraction_strategies)
         ]
 
     def _match_label(self, line: OCRLine, spec: SchemaFieldSpec) -> LabelMatch | None:
@@ -470,17 +467,12 @@ class DeterministicSchemaExtractor:
             if not normalized_alias:
                 continue
             observed_delimited_label = (
-                self._normalize_label(text[: separators[0].start()])
-                if separators
-                else ""
+                self._normalize_label(text[: separators[0].start()]) if separators else ""
             )
             exact = (
                 normalized_text == normalized_alias
                 or observed_delimited_label == normalized_alias
-                or (
-                    not separators
-                    and normalized_text.startswith(f"{normalized_alias} ")
-                )
+                or (not separators and normalized_text.startswith(f"{normalized_alias} "))
             )
             selected_separator: re.Match[str] | None = None
             similarity = 1.0 if exact else 0.0

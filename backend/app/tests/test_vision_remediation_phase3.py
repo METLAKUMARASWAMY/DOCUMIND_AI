@@ -88,15 +88,11 @@ def test_no_evidence_approval_is_blocked_and_manual_override_is_audited():
     assert len(manual_fields) == 5
     assert updated["field_completeness"]["unresolved_required_count"] == 0
     override_events = [
-        item
-        for item in updated["audit_events"]
-        if item["event_type"] == "review_decision_recorded"
+        item for item in updated["audit_events"] if item["event_type"] == "review_decision_recorded"
     ]
     assert override_events[-1]["metadata"]["approval_mode"] == "manual_override"
     assert override_events[-1]["metadata"]["approval_reason"]
-    assert "no_structured_fields" in override_events[-1]["metadata"][
-        "overridden_policy_conditions"
-    ]
+    assert "no_structured_fields" in override_events[-1]["metadata"]["overridden_policy_conditions"]
 
 
 def test_approval_requires_comment_and_selected_mandatory_evidence():

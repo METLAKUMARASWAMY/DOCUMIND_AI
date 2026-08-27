@@ -149,15 +149,11 @@ def test_cross_tenant_delete_is_refused(
 ) -> None:
     alpha, beta = tenants
 
-    response = app_client.delete(
-        f"/api/v1/documents/{alpha.document_id}", headers=beta.headers
-    )
+    response = app_client.delete(f"/api/v1/documents/{alpha.document_id}", headers=beta.headers)
     assert response.status_code in {403, 404}
 
     # ...and alpha's document must still be there.
-    still_there = app_client.get(
-        f"/api/v1/documents/{alpha.document_id}", headers=alpha.headers
-    )
+    still_there = app_client.get(f"/api/v1/documents/{alpha.document_id}", headers=alpha.headers)
     assert still_there.status_code == 200
 
 
@@ -284,9 +280,7 @@ def test_review_queue_is_tenant_scoped(
         ("POST", "/api/v1/graph/query"),
     ],
 )
-def test_unauthenticated_access_is_refused(
-    app_client: TestClient, method: str, path: str
-) -> None:
+def test_unauthenticated_access_is_refused(app_client: TestClient, method: str, path: str) -> None:
     """Calling the URL directly, with no token at all."""
 
     response = app_client.request(method, path, json={})

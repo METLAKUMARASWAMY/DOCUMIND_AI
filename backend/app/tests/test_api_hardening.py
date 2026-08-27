@@ -71,9 +71,7 @@ def test_unhandled_exception_is_logged_with_the_request_id(
     client = TestClient(app, raise_server_exceptions=False)
 
     with caplog.at_level(logging.ERROR, logger="documind.api"):
-        response = client.get(
-            "/api/v1/_test/boom", headers={"X-Request-ID": "req-trace-me"}
-        )
+        response = client.get("/api/v1/_test/boom", headers={"X-Request-ID": "req-trace-me"})
 
     assert response.json()["request_id"] == "req-trace-me"
     records = [r for r in caplog.records if r.name == "documind.api"]

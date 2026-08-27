@@ -33,7 +33,9 @@ def test_demo_case_surfaces_required_enterprise_findings():
 def test_rag_retrieves_generated_findings_and_citations():
     service = DocumentIntelligencePipeline()
     response = service.process_demo_case()
-    answer = RAGEngine(service.retrieval).answer("What exceptions require review?", response.case_id)
+    answer = RAGEngine(service.retrieval).answer(
+        "What exceptions require review?", response.case_id
+    )
 
     assert answer.citations
     assert any("indemnity" in citation.evidence_text.lower() for citation in answer.citations)
@@ -62,13 +64,17 @@ def test_report_exports_are_backend_generated():
 
     headers = _auth_headers()
 
-    json_report = client.get(f"/api/v1/demo-legacy/reports/{case_id}", params={"format": "json"}, headers=headers)
+    json_report = client.get(
+        f"/api/v1/demo-legacy/reports/{case_id}", params={"format": "json"}, headers=headers
+    )
     assert json_report.status_code == 200
     assert json_report.json()["case_id"] == case_id
     assert json_report.json()["success"] is True
     assert json_report.json()["data"]["compliance_report"]
 
-    pdf_report = client.get(f"/api/v1/demo-legacy/reports/{case_id}", params={"format": "pdf"}, headers=headers)
+    pdf_report = client.get(
+        f"/api/v1/demo-legacy/reports/{case_id}", params={"format": "pdf"}, headers=headers
+    )
     assert pdf_report.status_code == 200
     assert pdf_report.headers["content-type"] == "application/pdf"
     assert pdf_report.content.startswith(b"%PDF")
@@ -78,8 +84,22 @@ def test_multipart_document_upload_runs_full_analysis():
     response = client.post(
         "/api/v1/demo-legacy/documents/upload",
         files=[
-            ("files", ("invoice.txt", b"Invoice INV-88\nVendor: Upload Co\nAmount Due USD 200.00\nPO Reference: PO-88", "text/plain")),
-            ("files", ("purchase_order.txt", b"Purchase Order PO-88\nVendor: Upload Co\nAmount USD 200.00", "text/plain")),
+            (
+                "files",
+                (
+                    "invoice.txt",
+                    b"Invoice INV-88\nVendor: Upload Co\nAmount Due USD 200.00\nPO Reference: PO-88",
+                    "text/plain",
+                ),
+            ),
+            (
+                "files",
+                (
+                    "purchase_order.txt",
+                    b"Purchase Order PO-88\nVendor: Upload Co\nAmount USD 200.00",
+                    "text/plain",
+                ),
+            ),
         ],
         data={"metadata": '{"source":"pytest"}'},
     )

@@ -259,7 +259,8 @@ class VisionQueryRouter:
             invoice
             and ({"po"} <= tokens or "purchase order" in lower)
             and bool(
-                tokens & {"difference", "delta", "differ", "different", "minus", "variance", "versus"}
+                tokens
+                & {"difference", "delta", "differ", "different", "minus", "variance", "versus"}
             )
         ):
             return True

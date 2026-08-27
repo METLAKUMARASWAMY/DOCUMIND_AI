@@ -538,6 +538,11 @@ export interface RetrievalTrace {
   selected_evidence: string[];
   retrieval_duration_ms: number;
   retriever_versions: Record<string, string>;
+  /** The embedding backend that actually produced the vectors searched. */
+  embedding_backend?: string;
+  embedding_model?: string;
+  /** False when matching is lexical rather than semantic. */
+  semantic_matching?: boolean;
 }
 
 export interface AskCalculationInput {

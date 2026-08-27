@@ -69,11 +69,7 @@ def test_form_graph_has_typed_bounded_nodes_and_source_linked_edges():
     assert graph["active_backend"] == "local_evidence_graph"
     assert all(len(node["display_label"]) <= 30 for node in graph["nodes"])
 
-    non_structural = [
-        edge
-        for edge in graph["edges"]
-        if edge["provenance"] != "document_structure"
-    ]
+    non_structural = [edge for edge in graph["edges"] if edge["provenance"] != "document_structure"]
     assert non_structural
     assert all(edge["source_linked"] for edge in non_structural)
     assert all(edge["evidence_text"] for edge in non_structural)

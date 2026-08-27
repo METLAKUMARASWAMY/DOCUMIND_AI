@@ -42,16 +42,22 @@ class FinanceNarrativeService:
             document_id=document.document_id,
             narrative_type=narrative_type,
             narrative=narrative,
-            confidence_score=round(max(0.1, extraction.confidence_score - len(unsupported_claims) * 0.1), 3),
+            confidence_score=round(
+                max(0.1, extraction.confidence_score - len(unsupported_claims) * 0.1), 3
+            ),
             groundedness_score=round(max(0, groundedness), 3),
             unsupported_claims=unsupported_claims,
             risk_flags=risk_flags,
             source_references=extraction.source_references,
-            reviewer_recommendation=self._reviewer_recommendation(document.document_type, risk_flags, extraction.missing_fields),
+            reviewer_recommendation=self._reviewer_recommendation(
+                document.document_type, risk_flags, extraction.missing_fields
+            ),
             created_at=datetime.now(UTC).isoformat(),
         )
 
-    def unsupported_claims(self, narrative: str, fields: dict[str, Any], source_text: str) -> list[str]:
+    def unsupported_claims(
+        self, narrative: str, fields: dict[str, Any], source_text: str
+    ) -> list[str]:
         supported_text = " ".join([source_text, self._flatten(fields)]).lower()
         unsupported = []
         for claim in self._claims(narrative):
@@ -122,7 +128,9 @@ class FinanceNarrativeService:
             )
         return f"{document.file_name} was processed as an unknown finance document. {self._evidence_sentence(extraction)}"
 
-    def _payment_summary(self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields) -> str:
+    def _payment_summary(
+        self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields
+    ) -> str:
         if document.document_type == FinanceDocumentType.bank_change_request:
             return (
                 f"Bank-change payment hold: vendor {self._value(fields, 'vendor_name')} requested a bank update "
@@ -141,15 +149,22 @@ class FinanceNarrativeService:
             f"{self._risk_sentence(extraction)}"
         )
 
-    def _risk_summary(self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields) -> str:
-        flag_text = "; ".join(flag.title for flag in extraction.risk_flags) or "No high-risk finance flags detected"
+    def _risk_summary(
+        self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields
+    ) -> str:
+        flag_text = (
+            "; ".join(flag.title for flag in extraction.risk_flags)
+            or "No high-risk finance flags detected"
+        )
         return (
             f"Risk summary for {document.file_name}: {flag_text}. "
             f"Missing fields: {self._value({'missing_fields': extraction.missing_fields}, 'missing_fields')}. "
             f"Recommended action: {self._reviewer_recommendation(document.document_type, extraction.risk_flags, extraction.missing_fields)}"
         )
 
-    def _compliance_summary(self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields) -> str:
+    def _compliance_summary(
+        self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields
+    ) -> str:
         return (
             f"Compliance summary: document type {document.document_type.value}, extraction confidence "
             f"{round(extraction.confidence_score * 100)}%, missing fields "
@@ -157,13 +172,19 @@ class FinanceNarrativeService:
             f"Important claims cite {len(extraction.source_references)} source reference(s)."
         )
 
-    def _exception_summary(self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields) -> str:
+    def _exception_summary(
+        self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields
+    ) -> str:
         exceptions = [flag.description for flag in extraction.risk_flags] + [
             f"Missing required field: {field}" for field in extraction.missing_fields
         ]
-        return "Exception summary: " + (" ".join(exceptions) if exceptions else "No exceptions detected.")
+        return "Exception summary: " + (
+            " ".join(exceptions) if exceptions else "No exceptions detected."
+        )
 
-    def _reviewer_notes(self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields) -> str:
+    def _reviewer_notes(
+        self, document: FinanceDocument, fields: dict[str, Any], extraction: ExtractedFinanceFields
+    ) -> str:
         return (
             f"Reviewer notes draft: verify {document.document_type.value} fields, inspect "
             f"{len(extraction.source_references)} source reference(s), and resolve "
@@ -202,7 +223,10 @@ class FinanceNarrativeService:
                 if isinstance(value, list):
                     return ", ".join(str(item) for item in value[:4])
                 if isinstance(value, dict):
-                    return ", ".join(f"{key}: {item}" for key, item in value.items() if item) or "not extracted"
+                    return (
+                        ", ".join(f"{key}: {item}" for key, item in value.items() if item)
+                        or "not extracted"
+                    )
                 return str(value)
         return "not extracted"
 

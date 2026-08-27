@@ -23,4 +23,3 @@ def redact_pii(text: str) -> str:
     text = re.sub(r"\b(?:\+?\d[\s-]?){10,15}\b", "[phone]", text)
     text = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[ssn]", text)
     return text
-

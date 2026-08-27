@@ -157,14 +157,21 @@ class IsolationForestRiskAdapter(VisionAdapter):
             if amount is not None and vendor_average not in {None, 0.0}
             else None
         )
-        current_date = self._date(fields.get("invoice_date")) or self._timestamp(document.created_at)
+        current_date = self._date(fields.get("invoice_date")) or self._timestamp(
+            document.created_at
+        )
         prior_dates = sorted(
             date
             for item in same_vendor
-            if (date := self._date(self._field_map(item).get("invoice_date")) or self._timestamp(item.created_at))
+            if (
+                date := self._date(self._field_map(item).get("invoice_date"))
+                or self._timestamp(item.created_at)
+            )
             < current_date
         )
-        days_since = (current_date - prior_dates[-1]).total_seconds() / 86400 if prior_dates else None
+        days_since = (
+            (current_date - prior_dates[-1]).total_seconds() / 86400 if prior_dates else None
+        )
         frequency = sum(0 <= (current_date - date).days <= 30 for date in prior_dates)
         account_values = {
             self._normalize(value)
@@ -173,12 +180,19 @@ class IsolationForestRiskAdapter(VisionAdapter):
         }
         current_account = fields.get("bank_account_number")
         account_change_frequency = (
-            float(bool(account_values and current_account and self._normalize(current_account) not in account_values))
+            float(
+                bool(
+                    account_values
+                    and current_account
+                    and self._normalize(current_account) not in account_values
+                )
+            )
             if current_account
             else None
         )
         validation_failures = sum(
-            risk.category in {"validation", "cross_document", "format_validation", "visual_validation"}
+            risk.category
+            in {"validation", "cross_document", "format_validation", "visual_validation"}
             for risk in document.risk_indicators
         )
         ocr_uncertainty = (
@@ -197,10 +211,7 @@ class IsolationForestRiskAdapter(VisionAdapter):
             for item in corpus
             for name in ("vendor_name", "bank_account_number")
             if (value := self._normalize(self._field_map(item).get(name)))
-            and (
-                value == vendor
-                or (current_account and value == self._normalize(current_account))
-            )
+            and (value == vendor or (current_account and value == self._normalize(current_account)))
         }
         return {
             "amount_z_score_by_vendor": self._finite(amount_z_score),
@@ -221,7 +232,10 @@ class IsolationForestRiskAdapter(VisionAdapter):
         names: tuple[str, ...],
     ) -> list[dict[str, Any]]:
         ranked = sorted(
-            ((name, float(abs(value)), float(value)) for name, value in zip(names, row, strict=True)),
+            (
+                (name, float(abs(value)), float(value))
+                for name, value in zip(names, row, strict=True)
+            ),
             key=lambda item: item[1],
             reverse=True,
         )
@@ -292,9 +306,7 @@ class XGBoostRiskAdapter(VisionAdapter):
             stage=self.stage,
             status="active" if active else ("disabled" if not enabled else "unavailable"),
             reason=(
-                "Trained XGBoost checkpoint is ready."
-                if active
-                else checkpoint_validation.reason
+                "Trained XGBoost checkpoint is ready." if active else checkpoint_validation.reason
             ),
             enabled=enabled,
             installed=installed,

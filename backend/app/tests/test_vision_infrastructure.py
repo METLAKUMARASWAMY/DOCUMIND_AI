@@ -52,7 +52,9 @@ def test_vision_infrastructure_readiness_defaults_to_local_runtime_without_secre
 
 def test_infrastructure_service_can_report_enabled_driver_readiness(monkeypatch):
     monkeypatch.setattr("app.services.vision.infrastructure.settings.enable_mongodb", True)
-    service = VisionInfrastructureReadinessService(package_checker=lambda package: package == "motor")
+    service = VisionInfrastructureReadinessService(
+        package_checker=lambda package: package == "motor"
+    )
 
     status = service.service_status("mongodb")
     payload = service.readiness()
@@ -64,7 +66,9 @@ def test_infrastructure_service_can_report_enabled_driver_readiness(monkeypatch)
 
 def test_infrastructure_service_blocks_enabled_backend_with_missing_driver(monkeypatch):
     monkeypatch.setattr("app.services.vision.infrastructure.settings.enable_qdrant", True)
-    service = VisionInfrastructureReadinessService(package_checker=lambda package: package != "qdrant_client")
+    service = VisionInfrastructureReadinessService(
+        package_checker=lambda package: package != "qdrant_client"
+    )
 
     status = service.service_status("qdrant")
 

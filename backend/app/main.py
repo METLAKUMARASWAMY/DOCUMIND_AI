@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
             status_code=status_code,
             content={"status": health["status"], "persistence": health},
         )
+
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(vision_alias_router, prefix="/api/v1")
     app.include_router(vision_router, prefix="/api/v1")

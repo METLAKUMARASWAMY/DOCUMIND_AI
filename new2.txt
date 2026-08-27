@@ -1,1173 +1,1971 @@
-=====================================================================
-DOCUMIND VISION AI — GENERALIZATION-FIRST FINAL SYSTEM DIRECTIVE
-=====================================================================
-
-CRITICAL CORRECTION TO ALL PREVIOUS IMPLEMENTATION INSTRUCTIONS
----------------------------------------------------------------
-
-Do NOT build DocuMind around the currently uploaded screenshots, filenames,
-document templates, OCR strings, or known examples.
-
-The named documents supplied during development are REGRESSION TESTS ONLY.
-
-The final DocuMind system must generalize to NEW, PREVIOUSLY UNSEEN enterprise
-documents without requiring a developer to add another hard-coded extraction
-rule for every new image.
-
-The primary engineering objective is therefore:
-
-"Build a document-understanding pipeline, not a collection of document-specific
-parsers."
-
-=====================================================================
-1. NON-NEGOTIABLE GENERALIZATION REQUIREMENT
-=====================================================================
-
-A newly uploaded document that has never existed in the development dataset
-must still go through the complete pipeline.
-
-The system must never require logic like:
-
-if filename == ...
-if OCR text contains this exact known sentence ...
-if document_id == ...
-return known fields ...
-
-Never hard-code:
-
-- filenames
-- document IDs
-- expected field values
-- known OCR output
-- page numbers from test files
-- positions from one template
-- vendor-specific values
-- screenshot-specific coordinates
-
-The system must instead generalize through:
-
-- OCR
-- layout
-- semantic labels
-- aliases
-- spatial relations
-- entity recognition
-- table understanding
-- document classification
-- schema selection
-- schema inference
-- type validation
-- confidence scoring
-- retrieval
-- graph relationships
-- human feedback
-
-=====================================================================
-2. THE SYSTEM MUST SUPPORT THREE DOCUMENT MODES
-=====================================================================
-
-Every uploaded document must enter exactly one conceptual mode.
-
-MODE A — KNOWN DOCUMENT TYPE + KNOWN SCHEMA
--------------------------------------------
-Example:
-
-invoice
-purchase_order
-contract
-bank_document
-
-Use the registered semantic schema.
-
-MODE B — RECOGNISED DOCUMENT FAMILY BUT UNKNOWN VARIANT
---------------------------------------------------------
-Example:
-
-a business form with labels and values that does not match any existing
-template.
-
-Use:
-
-known schema fields
-+
-generic field discovery
-+
-entity extraction
-+
-table extraction.
-
-Do NOT discard information merely because the exact template is new.
-
-MODE C — COMPLETELY UNKNOWN DOCUMENT TYPE
-------------------------------------------
-The system must still process it.
-
-Do NOT return:
-
-"0 fields"
-
-simply because no schema exists.
-
-Instead produce a generic document understanding result containing, where
-supported:
-
-document title
-dates
-organisations
-persons
-identifiers
-amounts
-currencies
-addresses
-phone numbers
-email addresses
-account-like identifiers
-key/value pairs
-tables
-sections
-signatures/stamps
-document references
-important text blocks
-
-Mark:
-
-schema_status = "inferred" or "generic"
-
-and route uncertain semantic interpretations to review.
-
-=====================================================================
-3. SEPARATE OCR FROM SEMANTICS
-=====================================================================
-
-The system must maintain separate layers.
-
-LAYER 1
--------
-Raw visual evidence
-
-LAYER 2
--------
-OCR words
-
-LAYER 3
--------
-OCR lines
-
-LAYER 4
--------
-layout regions
-
-LAYER 5
--------
-generic key/value pairs
-
-LAYER 6
--------
-typed entities
-
-LAYER 7
--------
-document-specific schema fields
-
-LAYER 8
--------
-verified facts
-
-Never allow errors in Layer 7 to destroy information from Layers 1–6.
-
-For example:
-
-Even if document classification fails, the OCR lines must still be searchable
-through Ask Documents.
-
-This is essential.
-
-=====================================================================
-4. GENERIC KEY/VALUE DISCOVERY
-=====================================================================
-
-Build a generic field discovery engine independent of document type.
-
-It should detect patterns such as:
-
-Label: Value
-
-Label    Value
-
-Label
-Value
-
-and table-style:
-
-Label | Value
-
-Candidate label detection should consider:
-
-- trailing colon
-- typographic emphasis
-- left/right geometry
-- vertical alignment
-- short noun-like phrases
-- nearby values
-- repeated row structure
-- OCR line boundaries
-- layout region
-- known label vocabulary
-- semantic similarity
-
-Examples:
-
-Date: 12/03/2026
-Customer ID: ABC-123
-Requested By: John
-Account Number: XXXX
-Quantity: 50 kg
-
-must be discoverable without writing a parser specifically for that document.
-
-Store generic discovered fields as:
-
-{
-  raw_label,
-  normalized_label,
-  raw_value,
-  normalized_value,
-  page,
-  label_bbox,
-  value_bbox,
-  confidence,
-  source_engine,
-  semantic_type_if_known
-}
-
-=====================================================================
-5. SEMANTIC FIELD NORMALISATION
-=====================================================================
-
-Generic labels should map to canonical concepts.
-
-Examples:
-
-"Invoice No"
-"Invoice #"
-"Invoice Number"
-"Inv No."
-
-→ invoice_number
-
-"Requested By"
-"Request Made By"
-"Original Request Made By"
-
-→ requested_by
-
-"PO"
-"Purchase Order"
-"PO Number"
-"P.O. No."
-
-→ purchase_order_number
-
-Do NOT manually write aliases for every document.
-
-Use a combination of:
-
-1. curated high-value aliases
-2. normalized tokens
-3. fuzzy similarity
-4. embedding similarity when BGE is active
-5. surrounding context
-6. document type
-7. spatial relation
-
-Alias matching must have confidence thresholds.
-
-Low-confidence semantic mappings stay generic and enter review.
-
-=====================================================================
-6. TYPE SYSTEM
-=====================================================================
-
-Create reusable semantic value types.
-
-At minimum:
-
-DATE
-DATETIME
-PERSON
-ORGANISATION
-MONEY
-NUMBER
-QUANTITY
-PERCENTAGE
-PHONE
-EMAIL
-ADDRESS
-BANK_ACCOUNT
-IDENTIFIER
-DOCUMENT_REFERENCE
-CURRENCY
-PRODUCT
-TEXT
-BOOLEAN
-URL
-
-Each type must have independent validation.
-
-For example:
-
-PHONE validator must reject:
-
-3/14/90
-2/15/90
-2026-08-10
-
-DATE validator should recognise them when appropriate.
-
-This logic must work across every document.
-
-Do NOT fix a date/phone bug only for one screenshot.
-
-Fix the TYPE SYSTEM.
-
-=====================================================================
-7. VALUE CLASSIFICATION MUST USE CONTEXT
-=====================================================================
-
-Never classify solely from regex.
-
-The same token can mean different things.
-
-Use:
-
-value pattern
-+
-label
-+
-surrounding words
-+
-layout
-+
-document type
-+
-section
-+
-other nearby entities.
-
-Example:
-
-"123456789"
-
-near:
-
-Account Number
-
-should favour ACCOUNT/IDENTIFIER.
-
-Near:
-
-Phone
-
-should favour PHONE.
-
-Near:
-
-Invoice No.
-
-should favour DOCUMENT_REFERENCE.
-
-=====================================================================
-8. OPEN-SET DOCUMENT CLASSIFICATION
-=====================================================================
-
-Do not force every document into a known class.
-
-Classifier output:
-
-{
-    predicted_type,
-    confidence,
-    candidate_types[],
-    reasons[],
-    schema_mode
-}
-
-Possible:
-
-invoice
-purchase_order
-contract
-bank_document
-business_form
-sample_form
-product_specification
-letter
-email
-statement
-receipt
-report
-generic_form
-unknown
-
-If confidence is below threshold:
-
-predicted_type = unknown
-
-but continue extracting generic content.
-
-"unknown" must NOT mean "unusable".
-
-=====================================================================
-9. SCHEMA REGISTRY MUST BE EXTENSIBLE
-=====================================================================
-
-Known document schemas should live in structured configuration rather than
-scattered conditional code.
-
-Example conceptual structure:
-
-schemas/
-    invoice.yaml
-    purchase_order.yaml
-    contract.yaml
-    bank_document.yaml
-    business_form.yaml
-    sample_form.yaml
-
-Each schema describes:
-
-fields
-aliases
-types
-required status
-relationship expectations
-validation
-normalisation
-graph semantics
-
-Adding a future document family should generally mean adding/configuring a
-schema, NOT rewriting the extraction engine.
-
-=====================================================================
-10. SCHEMA INFERENCE FOR UNKNOWN DOCUMENTS
-=====================================================================
-
-When no known schema matches:
-
-discover generic labels
-    ↓
-map semantic concepts where confident
-    ↓
-detect typed entities
-    ↓
-discover table structures
-    ↓
-construct inferred schema instance
-    ↓
-retain raw evidence
-    ↓
-mark uncertain fields
-    ↓
-send relevant uncertainty to review
-
-For example an unseen form:
-
-Reference ID: A98X
-Submission Date: 10 Aug 2026
-Requested By: Example Person
-Department: Engineering
-
-should still yield meaningful structured information even if there is no
-"submission form" schema.
-
-=====================================================================
-11. TABLES MUST ALSO GENERALIZE
-=====================================================================
-
-Table extraction must not depend on fixed coordinates.
-
-Determine tables using:
-
-- aligned OCR boxes
-- repeated X positions
-- repeated row gaps
-- border/line detection
-- header geometry
-- layout regions
-- structure model when available
-
-Support previously unseen column names.
-
-Example:
-
-Item | Qty | Rate | Total
-
-and
-
-Description | Units | Unit Price | Amount
-
-should both become structured tables.
-
-Semantic normalisation can later map compatible columns.
-
-=====================================================================
-12. OCR MUST HANDLE NEW IMAGE CONDITIONS
-=====================================================================
-
-Do not optimise preprocessing only for current scans.
-
-Use an adaptive OCR strategy.
+You are now the FINAL RELEASE ENGINEERING AGENT for the existing DocuMind AI repository.
+
+You are not starting a new project.
+You are not building a demo.
+You are not replacing working components unnecessarily.
+
+You are taking the CURRENT repository — after a major hardening/remediation pass — and performing the FINAL engineering, integration, productization, validation, security, UX, model, RAG, GraphRAG and release-readiness pass.
+
+============================================================
+PROJECT
+============================================================
+
+Name:
+DocuMind AI
+
+Purpose:
+Grounded, Governable Multimodal Intelligence for Enterprise Documents
+
+Core idea:
+
+DOCU/IMAGE
+   ↓
+INGESTION
+   ↓
+OCR / DOCUMENT UNDERSTANDING
+   ↓
+STRUCTURED EXTRACTION
+   ↓
+CHUNKING + PROVENANCE
+   ↓
+EMBEDDINGS
+   ↓
+QDRANT
+   +
+ENTITY / RELATION EXTRACTION
+   ↓
+NEO4J
+   ↓
+HYBRID RETRIEVAL
+   ├── semantic retrieval
+   ├── structured field retrieval
+   ├── metadata filtering
+   └── graph relationship retrieval
+   ↓
+EVIDENCE RANKING
+   ↓
+RAG CONTEXT
+   ↓
+LLM / GROUNDED GENERATOR
+   ↓
+GROUNDING VALIDATION
+   ↓
+CONFIDENCE / ABSTENTION
+   ↓
+CITATIONS / PROVENANCE
+   ↓
+FINAL ANSWER
+   ↓
+REVIEW / ANALYTICS / REPORTS / AUDIT
+
+============================================================
+CURRENT STATE — DO NOT IGNORE
+============================================================
+
+The repository has already gone through a hardening audit.
+
+Current known facts:
+
+- 25 of 28 registered defects are closed.
+- Remaining registered P2 items:
+  D-16: service.py is approximately 9,300 lines and remains overly monolithic.
+  D-17: GenericIntelligencePanel emits an excessively large frontend chunk.
+  D-19b: cold-cache test suite runtime is approximately 7 minutes.
+- Backend tests: 372 passed.
+- Frontend tests: 55 passed.
+- Full compose stack is healthy.
+- PostgreSQL, Redis, Qdrant and Neo4j have been exercised.
+- Qdrant retrieval is live.
+- Neo4j relationship retrieval is live.
+- Authentication and tenant isolation have adversarial tests.
+- Cross-document reasoning has been demonstrated.
+- Base-case/corpus-blind support bug was fixed.
+- Clause-detection field corruption was fixed.
+- Qdrant false-health reporting was fixed.
+- Qdrant transient failure recovery was fixed.
+- Graph retrieval hardcoded allowlist issue was fixed.
+- Query routing fixed.
+- Model status reporting was hardened.
+- Backend Docker build issue was fixed.
+- Kubernetes manifests were consolidated.
+- Analytics/reporting/audit infrastructure exists.
+- Evaluation harness exists.
+- Measured evaluation currently reports strong results on its controlled unseen corpus.
+
+DO NOT undo or casually rewrite these fixes.
+
+Your first job is to verify the CURRENT repository state against reality.
+
+============================================================
+ABSOLUTE RULES
+============================================================
+
+1. NEVER hardcode document-specific answers.
+2. NEVER hardcode current fixture IDs into production logic.
+3. NEVER hardcode relationships.
+4. NEVER make a known demo answer appear as a general answer.
+5. NEVER fake model health.
+6. NEVER fake inference.
+7. NEVER fake citations.
+8. NEVER fabricate evaluation metrics.
+9. NEVER weaken a test merely to turn it green.
+10. NEVER hide an unavailable dependency.
+11. NEVER claim a model is active if it cannot actually initialize and infer.
+12. NEVER let document text become system instructions.
+13. NEVER sacrifice tenant isolation for convenience.
+14. NEVER make the UI claim something the backend cannot prove.
+15. NEVER replace a correct implementation with a mock.
+16. NEVER optimize only for currently visible sample documents.
+17. NEVER treat “configured” as “working.”
+18. NEVER treat “test stub passed” as “real model integrated.”
+19. NEVER mark the project COMPLETE until end-to-end behavior is demonstrated on NEW documents and NEW questions.
+20. Where a real external model/checkpoint is genuinely unavailable, implement the correct integration boundary, graceful capability state, and activation path rather than inventing availability.
+
+============================================================
+PHASE 0 — ESTABLISH BASELINE
+============================================================
+
+Before modifying code:
+
+Run:
+
+git status
+git branch --show-current
+git log --oneline -20
+
+Inspect:
+- README
+- audit documentation
+- project configuration
+- Docker Compose
+- backend Dockerfile
+- pyproject / requirements
+- frontend package configuration
+- tests
+- model registry
+- model configuration
+- API routes
+- database services
+- Neo4j integration
+- Qdrant integration
+- RAG pipeline
+- document processing
+- authentication
+- authorization
+- review workflow
+- analytics
+- reports
+
+Run the existing complete test suite and capture the baseline.
+
+Do not assume the previous report is still perfectly current.
+
+============================================================
+PHASE 1 — FINAL GAP MATRIX
+============================================================
+
+Create an internal matrix:
+
+AREA
+CURRENT STATE
+VERIFIED?
+REMAINING ISSUE
+SEVERITY
+FIX
+TEST
+EVIDENCE
+
+At minimum cover:
+
+Frontend
+Backend
+API
+Auth
+RBAC
+Tenant isolation
+OCR
+Layout
+Document understanding
+Structured extraction
+Embeddings
+Qdrant
+Neo4j
+GraphRAG
+RAG
+LLM
+Grounding
+Citations
+Confidence
+Abstention
+Review
+Risk analysis
+Reports
+Analytics
+Audit
+Docker
+Kubernetes
+CI
+Performance
+Testing
+Documentation
+
+Do not stop with a textual report.
+Use this matrix to drive implementation.
+
+============================================================
+PHASE 2 — THREE REGISTERED P2 DEFECTS
+============================================================
+
+Resolve the three remaining P2 defects properly.
+
+-----------------------------------------
+D-16 — MONOLITHIC service.py
+-----------------------------------------
+
+Current issue:
+service.py is approximately 9,300 lines / one large class.
+
+Refactor carefully.
+
+Split by responsibility, for example where appropriate:
+
+ingestion_service
+document_service
+extraction_service
+retrieval_service
+graph_service
+rag_service
+review_service
+risk_service
+report_service
+model_service
+provenance_service
+
+Do NOT create random micro-files.
+
+Preserve:
+- public APIs
+- behavior
+- schemas
+- error contracts
+- tests
+- tenant isolation
+- logging
+- instrumentation
+
+Use compatibility wrappers only where necessary.
+
+After refactoring:
+- run all backend tests
+- run integration tests
+- run end-to-end flows
+
+-----------------------------------------
+D-17 — GENERICINTELLIGENCEPANEL
+-----------------------------------------
+
+Current issue:
+frontend output chunk is excessively large.
+
+Break the component into meaningful subcomponents.
+
+Examples where relevant:
+
+QuestionComposer
+EvidenceList
+EvidenceCard
+AnswerPanel
+ConfidenceBadge
+CitationList
+GraphEvidence
+AbstentionNotice
+ReviewActionBar
+ProcessingState
+
+Do not split arbitrarily.
+
+Keep frontend behavior identical or better.
+
+Avoid introducing unnecessary dependencies.
+
+Run:
+- frontend tests
+- lint
+- formatter
+- build
+
+-----------------------------------------
+D-19b — TEST SUITE RUNTIME
+-----------------------------------------
+
+Investigate cold-cache runtime.
+
+Profile before optimizing.
+
+Do NOT weaken tests.
+
+Optimize:
+- fixture-level OCR caching
+- reusable fixtures
+- database setup
+- unnecessary repeated initialization
+- model startup
+- redundant document processing
+
+Preserve isolation between tests.
 
 Measure:
+- cold-cache runtime
+- warm-cache runtime
 
-- image size
-- contrast
-- skew
-- noise
-- OCR confidence
-- text density
+Do not falsely claim a major improvement unless measured.
 
-Then choose preprocessing.
+============================================================
+PHASE 3 — FRONTEND FINAL PRODUCTIZATION
+============================================================
 
-Possible variants:
+THIS IS A MAJOR PRIORITY.
 
-original
-grayscale
-contrast-enhanced
-deskewed
-thresholded
-denoised
-upscaled crop
+The current application must look and feel like a serious enterprise AI product.
 
-Only trigger expensive alternatives when useful.
+Do not make it look like a student CRUD dashboard.
 
-Critical low-confidence regions should receive local OCR retries.
+Redesign with a coherent design system.
 
-=====================================================================
-13. OCR CONSENSUS
-=====================================================================
+Maintain the existing visual identity where good, but significantly improve:
 
-When multiple OCR passes exist:
+- typography
+- spacing
+- hierarchy
+- cards
+- borders
+- buttons
+- navigation
+- filters
+- tables
+- dialogs
+- forms
+- badges
+- notifications
+- tooltips
+- loading states
+- skeleton loaders
+- empty states
+- error states
+- success states
+- animations
+- hover transitions
+- focus states
+- responsive layouts
 
-do not simply select the longest string.
+Use restrained, professional visual effects.
 
-Compare:
+Do not over-animate.
 
+Use purposeful micro-interactions.
+
+============================================================
+NAVIGATION
+============================================================
+
+Ensure:
+
+Dashboard
+Upload
+Documents
+Review Queue
+Ask Documents
+Knowledge Graph
+Analytics
+Finance Narratives
+Reports
+Model Laboratory
+Admin Settings
+Audit History
+
+are all:
+
+- logically grouped
+- correctly routed
+- protected
+- responsive
+- backed by real APIs
+- consistent
+
+Add:
+- breadcrumbs
+- active-state indicators
+- clear page titles
+- context-aware actions
+- notifications where useful
+
+============================================================
+DASHBOARD
+============================================================
+
+Create an executive-quality dashboard.
+
+Show REAL data:
+
+documents processed
+processing status
+review backlog
+OCR quality
+extraction coverage
+retrieval activity
+risk indicators
+recent documents
+recent questions
+model availability
+system health
+
+No fabricated statistics.
+
+Add useful trend cards only when real historical data exists.
+
+============================================================
+UPLOAD EXPERIENCE
+============================================================
+
+Create a polished enterprise upload workflow.
+
+Include:
+
+drag-and-drop
+file validation
+type validation
+size validation
+duplicate detection
+upload progress
+processing progress
+processing stage
+success state
+warning state
+failure state
+retry
+cancel where supported
+
+Show:
+
+UPLOAD
+→ VALIDATE
+→ PROCESS
+→ INDEX
+→ GRAPH
+→ READY
+
+The user must understand what is happening.
+
+============================================================
+DOCUMENT EXPERIENCE
+============================================================
+
+Document pages should support:
+
+- preview
+- zoom
+- page navigation
+- original/enhanced/grayscale/binary views if supported
+- OCR overlays
+- layout overlays
+- extracted fields
+- tables
 - confidence
-- character plausibility
-- semantic type validation
-- neighbouring words
-- agreement between passes
+- warnings
+- provenance
+- review state
+- graph links
+- related documents
 
-Maintain alternatives when confidence remains low.
+Every overlay must map to real backend coordinates.
 
-=====================================================================
-14. INFORMATION MUST NEVER DISAPPEAR BECAUSE EXTRACTION FAILED
-=====================================================================
+============================================================
+ASK DOCUMENTS — CRITICAL
+============================================================
+
+This page must behave like a real enterprise RAG application.
+
+User enters ANY reasonable question.
+
+The frontend must send that exact question and current document scope to the backend.
+
+The backend must construct retrieval dynamically.
+
+NEVER:
+
+question
+→ fixed fixture
+→ fixed chunk
+→ fixed answer
+
+Instead:
+
+question
+→ classify intent
+→ detect entities
+→ retrieve structured fields where appropriate
+→ Qdrant semantic search
+→ metadata filters
+→ Neo4j relationship traversal
+→ evidence ranking
+→ context construction
+→ generator
+→ grounding validation
+→ confidence
+→ answer
+
+============================================================
+GENERALIZATION REGRESSION TEST
+============================================================
+
+Create at least:
+
+DOCUMENT A
+DOCUMENT B
+DOCUMENT C
+
+with unrelated domains/content.
+
+Questions must produce different retrieval results.
+
+Example:
+
+Question about A
+→ A evidence
+
+Question about B
+→ B evidence
+
+Question about relationship between A/B
+→ both only if genuinely related
+
+Question about nonexistent topic
+→ abstention
+
+Question using paraphrase rather than exact field wording
+→ still works where semantically valid
 
 This is mandatory.
 
-Even if:
+============================================================
+PHASE 4 — OCR FINALIZATION
+============================================================
 
-classification fails,
-schema routing fails,
-structured extraction fails,
-advanced models are unavailable,
+Audit the entire OCR pipeline.
 
-DocuMind must still retain:
+Current known issue:
+host Tesseract version differs from container version.
 
-OCR lines
-layout blocks
-raw page text
-generic key/value candidates
-tables where detected
+DO NOT weaken required-field tests.
 
-These must still be indexed for Ask Documents.
+Instead determine whether practical remediation is possible.
 
-Therefore:
+Preferred sequence:
 
-STRUCTURED EXTRACTION FAILURE != RAG FAILURE.
+1. Try to pin the intended Tesseract version in the container.
+2. If source build is required, evaluate whether it is practical.
+3. If practical, implement deterministic container build.
+4. Verify license/build reproducibility.
+5. Re-run OCR regression tests.
 
-=====================================================================
-15. ASK DOCUMENTS MUST WORK ON UNSEEN DOCUMENTS
-=====================================================================
+If source compilation is too expensive or unsuitable for the target environment:
+- document the reason
+- make the version difference explicit
+- add an environment compatibility test
+- do not declare complete equivalence.
 
-Ask Documents must search multiple layers.
+The final container should produce deterministic documented behavior.
 
-Priority cascade:
+============================================================
+CONFIDENCE-DRIVEN OCR ROUTING
+============================================================
 
-1. human-verified structured facts
-2. reviewed structured facts
-3. high-confidence schema fields
-4. generic discovered key/value pairs
-5. tables
-6. exact identifier matches
-7. OCR lines
-8. layout blocks
-9. semantic chunks
-10. vector retrieval
-11. graph facts
-12. visual/risk evidence
+Implement the missing intelligent routing if compatible with architecture.
 
-Therefore a user should be able to upload a new document and immediately ask:
+Example:
 
-"What is this document about?"
+HIGH QUALITY DIGITAL DOCUMENT
+→ parser / normal text path
 
-"What date is shown?"
+SCANNED DOCUMENT
+→ OCR
 
-"Who created this?"
+LOW OCR CONFIDENCE
+→ enhanced preprocessing
 
-"What reference number appears?"
+COMPLEX LAYOUT
+→ layout-aware path
 
-"What are the important values?"
+AMBIGUOUS / LOW-CONFIDENCE
+→ approved advanced model fallback IF actually available
 
-"Summarise this document."
+Do not route to unavailable models.
 
-"What tables are present?"
+Do not fake fallback execution.
 
-"Does it mention an account number?"
+============================================================
+PHASE 5 — MODEL LABORATORY / MODEL REGISTRY
+============================================================
 
-even when no predefined schema exists.
+This needs to become technically truthful and useful.
 
-=====================================================================
-16. RAW OCR MUST BE INDEXED
-=====================================================================
+For every registered model maintain separate state:
 
-Never index only extracted fields.
+configured
+installed
+checkpoint_available
+initializable
+healthy
+smoke_test_passed
+schema_validated
+used_by_live_pipeline
 
-Index:
+UI must clearly distinguish them.
 
-- meaningful OCR lines
-- paragraphs
-- layout sections
-- tables
-- fields
-- verified values
+A model is ACTIVE only if the backend can prove:
 
-Otherwise every extraction error becomes a RAG failure.
+package
++
+checkpoint/config
++
+initialization
++
+inference
++
+schema validation
++
+recent smoke test
 
-Use metadata:
+all succeed.
 
-tenant_id
-document_id
-page
-bbox/region
-content_type
-verification status
-processing version
+============================================================
+CORE VS OPTIONAL MODELS
+============================================================
 
-=====================================================================
-17. SEMANTIC RETRIEVAL
-=====================================================================
+Classify each model:
 
-Use BGE-M3 when operational.
+CORE
+OPTIONAL
+EXPERIMENTAL
 
-Fallback:
+Do not force unavailable heavyweight models into the core execution path.
 
-local lexical/hash retrieval.
+Current known heavy adapters include models such as:
 
-But both retrieval paths must consume GENERIC DOCUMENT CONTENT, not only
-predefined schema fields.
+LayoutLMv3
+Donut
+YOLO
+DINOv2
+SegFormer
+DeBERTa-CUAD
+XGBoost risk
+BGE-M3
 
-Qdrant must index unseen documents automatically during processing.
+These currently lack project-trained checkpoints according to the existing audit.
 
-No developer intervention should be needed.
+DO NOT pretend otherwise.
 
-=====================================================================
-18. GENERATION MUST NOT BE THE EXTRACTOR
-=====================================================================
+Instead:
 
-The LLM must not invent structured fields.
+For each:
+- verify whether a publicly available pretrained checkpoint is technically usable under the repository's license/environment
+- determine whether the project actually needs it
+- if usable, wire it through a real adapter
+- otherwise maintain a clearly labeled OPTIONAL / UNAVAILABLE state
 
-LLM usage:
+============================================================
+CRITICAL QUESTION: BGE-M3
+============================================================
 
+Do not allow a UI statement like:
+
+“BGE-M3 active”
+
+unless BGE-M3 is genuinely generating embeddings in the live system.
+
+If the current production retrieval path is local hashing:
+
+- clearly label it as the current retrieval backend
+- expose its identity honestly
+- retain BGE-M3 as an optional advanced embedding backend if feasible
+
+If BGE-M3 can be genuinely activated in this environment without compromising stability:
+integrate it end-to-end.
+
+Otherwise:
+do not simulate it.
+
+============================================================
+DONUT / VISION MODELS
+============================================================
+
+For Donut and other document VLMs:
+
+Do not make them active just because a Python package is installed.
+
+Only activate if:
+- weights/checkpoint available
+- model loads
+- sample inference succeeds
+- output is useful
+- output schema is mapped
+- pipeline can consume it
+
+Otherwise maintain an explicit optional state.
+
+============================================================
+LLM — HIGH PRIORITY
+============================================================
+
+Current state says:
+
+No actual LLM checkpoint
+No approved external endpoint
+
+Current generator is the grounded template generator.
+
+This is acceptable only if clearly classified.
+
+NOW investigate the correct final architecture.
+
+Determine whether this environment can support a real LLM.
+
+Candidates may include an appropriately sized Qwen-family model or another approved model compatible with the project.
+
+DO NOT download enormous weights without checking:
+- RAM
+- disk
+- CPU/GPU
+- architecture
+- model compatibility
+- licensing
+- latency
+- reproducibility
+
+If a real local LLM is practical:
+implement it properly.
+
+If not:
+implement the provider abstraction completely so the system can use:
+
+LOCAL LLM
+or
+APPROVED EXTERNAL LLM
+
+without rewriting the application.
+
+============================================================
+LLM INTERFACE CONTRACT
+============================================================
+
+The LLM adapter should receive:
+
+system instructions
+question
 retrieved evidence
-+
-verified facts
-+
-graph facts
-+
-deterministic calculations
-+
-conversation state
+graph evidence
+structured fields
+document metadata
+grounding requirements
 
-→ natural-language response.
+It should produce structured output:
 
-Document extraction remains independently auditable.
+answer
+confidence
+citations
+evidence_ids
+document_ids
+pages
+abstained
+abstention_reason
 
-=====================================================================
-19. KNOWLEDGE GRAPH MUST ALSO GENERALIZE
-=====================================================================
+Validate with schema.
 
-Do not require a custom Neo4j relationship for every newly discovered label.
+Do not trust raw LLM output.
 
-Use two semantic levels.
+============================================================
+PROMPT INJECTION DEFENSE
+============================================================
 
-LEVEL A — generic
+Uploaded document text is UNTRUSTED DATA.
 
-(Document)-[:HAS_ATTRIBUTE]->(Attribute)
+A document may contain:
 
-Attribute:
-{
-  name,
-  semantic_type,
-  value
-}
+ignore previous instructions
+reveal system prompt
+call tools
+delete data
+change answer
+etc.
 
-LEVEL B — recognised semantic relationships
+The LLM must treat document content as evidence, not instructions.
 
-Document -> ISSUED_BY -> Organisation
-Document -> REQUESTED_BY -> Person
-Invoice -> REFERENCES -> PurchaseOrder
-Document -> HAS_DATE -> Date
-Document -> HAS_AMOUNT -> Amount
+Add explicit tests.
 
-Promote generic relationships to specific relationships only when semantic
-confidence is sufficient.
+============================================================
+PHASE 6 — QDRANT FINALIZATION
+============================================================
 
-This allows unseen documents to still enter the graph.
+Verify:
 
-=====================================================================
-20. ENTITY RESOLUTION
-=====================================================================
-
-Cross-document relationships must not depend only on identical strings.
-
-Entity resolution should consider:
-
-normalised text
-identifier equality
-email
-phone
-bank account
-address
-vendor ID
-semantic similarity
-reviewed aliases
-
-Examples:
-
-ABC Pvt. Ltd.
-ABC Private Limited
-ABC PVT LTD
-
-may represent one organisation.
-
-Do not merge entities solely because names are slightly similar.
-
-Use confidence and evidence.
-
-=====================================================================
-21. HUMAN REVIEW MUST IMPROVE FUTURE PROCESSING
-=====================================================================
-
-Human correction should not become filename-specific code.
-
-Store:
-
-original extraction
-corrected value
-corrected semantic field
-document type
-label text
-context
-layout relation
-reviewer
-
-Use approved corrections to:
-
-- improve alias vocabulary
-- improve schema statistics
-- improve classifier examples
-- create future labelled datasets
-- improve confidence calibration
-
-Do NOT silently retrain production models after every review.
-
-Build an explicit feedback dataset.
-
-=====================================================================
-22. GENERAL RISK ENGINE
-=====================================================================
-
-Risk rules must operate on semantic facts, not fixed templates.
-
-Example:
-
-IF
-document contains requested_payment_account
-
-AND
-organisation has approved_bank_account
-
-AND
-normalised accounts differ
-
-THEN
-BANK_ACCOUNT_MISMATCH
-
-This should work regardless of invoice layout.
-
-Similarly:
-
-duplicate invoice numbers
-amount mismatch
-missing approval
-date inconsistencies
-cross-document conflicts
-
-must operate on semantic entities.
-
-=====================================================================
-23. MODEL INDEPENDENCE
-=====================================================================
-
-The architecture must continue functioning when optional models are unavailable.
-
-Example:
-
-PP-OCR unavailable
-→ Tesseract
-
-PP-Structure unavailable
-→ geometry layout
-
-LayoutLM unavailable
-→ generic/deterministic semantic extraction
-
-BGE unavailable
-→ lexical retrieval
-
-Qdrant unavailable
-→ local vector store
-
-Qwen unavailable
-→ grounded template generator
-
-YOLO unavailable
-→ OpenCV visual cues
-
-Advanced model activation should IMPROVE the system.
-
-It must not be necessary for basic correctness.
-
-=====================================================================
-24. UNSEEN DOCUMENT TESTING
-=====================================================================
-
-THIS IS MANDATORY.
-
-Current development documents must be divided conceptually into:
-
-development examples
-regression examples
-unseen/holdout examples
-
-Do not inspect holdout expected answers while implementing extraction logic.
-
-After implementation:
-
-select several documents that were not used for parser tuning.
+collections
+dimensions
+payload schemas
+tenant filters
+document filters
+chunk IDs
+upsert
+update
+delete
+reindex
+query
+ranking
+failure recovery
 
 Test:
 
-classification
-generic field discovery
-semantic typing
-tables
-OCR
-RAG
-graph
-review
+upload new doc
+→ embedding generated
+→ point written
+→ query retrieves it
 
-Measure how the pipeline behaves.
+Then:
 
-A valid generalisation test is more important than making one known screenshot
-perfect.
+delete doc
+→ vector removed/invalidated
 
-=====================================================================
-25. PROPERTY-BASED / GENERIC TESTS
-=====================================================================
+Then:
 
-Add tests for invariants rather than exact documents only.
+reprocess doc
+→ no duplicate vector corruption
+
+Then:
+
+cross-tenant query
+→ forbidden
+
+============================================================
+PHASE 7 — NEO4J FINALIZATION
+============================================================
+
+Neo4j is not a decorative graph.
+
+It must be useful to retrieval.
+
+Verify ontology.
+
+Recommended generic conceptual entities:
+
+Document
+Page
+Organization
+Person
+Vendor
+Customer
+Invoice
+PurchaseOrder
+Contract
+Amount
+Date
+Reference
+Field
+RiskIndicator
+
+Relationships should be semantically meaningful.
 
 Examples:
 
-Any valid MM/DD/YY date should not be classified as PHONE.
+CONTAINS
+HAS_PAGE
+ISSUED_BY
+BILLED_TO
+REFERENCES
+RELATED_TO
+MATCHES
+CONTRADICTS
+SUPPORTS
+DERIVED_FROM
+HAS_FIELD
 
-Any email address should satisfy email type validation.
+Do not create nonsensical relationships.
 
-Every extracted field must have evidence.
+============================================================
+DYNAMIC GRAPH GENERATION
+============================================================
 
-No evidence span may be assigned to mutually incompatible semantic fields
-without conflict metadata.
+No fixture-derived relationship vocabulary.
 
-Every tenant-indexed vector must contain tenant_id.
+For arbitrary extracted fields:
+derive valid graph relationship names safely.
 
-Every graph node derived from documents must preserve tenant_id.
+Validate relationship identifiers.
 
-Every RAG citation must resolve to an existing evidence object.
+Never interpolate user text directly into Cypher.
 
-Reprocessing must not duplicate current graph/vector facts.
+Use parameters.
 
-=====================================================================
-26. DOCUMENT VARIATION TESTS
-=====================================================================
+============================================================
+GRAPH RETRIEVAL ACCEPTANCE
+============================================================
 
-Test robustness against variations such as:
-
-different fonts
-slightly rotated pages
-low contrast
-different image resolution
-colon/no-colon labels
-label above value
-label left of value
-table layouts
-multi-column pages
-scanned PDFs
-PNG/JPEG/TIFF
-multi-page PDFs
-
-The extraction logic must rely on semantic/layout principles rather than exact
-pixel coordinates.
-
-=====================================================================
-27. CONFIDENCE / ABSTENTION
-=====================================================================
-
-The system must be allowed to say:
-
-unknown
-uncertain
-not found
-review required
-
-This is better than confidently returning the wrong field.
-
-Implement confidence thresholds for:
-
-classification
-field mapping
-entity typing
-entity resolution
-graph relation
-risk indicators
-
-=====================================================================
-28. NEW DOCUMENT EXPERIENCE
-=====================================================================
-
-The expected flow for ANY new document is:
-
-UPLOAD
-  ↓
-file validated
-  ↓
-pages rendered
-  ↓
-preprocessing
-  ↓
-OCR
-  ↓
-layout
-  ↓
-document classification
-  ↓
-known-schema OR inferred-schema
-  ↓
-generic key/value discovery
-  ↓
-semantic entity typing
-  ↓
-table extraction
-  ↓
-structured extraction
-  ↓
-evidence validation
-  ↓
-risk analysis
-  ↓
-vector indexing
-  ↓
-Neo4j projection
-  ↓
-review routing
-  ↓
-available in Ask Documents
-  ↓
-available in Knowledge Graph
-  ↓
-available in Analytics
-  ↓
-available for Reports/Narratives where applicable
-
-No manual code modification should be necessary between UPLOAD and these
-features.
-
-=====================================================================
-29. SPECIALIZED MODULES SHOULD BE CONDITIONAL
-=====================================================================
-
-Not every document needs every module.
+Create unseen test documents.
 
 Example:
 
-invoice
-→ finance validation relevant
+Invoice-A
+PO-A
+Contract-A
+Invoice-B
 
-contract
-→ clause extraction relevant
+Only A documents share their genuine relationships.
 
-generic form
-→ CUAD not relevant
+Question:
+“Which documents are related to Vendor X?”
 
-plain letter
-→ table parser may find zero tables
+Graph should return only documents supported by actual relationships.
 
-bank document
-→ bank identifiers relevant
+Question:
+“What contract is related to this invoice?”
 
-Do not run irrelevant models merely because they exist.
+Graph should traverse the relationship.
 
-Build routing based on document characteristics.
+Question:
+“What is the total?”
 
-=====================================================================
-30. CURRENT DOCUMENTS ARE TESTS, NOT THE PRODUCT
-=====================================================================
+Structured/vector retrieval can answer without unnecessary graph traversal.
 
-Examples including:
+Graph is used where relationships matter.
 
-87093315_87093318.png
-00093726.png
+============================================================
+PHASE 8 — TRUE HYBRID RETRIEVAL
+============================================================
 
-must remain regression tests.
+Create a retrieval orchestrator.
 
-Passing them is required.
+Candidate sources:
 
-However:
+structured
+vector
+graph
+metadata
+lexical
+reranker where available
 
-DO NOT optimize exclusively for them.
+The orchestrator decides the cheapest correct route.
 
-After both pass, immediately validate on OTHER documents.
+Examples:
 
-If the solution works only for the named documents, the task is NOT complete.
+“What is the invoice amount?”
+→ structured first
 
-=====================================================================
-31. SUCCESS CRITERIA
-=====================================================================
+“What does the document say about payment terms?”
+→ semantic/vector
 
-The implementation succeeds when:
+“Which documents are related to this vendor?”
+→ graph
 
-[ ] A newly uploaded image requires no code change.
+“Compare invoice and purchase order totals.”
+→ graph + structured
 
-[ ] OCR text is accessible even when schema is unknown.
+“What evidence supports this?”
+→ provenance/evidence
 
-[ ] Unknown documents still produce generic structured information.
+Do not force every question through every database.
 
-[ ] Known schemas produce richer typed fields.
+============================================================
+PHASE 9 — EVIDENCE & GROUNDING
+============================================================
 
-[ ] Dates are distinguished from phones globally.
+Every answer must be evidence-aware.
 
-[ ] Semantic fields use layout/context instead of only regex.
+Store:
 
-[ ] Tables support unseen headings.
+document_id
+page
+chunk_id
+field
+source
+model
+confidence
+timestamp
 
-[ ] Ask Documents works from OCR even when structured extraction fails.
+When evidence is insufficient:
 
-[ ] Semantic retrieval automatically indexes new documents.
+ABSTAIN.
 
-[ ] Neo4j represents new documents without requiring custom code.
+When evidence conflicts:
 
-[ ] Risk rules operate on semantic facts.
+REPORT THE CONFLICT.
 
-[ ] Review corrections are stored as reusable training/feedback evidence.
+When evidence supports only part of the question:
 
-[ ] Optional heavy models improve the pipeline but are not required for
-    baseline operation.
+RETURN PARTIAL SUPPORT.
 
-[ ] Multiple unseen documents are tested after implementation.
+Never promote partial evidence to complete support.
 
-=====================================================================
-32. FINAL ENGINEERING PRINCIPLE
-=====================================================================
+============================================================
+GROUNDING VALIDATION
+============================================================
 
-DO NOT SOLVE DOCUMENTS.
+Before returning an answer, validate:
 
-SOLVE DOCUMENT UNDERSTANDING.
+Claim
+→ supporting evidence
 
-The implementation should learn/generalize from:
+If a claim has no evidence:
+- remove it
+OR
+- downgrade / abstain
 
-visual structure
-text semantics
-spatial relationships
-data types
-schemas
-entities
-cross-document relationships
+Do not let the generator introduce unsupported facts.
+
+============================================================
+PHASE 10 — CONFIDENCE
+============================================================
+
+Do not expose arbitrary confidence numbers.
+
+Define confidence from meaningful signals such as:
+
+retrieval strength
+source quality
+field extraction confidence
+evidence agreement
+graph confidence
+generator support
+conflict level
+
+Document the calculation.
+
+Use confidence to guide:
+answer
+partial answer
+review
+abstention
+
+============================================================
+PHASE 11 — REVIEW QUEUE
+============================================================
+
+Review queue must be fully functional.
+
+Reviewer can:
+
+open document
+inspect evidence
+accept field
+reject field
+edit where authorized
+comment
+escalate
+approve
+reject
+mark error
+request reprocess
+confirm risk/fraud indicator where supported
+
+Every action:
+- persisted
+- authorized
+- audited
+
+============================================================
+PHASE 12 — FRAUD / RISK
+============================================================
+
+Do not present risk detection as absolute fraud proof.
+
+Use:
+
+POTENTIAL RISK
+SUSPICIOUS INDICATOR
+POSSIBLE MANIPULATION
+REQUIRES REVIEW
+
+Combine where available:
+
+visual evidence
+field mismatch
+duplicate patterns
+cross-document contradiction
+metadata anomalies
+relationship inconsistency
+OCR anomalies
+
+Show evidence.
+
+============================================================
+PHASE 13 — SECURITY
+============================================================
+
+Re-run and expand the security audit.
+
+Test:
+
+unauthenticated routes
+expired token
+invalid token
+forged token
+tenant override
+document ID attack
+graph attack
+RAG document_ids attack
+review action attack
+report access
+metrics access
+admin route access
+file path traversal
+malicious filename
+oversized upload
+invalid MIME
+XSS
+prompt injection
+SQL injection
+command injection
+SSRF where applicable
+
+For every test:
+
+EXPECTED
+OBSERVED
+PASS/FAIL
+
+Do not rely only on frontend protection.
+
+============================================================
+PHASE 14 — NEGATIVE TEST CAMPAIGN
+============================================================
+
+Complete the remaining negative-test coverage.
+
+Mandatory:
+
+NT-1 hallucination / unsupported answer
+NT-2 overconfidence on unsupported query
+NT-3 generalization across unrelated document types
+NT-4 throughput/memory/resource pressure
+NT-5 irrelevant visual explanations
+
+Also explicitly cover:
+
+corrupt file
+oversized file
+duplicate document
+missing field
+contradictory field
+prompt injection
+service unavailable
+Qdrant unavailable
+Neo4j unavailable
+LLM unavailable
+model unavailable
+malformed model output
+bad OCR
+cross-tenant attack
+
+Never weaken expected assertions simply to obtain green tests.
+
+============================================================
+PHASE 15 — ANALYTICS
+============================================================
+
+All analytics must originate from real persisted data.
+
+Verify:
+
+document counts
+processing outcomes
+confidence
+review volume
+retrieval metrics
+citation coverage
+abstention
+risk
+latency
+model usage
+failures
+
+No invented statistics.
+
+============================================================
+PHASE 16 — REPORTS / FINANCE NARRATIVES
+============================================================
+
+Reports must be reproducible.
+
+Finance narratives must use verified records only.
+
+Any calculation should retain:
+
+input records
+formula
+result
+sources
+
+No fake totals.
+
+============================================================
+PHASE 17 — API CONTRACT AUDIT
+============================================================
+
+Enumerate every endpoint.
+
+For each:
+
+method
+request
+response
+auth
+authorization
+validation
+errors
+database
+frontend consumer
+tests
+
+Ensure consistent response envelopes.
+
+Do not flatten structured HTTPException detail.
+
+Preserve the existing parseResponse contract.
+
+============================================================
+PHASE 18 — DATABASE CONSISTENCY
+============================================================
+
+Verify:
+
+PostgreSQL
+Redis
+Qdrant
+Neo4j
+
+For each:
+
+startup
+health
+schema
+persistence
+failure handling
+recovery
+usage
+
+If data changes:
+
+PostgreSQL
+→ Qdrant update
+→ Neo4j update
+when appropriate
+
+Reprocessing must not create duplicates.
+
+Deletion must clean indexes.
+
+============================================================
+PHASE 19 — DOCKER
+============================================================
+
+Run the complete intended startup from a clean environment.
+
+Verify dependency order.
+
+Verify migration execution.
+
+Verify health checks.
+
+Verify worker healthcheck is distinct from backend.
+
+Verify full application is reachable.
+
+Verify:
+
+frontend
+API
+worker
+Postgres
+Redis
+Qdrant
+Neo4j
+
+all behave correctly.
+
+============================================================
+PHASE 20 — PLAYWRIGHT
+============================================================
+
+Treat the current Playwright failure honestly.
+
+First reproduce it.
+
+Then determine:
+
+Is it:
+- infrastructure?
+- browser?
+- frontend proxy?
+- OCR engine?
+- actual application regression?
+
+If Tesseract mismatch remains:
+
+fix environment where practical.
+
+Do not reduce required-field assertions.
+
+Goal:
+2/2 Playwright suites passing against the real containerized stack.
+
+============================================================
+PHASE 21 — EVALUATION HARNESS
+============================================================
+
+Strengthen the evaluation framework.
+
+It must run on documents not used by implementation tuning.
+
+Include:
+
+extraction
 retrieval
-review feedback
+answer accuracy
+citation correctness
+grounding fidelity
+abstention
+cross-document retrieval
+latency
+failure behavior
 
-rather than from known screenshots.
+Every metric must have:
+- explicit denominator
+- test set
+- measured result
+- reproducible command
 
-Every time you are about to write a document-specific rule, ask:
+Do not report “100%” on a tiny artificial sample as though it proves universal correctness.
 
-"Will this work on another document expressing the same concept in a different
-layout?"
+Display sample size prominently.
 
-If the answer is NO, redesign the rule.
+============================================================
+PHASE 22 — RESEARCH OBJECTIVES
+============================================================
 
-=====================================================================
-33. EXECUTION DIRECTIVE
-=====================================================================
+Ensure the actual implementation maps to:
 
-Apply this generalisation architecture throughout the EXISTING DocuMind
-repository.
+O1
+Multimodal document processing and extraction.
 
-Do not merely document it.
+O2
+Semantic retrieval through embeddings/vector search.
 
-Inspect current extraction, schema, classification, RAG and graph
-implementations and refactor them where necessary.
+O3
+Grounded question answering with evidence/citations.
 
-Then process:
+O4
+Cross-document relationship representation and retrieval.
 
-1. known regression documents,
-2. different documents from the repository,
-3. previously unused representative documents.
+O5
+Secure, user-friendly, measurable enterprise document intelligence platform.
 
-Compare behaviour.
+For each objective verify:
 
-Continue correcting SYSTEMIC causes.
+requirement
+design
+implementation
+test
+evidence
 
-Do not correct isolated outputs.
+============================================================
+PHASE 23 — RESEARCH GAP / CONTRIBUTION
+============================================================
 
-A bug such as:
+Do not claim:
 
-date interpreted as phone
+“We invented GraphRAG.”
+“We are the first system to connect documents.”
+“No one has done this before.”
 
-must be fixed in reusable semantic typing/validation.
+Instead make the contribution defensible:
 
-A bug such as:
+DocuMind AI integrates:
 
-new business form becomes unknown
+multimodal document processing
++
+semantic retrieval
++
+structured extraction
++
+knowledge-graph relationships
++
+cross-document retrieval
++
+grounded answer generation
++
+confidence / abstention
++
+provenance
++
+human review
 
-must be fixed in open-set classification/schema inference.
+into a unified enterprise-document workflow.
 
-A bug such as:
+Demonstrate this through measurable experiments.
 
-question cannot be answered because field extraction failed
+============================================================
+PHASE 24 — FRONTEND ENTERPRISE POLISH CHECKLIST
+============================================================
 
-must be fixed by multi-layer retrieval over raw OCR and semantic chunks.
+Review every page individually.
 
-A bug such as:
+For every page check:
 
-new field missing from graph
+1. hierarchy
+2. typography
+3. spacing
+4. responsive behavior
+5. loading state
+6. empty state
+7. error state
+8. success state
+9. disabled state
+10. accessibility
+11. keyboard navigation
+12. button consistency
+13. icon consistency
+14. data density
+15. error messaging
+16. confirmation dialogs
+17. destructive action warnings
+18. navigation consistency
 
-must be fixed using generic graph projection.
+No page should feel unfinished.
 
-The final application must handle future uploaded documents through the same
-pipeline without developer intervention.
+============================================================
+PHASE 25 — UX COPY
+============================================================
 
-=====================================================================
-END GENERALIZATION-FIRST DIRECTIVE
-=====================================================================
+Rewrite unclear technical UI wording.
+
+Examples:
+
+Instead of:
+“not found | stored-risk-registry”
+
+Use:
+“No supporting evidence found”
+
+Instead of:
+“blocked”
+
+Explain:
+“Unavailable because the required model/checkpoint is not configured.”
+
+Instead of:
+“active”
+
+Show:
+“Active — verified by smoke test”
+
+Make technical information understandable without hiding detail.
+
+============================================================
+PHASE 26 — ACCESSIBILITY
+============================================================
+
+Ensure:
+
+semantic buttons
+labels
+focus states
+keyboard access
+ARIA where needed
+contrast
+screen-reader names
+logical tab order
+accessible dialogs
+accessible status messages
+
+Run available accessibility checks.
+
+============================================================
+PHASE 27 — PERFORMANCE
+============================================================
+
+Measure real performance.
+
+Capture:
+
+upload
+ingestion
+OCR
+extraction
+embedding
+Qdrant retrieval
+Neo4j retrieval
+RAG
+generation
+total request
+
+Do not claim impossible p95 values.
+
+Separate:
+cold start
+warm execution
+
+============================================================
+PHASE 28 — FAILURE RECOVERY
+============================================================
+
+Test runtime failure during:
+
+Qdrant
+Neo4j
+Redis
+worker
+backend
+LLM
+OCR/model initialization
+
+The application should:
+
+detect
+degrade safely
+surface state
+recover where designed
+not silently corrupt data
+
+============================================================
+PHASE 29 — OBSERVABILITY
+============================================================
+
+Every important request should be traceable internally.
+
+Use:
+
+request ID
+user
+tenant
+endpoint
+document
+retrieval path
+model
+latency
+outcome
+
+Ensure request IDs reach logs.
+
+Do not expose sensitive logs publicly.
+
+============================================================
+PHASE 30 — DOCUMENTATION
+============================================================
+
+Update documentation for the final state.
+
+README must clearly explain:
+
+architecture
+components
+environment variables
+startup
+shutdown
+model availability
+optional models
+databases
+authentication
+testing
+evaluation
+limitations
+known constraints
+
+Include:
+
+Core path
+Optional path
+Fallback path
+
+Document what runs on CPU and what benefits from GPU.
+
+============================================================
+PHASE 31 — SECRETS AND TEST ACCOUNTS
+============================================================
+
+The previous verification created test credentials.
+
+Do not reuse them.
+
+Do not print their passwords.
+
+Audit repository, shell scripts, docs and logs for credentials.
+
+Remove hardcoded test credentials from source/documentation.
+
+Ensure production setup generates or requires secure credentials.
+
+============================================================
+PHASE 32 — FINAL CLEANUP
+============================================================
+
+Remove:
+
+dead code
+unused imports
+temporary debug files
+stale fixtures
+obsolete screenshots
+scratch dumps
+old prompt dumps
+duplicate configuration
+obsolete endpoints
+misleading README statements
+
+But preserve necessary test fixtures.
+
+Clearly document remaining fixture datasets.
+
+============================================================
+PHASE 33 — FULL FINAL TEST
+============================================================
+
+Run the FULL stack.
+
+Then test in this exact order:
+
+A.
+Create/verify authentication.
+
+B.
+Upload NEW document A.
+
+C.
+Process it completely.
+
+D.
+Verify OCR.
+
+E.
+Verify extraction.
+
+F.
+Verify chunks.
+
+G.
+Verify Qdrant indexing.
+
+H.
+Verify graph entities.
+
+I.
+Verify graph relationships.
+
+J.
+Ask question A.
+
+K.
+Verify correct evidence.
+
+L.
+Upload NEW unrelated document B.
+
+M.
+Ask question B.
+
+N.
+Verify different evidence.
+
+O.
+Upload genuinely related document C.
+
+P.
+Ask cross-document question.
+
+Q.
+Verify graph + structured/vector evidence.
+
+R.
+Ask unsupported question.
+
+S.
+Verify abstention.
+
+T.
+Trigger low-confidence input.
+
+U.
+Verify review routing.
+
+V.
+Attempt unauthorized access.
+
+W.
+Verify refusal.
+
+X.
+Reprocess a document.
+
+Y.
+Verify no duplicate graph/vector corruption.
+
+Z.
+Delete a document.
+
+AA.
+Verify indexes update correctly.
+
+============================================================
+PHASE 34 — RELEASE ACCEPTANCE GATES
+============================================================
+
+Do not declare RELEASE READY until:
+
+[ ] backend tests pass
+[ ] frontend tests pass
+[ ] lint passes
+[ ] formatter passes
+[ ] build passes
+[ ] dependency/security audit passes
+[ ] Docker build passes
+[ ] full compose boot passes
+[ ] migrations pass
+[ ] all core service health checks pass
+[ ] authentication passes
+[ ] tenant isolation passes
+[ ] upload works
+[ ] OCR works
+[ ] extraction works
+[ ] Qdrant works
+[ ] Neo4j works
+[ ] graph retrieval works
+[ ] hybrid retrieval works
+[ ] RAG works
+[ ] grounding works
+[ ] citations work
+[ ] confidence works
+[ ] abstention works
+[ ] review workflow works
+[ ] analytics work
+[ ] reports work
+[ ] audit works
+[ ] new unseen documents work
+[ ] new unseen questions work
+[ ] cross-document reasoning works
+[ ] negative tests pass
+[ ] Playwright passes
+[ ] no fake model status
+[ ] no fake metrics
+[ ] no hardcoded answers
+[ ] no credential leaks
+[ ] documentation matches implementation
+
+============================================================
+PHASE 35 — HOSTILE REVIEW
+============================================================
+
+Before completion, pretend you are an external evaluator trying to break this project.
+
+Ask:
+
+“Show me a document you have never seen.”
+
+Then test it.
+
+“Show me a question you didn't anticipate.”
+
+Then test it.
+
+“Show me two documents that are unrelated.”
+
+Test that they stay unrelated.
+
+“Show me two documents that are genuinely related.”
+
+Test graph traversal.
+
+“Turn off Qdrant.”
+
+Verify graceful degradation.
+
+“Turn off Neo4j.”
+
+Verify graceful degradation.
+
+“Remove the model checkpoint.”
+
+Verify honest status.
+
+“Ask for information that does not exist.”
+
+Verify abstention.
+
+“Put malicious instructions inside a document.”
+
+Verify prompt injection defense.
+
+“Try another tenant's document.”
+
+Verify rejection.
+
+“Delete a document.”
+
+Verify vector and graph cleanup.
+
+“Reprocess a document.”
+
+Verify idempotency.
+
+“Show me where this answer came from.”
+
+Verify page/document/field evidence.
+
+If anything fails, FIX IT.
+
+============================================================
+PHASE 36 — NO SUPERFICIAL COMPLETION
+============================================================
+
+Do NOT report:
+
+“Done — UI updated.”
+
+unless actual UI changes were tested.
+
+Do NOT report:
+
+“LLM integrated.”
+
+unless an actual model generated an answer.
+
+Do NOT report:
+
+“GraphRAG implemented.”
+
+unless Neo4j actually participates in live retrieval.
+
+Do NOT report:
+
+“BGE-M3 integrated.”
+
+unless BGE-M3 actually generates embeddings.
+
+Do NOT report:
+
+“Fraud detection implemented.”
+
+unless the actual evidence-based risk pipeline exists.
+
+Do NOT report:
+
+“Production ready.”
+
+if a critical required dependency is unavailable.
+
+============================================================
+PHASE 37 — FINAL OUTPUT
+============================================================
+
+At the end, produce a FINAL RELEASE REPORT containing:
+
+1. Overall completion percentage.
+2. Previous state.
+3. Current state.
+4. P0 fixed.
+5. P1 fixed.
+6. P2 fixed.
+7. Remaining issues.
+8. Frontend changes.
+9. Backend changes.
+10. API changes.
+11. Database changes.
+12. Qdrant verification.
+13. Neo4j verification.
+14. RAG verification.
+15. LLM verification.
+16. OCR verification.
+17. Model registry verification.
+18. Authentication verification.
+19. Tenant-isolation verification.
+20. Negative-test results.
+21. Playwright result.
+22. Evaluation results.
+23. Performance measurements.
+24. Security findings.
+25. Files changed.
+26. Commands used.
+27. Exact startup commands.
+28. Exact test commands.
+29. Any unavailable model/dependency.
+30. Remaining limitations.
+
+For every claim, provide evidence:
+- test name
+- command
+- file
+- output
+- metric
+
+============================================================
+FINAL PRINCIPLE
+============================================================
+
+The goal is NOT to make the project appear complete.
+
+The goal is to make it objectively complete where the environment allows it, and scientifically honest where it does not.
+
+The final DocuMind AI must behave as ONE CONNECTED SYSTEM:
+
+Frontend
+↓
+Secure API
+↓
+Document ingestion
+↓
+OCR / visual understanding
+↓
+Structured extraction
+↓
+Provenance
+↓
+Embeddings
+↓
+Qdrant
+↓
+Entities / relationships
+↓
+Neo4j
+↓
+Hybrid retrieval
+↓
+Evidence ranking
+↓
+RAG context
+↓
+Actual generator / LLM where available
+↓
+Grounding validation
+↓
+Confidence / abstention
+↓
+Citations
+↓
+Review / analytics / reports / audit
+
+No disconnected decorative modules.
+No demo-only logic.
+No hardcoded answers.
+No fake model status.
+No fake graph.
+No fake retrieval.
+No fake metrics.
+
+Use the existing hardening work as the foundation.
+
+Do not regress previously fixed defects.
+
+Start by auditing the repository and establishing the current baseline.
+
+Then IMPLEMENT every remaining fix that is realistically achievable in this environment.
+
+Do not stop at analysis.
+Do not stop at recommendations.
+Do not merely tell me what should be fixed.
+
+FIX IT, TEST IT, VERIFY IT, AND ONLY THEN REPORT IT.

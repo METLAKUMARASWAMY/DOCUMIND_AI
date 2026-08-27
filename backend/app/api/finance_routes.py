@@ -64,7 +64,9 @@ async def finance_narrative(request: FinanceNarrativeRequest) -> dict[str, Any]:
 
 @router.get("/documents")
 async def finance_documents() -> dict[str, Any]:
-    documents = [document.model_dump(mode="json") for document in finance_workflow.documents.values()]
+    documents = [
+        document.model_dump(mode="json") for document in finance_workflow.documents.values()
+    ]
     return _envelope({"total": len(documents), "documents": documents})
 
 
@@ -79,7 +81,9 @@ async def finance_document(document_id: str) -> dict[str, Any]:
             "extraction": finance_workflow.extractions.get(document_id).model_dump(mode="json")
             if document_id in finance_workflow.extractions
             else None,
-            "narrative": finance_workflow.generated_narratives.get(document_id).model_dump(mode="json")
+            "narrative": finance_workflow.generated_narratives.get(document_id).model_dump(
+                mode="json"
+            )
             if document_id in finance_workflow.generated_narratives
             else None,
             "review": finance_workflow.reviews.get(document_id).model_dump(mode="json")
@@ -125,7 +129,11 @@ async def finance_document_risk_flags(document_id: str) -> dict[str, Any]:
         flags.extend(flag.model_dump(mode="json") for flag in extraction.risk_flags)
     if narrative:
         known = {flag["flag_id"] for flag in flags}
-        flags.extend(flag.model_dump(mode="json") for flag in narrative.risk_flags if flag.flag_id not in known)
+        flags.extend(
+            flag.model_dump(mode="json")
+            for flag in narrative.risk_flags
+            if flag.flag_id not in known
+        )
     return _envelope({"total": len(flags), "risk_flags": flags}, document_id)
 
 
@@ -150,7 +158,9 @@ async def finance_review_detail(document_id: str) -> dict[str, Any]:
 
 
 @router.post("/review/{document_id}")
-async def finance_send_or_update_review(document_id: str, request: HumanReviewRequest | None = None) -> dict[str, Any]:
+async def finance_send_or_update_review(
+    document_id: str, request: HumanReviewRequest | None = None
+) -> dict[str, Any]:
     try:
         if request is None:
             review = finance_workflow.send_to_review(document_id)
@@ -234,20 +244,36 @@ async def finance_vector_search(
     source_type: str | None = Query(default=None),
 ) -> dict[str, Any]:
     started = time_marker()
-    hits = finance_workflow.vector_store.search(q, top_k=top_k, document_id=document_id, source_type=source_type)
+    hits = finance_workflow.vector_store.search(
+        q, top_k=top_k, document_id=document_id, source_type=source_type
+    )
     if document_id:
-        finance_workflow.latency_by_document.setdefault(document_id, {})["vector_retrieval_latency"] = time_marker() - started
+        finance_workflow.latency_by_document.setdefault(document_id, {})[
+            "vector_retrieval_latency"
+        ] = time_marker() - started
     return _envelope({"query": q, "total": len(hits), "hits": hits}, document_id)
 
 
 @router.get("/vector/document/{document_id}")
 async def finance_vector_document(document_id: str) -> dict[str, Any]:
-    records = [record.model_dump(mode="json") for record in finance_workflow.vector_store.document_records(document_id)]
-    return _envelope({"total": len(records), "records": records, "facets": finance_workflow.vector_store.facets()}, document_id)
+    records = [
+        record.model_dump(mode="json")
+        for record in finance_workflow.vector_store.document_records(document_id)
+    ]
+    return _envelope(
+        {
+            "total": len(records),
+            "records": records,
+            "facets": finance_workflow.vector_store.facets(),
+        },
+        document_id,
+    )
 
 
 @router.get("/vector/similar-risk-cases")
-async def finance_vector_similar_risk_cases(risk_level: str | None = Query(default=None)) -> dict[str, Any]:
+async def finance_vector_similar_risk_cases(
+    risk_level: str | None = Query(default=None),
+) -> dict[str, Any]:
     try:
         parsed_level = RiskLevel(risk_level) if risk_level else None
     except ValueError as exc:
@@ -271,7 +297,9 @@ async def finance_run_demo_case(case_id: str) -> dict[str, Any]:
     return _envelope(result, result["document"]["document_id"])
 
 
-def _envelope(data: Any, document_id: str | None = None, errors: list[str] | None = None) -> dict[str, Any]:
+def _envelope(
+    data: Any, document_id: str | None = None, errors: list[str] | None = None
+) -> dict[str, Any]:
     return {
         "success": not errors,
         "document_id": document_id,

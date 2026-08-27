@@ -75,7 +75,9 @@ class VectorIntelligenceLayer:
                 )
             )
 
-    def search(self, question: str, case_id: str | None = None, top_k: int = 5) -> list[QueryCitation]:
+    def search(
+        self, question: str, case_id: str | None = None, top_k: int = 5
+    ) -> list[QueryCitation]:
         query_vector = self.embedding.embed(question)
         scored = []
         for chunk in self._chunks:
@@ -84,7 +86,9 @@ class VectorIntelligenceLayer:
             vector_score = self.embedding.cosine(query_vector, chunk.vector)
             keyword_score = self.embedding.keyword_overlap(question, chunk.text)
             finding_boost = 0.32 if chunk.linked_findings else 0.0
-            if chunk.linked_findings and any(term in question.lower() for term in ("exception", "review", "blocked")):
+            if chunk.linked_findings and any(
+                term in question.lower() for term in ("exception", "review", "blocked")
+            ):
                 finding_boost += 0.18
             score = vector_score * 0.72 + keyword_score * 0.38 + finding_boost
             if vector_score < 0.08 and keyword_score >= 0.18:
@@ -132,7 +136,9 @@ class VectorIntelligenceLayer:
         reranked = []
         for score, vector_score, keyword_score, chunk in scored:
             text = chunk.text.lower()
-            priority_hits = sum(1 for term in priority_terms if term in lower_question and term in text)
+            priority_hits = sum(
+                1 for term in priority_terms if term in lower_question and term in text
+            )
             reranked.append((score + priority_hits * 0.045, vector_score, keyword_score, chunk))
         reranked.sort(key=lambda item: item[0], reverse=True)
         return reranked

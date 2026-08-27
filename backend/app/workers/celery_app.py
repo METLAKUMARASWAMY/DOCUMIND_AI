@@ -23,7 +23,9 @@ def celery_available() -> bool:
 
 def create_celery_app() -> Any:
     if not celery_available():
-        raise WorkerUnavailableError("Celery is not installed. Install backend runtime requirements first.")
+        raise WorkerUnavailableError(
+            "Celery is not installed. Install backend runtime requirements first."
+        )
     app = Celery(
         "documind_vision_worker",
         broker=settings.redis_url,
@@ -55,7 +57,9 @@ def celery_readiness() -> dict[str, Any]:
         reason = "Celery package is not installed in the current Python environment."
     else:
         status = "ready_for_connection"
-        reason = "Celery app is configured; broker connectivity is checked by deployment smoke tests."
+        reason = (
+            "Celery app is configured; broker connectivity is checked by deployment smoke tests."
+        )
     return {
         "backend_id": "celery_worker",
         "queue": VisionProcessingWorker.queue_name,

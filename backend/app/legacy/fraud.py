@@ -21,7 +21,9 @@ class FraudDetectionEngine:
             confidence = "low" if len(documents) < 2 or not cross_document_checks else "medium"
             return (0.04 if confidence == "low" else 0.08), [], confidence
 
-        weighted = sum(signal.probability * self._severity_weight(signal.severity) for signal in signals)
+        weighted = sum(
+            signal.probability * self._severity_weight(signal.severity) for signal in signals
+        )
         max_weight = max(1.0, sum(self._severity_weight(signal.severity) for signal in signals))
         coverage_bonus = min(0.16, len(cross_document_checks) * 0.035)
         probability = min(0.97, weighted / max_weight + coverage_bonus)
@@ -31,8 +33,16 @@ class FraudDetectionEngine:
     def _duplicate_invoice_signals(self, documents: list[DocumentRecord]) -> list[FraudSignal]:
         groups: dict[tuple[str, str], list[DocumentRecord]] = defaultdict(list)
         for document in documents:
-            invoice_numbers = [f.normalized_value or f.value.lower() for f in document.extracted_fields if f.name == "invoice_number"]
-            amounts = [f.normalized_value or f.value.lower() for f in document.extracted_fields if f.name == "amount"]
+            invoice_numbers = [
+                f.normalized_value or f.value.lower()
+                for f in document.extracted_fields
+                if f.name == "invoice_number"
+            ]
+            amounts = [
+                f.normalized_value or f.value.lower()
+                for f in document.extracted_fields
+                if f.name == "amount"
+            ]
             for invoice_number in invoice_numbers:
                 groups[(invoice_number, (amounts[:1] or ["unknown"])[0])].append(document)
 
@@ -48,7 +58,11 @@ class FraudDetectionEngine:
                     severity=RiskLevel.high,
                     probability=0.82,
                     evidence=[
-                        self._evidence(member, f"Invoice {invoice_number} repeats with amount {amount}.", [signal_id])
+                        self._evidence(
+                            member,
+                            f"Invoice {invoice_number} repeats with amount {amount}.",
+                            [signal_id],
+                        )
                         for member in members
                     ],
                     recommendation="Hold payment and request vendor confirmation.",
@@ -63,10 +77,17 @@ class FraudDetectionEngine:
             status = check.status.lower()
             if status not in {"mismatch", "conflict", "changed", "failed", "review required"}:
                 continue
-            severity = RiskLevel.high if "amount" in check.title.lower() or "bank" in check.title.lower() else RiskLevel.medium
+            severity = (
+                RiskLevel.high
+                if "amount" in check.title.lower() or "bank" in check.title.lower()
+                else RiskLevel.medium
+            )
             probability = 0.74 if severity == RiskLevel.high else 0.54
             signal_id = f"frd-{uuid4().hex[:10]}"
-            evidence = [item.model_copy(update={"linked_findings": [*item.linked_findings, signal_id]}) for item in check.evidence]
+            evidence = [
+                item.model_copy(update={"linked_findings": [*item.linked_findings, signal_id]})
+                for item in check.evidence
+            ]
             signals.append(
                 FraudSignal(
                     signal_id=signal_id,
@@ -74,7 +95,8 @@ class FraudDetectionEngine:
                     severity=severity,
                     probability=probability,
                     evidence=evidence,
-                    recommendation=check.recommendation or "Investigate conflicting document evidence before approval.",
+                    recommendation=check.recommendation
+                    or "Investigate conflicting document evidence before approval.",
                     score_impact=18 if severity == RiskLevel.high else 11,
                 )
             )
@@ -83,12 +105,48 @@ class FraudDetectionEngine:
     def _payment_anomaly_signals(self, documents: list[DocumentRecord]) -> list[FraudSignal]:
         signals = []
         rules = [
-            ("new bank account", "Vendor bank account change", RiskLevel.high, 0.76, "Verify bank details through an independent channel."),
-            ("bank account change", "Vendor bank account change", RiskLevel.high, 0.76, "Verify bank details through an independent channel."),
-            ("urgent wire", "Urgent payment wording", RiskLevel.medium, 0.58, "Require finance manager confirmation before release."),
-            ("off-cycle payment", "Off-cycle payment request", RiskLevel.medium, 0.55, "Route to finance operations review."),
-            ("manual override", "Manual override risk", RiskLevel.high, 0.71, "Require approval evidence and audit justification."),
-            ("suspicious vendor", "Suspicious vendor anomaly", RiskLevel.high, 0.78, "Escalate vendor due diligence."),
+            (
+                "new bank account",
+                "Vendor bank account change",
+                RiskLevel.high,
+                0.76,
+                "Verify bank details through an independent channel.",
+            ),
+            (
+                "bank account change",
+                "Vendor bank account change",
+                RiskLevel.high,
+                0.76,
+                "Verify bank details through an independent channel.",
+            ),
+            (
+                "urgent wire",
+                "Urgent payment wording",
+                RiskLevel.medium,
+                0.58,
+                "Require finance manager confirmation before release.",
+            ),
+            (
+                "off-cycle payment",
+                "Off-cycle payment request",
+                RiskLevel.medium,
+                0.55,
+                "Route to finance operations review.",
+            ),
+            (
+                "manual override",
+                "Manual override risk",
+                RiskLevel.high,
+                0.71,
+                "Require approval evidence and audit justification.",
+            ),
+            (
+                "suspicious vendor",
+                "Suspicious vendor anomaly",
+                RiskLevel.high,
+                0.78,
+                "Escalate vendor due diligence.",
+            ),
         ]
         by_title: dict[str, FraudSignal] = {}
         for document in documents:
@@ -98,20 +156,26 @@ class FraudDetectionEngine:
                     continue
                 if title in by_title:
                     by_title[title].evidence.append(
-                        self._evidence(document, f"Detected '{marker}' payment-risk wording.", [by_title[title].signal_id])
+                        self._evidence(
+                            document,
+                            f"Detected '{marker}' payment-risk wording.",
+                            [by_title[title].signal_id],
+                        )
                     )
                     continue
                 signal_id = f"frd-{uuid4().hex[:10]}"
-                signal = (
-                    FraudSignal(
-                        signal_id=signal_id,
-                        title=title,
-                        severity=severity,
-                        probability=probability,
-                        evidence=[self._evidence(document, f"Detected '{marker}' payment-risk wording.", [signal_id])],
-                        recommendation=recommendation,
-                        score_impact=18 if severity == RiskLevel.high else 10,
-                    )
+                signal = FraudSignal(
+                    signal_id=signal_id,
+                    title=title,
+                    severity=severity,
+                    probability=probability,
+                    evidence=[
+                        self._evidence(
+                            document, f"Detected '{marker}' payment-risk wording.", [signal_id]
+                        )
+                    ],
+                    recommendation=recommendation,
+                    score_impact=18 if severity == RiskLevel.high else 10,
                 )
                 by_title[title] = signal
                 signals.append(signal)
@@ -121,7 +185,11 @@ class FraudDetectionEngine:
         signals = []
         for document in documents:
             lower = document.text.lower()
-            if "photoshopped" not in lower and "template mismatch" not in lower and "fake document" not in lower:
+            if (
+                "photoshopped" not in lower
+                and "template mismatch" not in lower
+                and "fake document" not in lower
+            ):
                 continue
             signal_id = f"frd-{uuid4().hex[:10]}"
             signals.append(
@@ -130,14 +198,20 @@ class FraudDetectionEngine:
                     title="Fake document indicator",
                     severity=RiskLevel.critical,
                     probability=0.88,
-                    evidence=[self._evidence(document, "Fake document indicator found in source text.", [signal_id])],
+                    evidence=[
+                        self._evidence(
+                            document, "Fake document indicator found in source text.", [signal_id]
+                        )
+                    ],
                     recommendation="Escalate to fraud operations and pause automated processing.",
                     score_impact=30,
                 )
             )
         return signals
 
-    def _evidence(self, document: DocumentRecord, reasoning: str, linked_findings: list[str]) -> Evidence:
+    def _evidence(
+        self, document: DocumentRecord, reasoning: str, linked_findings: list[str]
+    ) -> Evidence:
         return Evidence(
             document_id=document.document_id,
             source_document=document.filename,

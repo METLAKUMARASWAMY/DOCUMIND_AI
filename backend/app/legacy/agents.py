@@ -33,8 +33,12 @@ class MultiAgentReasoningSystem:
         evidence = self._core_evidence(documents, compliance_findings, fraud_signals)
         extraction_quality = self._extraction_quality(documents)
         evidence_coverage = min(1.0, len(evidence_chunks) / max(len(documents), 1) / 2)
-        high_compliance = [f for f in compliance_findings if f.severity in {RiskLevel.high, RiskLevel.critical}]
-        high_fraud = [s for s in fraud_signals if s.severity in {RiskLevel.high, RiskLevel.critical}]
+        high_compliance = [
+            f for f in compliance_findings if f.severity in {RiskLevel.high, RiskLevel.critical}
+        ]
+        high_fraud = [
+            s for s in fraud_signals if s.severity in {RiskLevel.high, RiskLevel.critical}
+        ]
 
         decisions = []
         for agent in self.agent_names:
@@ -80,7 +84,9 @@ class MultiAgentReasoningSystem:
         high_fraud: list[FraudSignal],
         evidence_coverage: float,
     ) -> tuple[str, str, str, float]:
-        has_contract = any(doc.document_type.value in {"contract", "legal_document"} for doc in documents)
+        has_contract = any(
+            doc.document_type.value in {"contract", "legal_document"} for doc in documents
+        )
         if agent == "Document Understanding Agent":
             return (
                 f"Classified {len(documents)} document(s) and extracted enterprise entities",
@@ -90,7 +96,9 @@ class MultiAgentReasoningSystem:
             )
         if agent == "Retrieval Agent":
             return (
-                "Evidence index ready for citation-grounded search" if evidence_coverage else "Evidence index has limited coverage",
+                "Evidence index ready for citation-grounded search"
+                if evidence_coverage
+                else "Evidence index has limited coverage",
                 "Run search against generated findings and document chunks",
                 "completed" if evidence_coverage else "needs_attention",
                 0.72 + evidence_coverage * 0.2,
@@ -135,8 +143,18 @@ class MultiAgentReasoningSystem:
         if agent == "Risk Agent":
             risk_count = len(high_compliance) + len(high_fraud)
             if risk_count:
-                return ("Escalate case to risk operations", "Route case to risk queue", "blocked", 0.87)
-            return ("Monitor under normal risk workflow", "No escalation required", "completed", 0.68)
+                return (
+                    "Escalate case to risk operations",
+                    "Route case to risk queue",
+                    "blocked",
+                    0.87,
+                )
+            return (
+                "Monitor under normal risk workflow",
+                "No escalation required",
+                "completed",
+                0.68,
+            )
         return (
             f"Prepared executive summary for {len(documents)} document(s)",
             "Generate final report package",
@@ -176,7 +194,9 @@ class MultiAgentReasoningSystem:
             return 0.45
         return sum(fields) / len(fields)
 
-    def _confidence(self, agent: str, extraction_quality: float, evidence_coverage: float, certainty: float) -> float:
+    def _confidence(
+        self, agent: str, extraction_quality: float, evidence_coverage: float, certainty: float
+    ) -> float:
         agent_weight = {
             "Document Understanding Agent": 0.12,
             "Retrieval Agent": 0.08,
@@ -186,7 +206,13 @@ class MultiAgentReasoningSystem:
             "Risk Agent": 0.04,
             "Summary Agent": 0.03,
         }[agent]
-        score = 0.22 + extraction_quality * 0.28 + evidence_coverage * 0.22 + certainty * 0.22 + agent_weight
+        score = (
+            0.22
+            + extraction_quality * 0.28
+            + evidence_coverage * 0.22
+            + certainty * 0.22
+            + agent_weight
+        )
         return round(min(0.96, max(0.35, score)), 3)
 
     def _dedupe(self, evidence: list[Evidence]) -> list[Evidence]:

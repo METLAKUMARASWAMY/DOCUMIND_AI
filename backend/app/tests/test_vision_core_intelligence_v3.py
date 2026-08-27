@@ -67,15 +67,9 @@ def test_strong_title_rules_override_generic_classification(title, expected_type
 def test_fax_classification_extraction_runtime_chunks_and_graph():
     document = _fax_document("core")
     assert document["document_type"] == "fax_transmission"
-    assert document["metadata"]["classification"]["classifier"] == (
-        "hybrid-document-classifier-v3"
-    )
-    assert document["metadata"]["classification"]["signals"][0]["type"] == (
-        "title_keyword"
-    )
-    assert document["metadata"]["schema_selection"]["selected_schema"] == (
-        "fax_transmission"
-    )
+    assert document["metadata"]["classification"]["classifier"] == ("hybrid-document-classifier-v3")
+    assert document["metadata"]["classification"]["signals"][0]["type"] == ("title_keyword")
+    assert document["metadata"]["schema_selection"]["selected_schema"] == ("fax_transmission")
     assert document["metadata"]["pipeline_status"] == "COMPLETED"
     assert document["metadata"]["decision_status"] == "REVIEW_REQUIRED"
 
@@ -127,9 +121,7 @@ def test_unknown_label_value_form_uses_generic_schema():
         "Reference Number: GEN-42\nContact Number: 212-555-0198\n",
     )
     assert document["document_type"] == "unknown"
-    assert document["metadata"]["schema_selection"]["selected_schema"] == (
-        "generic_key_value_form"
-    )
+    assert document["metadata"]["schema_selection"]["selected_schema"] == ("generic_key_value_form")
     assert document["metadata"]["schema_selection"]["fallback_used"] is True
     assert document["extracted_fields"]
 

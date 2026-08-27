@@ -28,9 +28,7 @@ def test_active_registry_state_requires_matching_smoke_inference(tmp_path: Path,
     assert before["local-layout-adapter-v1"]["status"] == "unavailable"
     assert before["local-layout-adapter-v1"]["health_status"] == "unknown"
 
-    result = ModelSmokeService(registry=registry, store=store).run(
-        "local-layout-adapter-v1"
-    )
+    result = ModelSmokeService(registry=registry, store=store).run("local-layout-adapter-v1")
     assert result["status"] == "passed"
     assert result["initialization"]["status"] == "passed"
     assert result["inference"]["status"] == "passed"
@@ -92,17 +90,13 @@ def test_admin_smoke_and_requested_state_endpoints_are_truthful_and_authorized()
     assert requested.json()["data"]["requested_enabled"] is True
 
     models = client.get("/api/v1/admin/models", headers=admin)
-    registered = {
-        item["model_id"]: item
-        for item in models.json()["data"]["registry"]["backends"]
-    }
+    registered = {item["model_id"]: item for item in models.json()["data"]["registry"]["backends"]}
     bge = registered["BAAI/bge-m3"]
     assert bge["requested"] is True
     assert bge["status"] != "active"
     requirements = bge["requirements"]
     assert requirements["missing_checkpoint"] is (
-        requirements["checkpoint_required"]
-        and not requirements["checkpoint_present"]
+        requirements["checkpoint_required"] and not requirements["checkpoint_present"]
     )
 
 

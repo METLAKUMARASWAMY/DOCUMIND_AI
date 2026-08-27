@@ -29,8 +29,7 @@ class DebertaContractClauseAdapter(ExtractionAdapter):
 
     def status(self) -> AdapterStatus:
         installed = all(
-            importlib.util.find_spec(package) is not None
-            for package in ("transformers", "torch")
+            importlib.util.find_spec(package) is not None for package in ("transformers", "torch")
         )
         checkpoint = (
             Path(settings.contract_checkpoint).expanduser()
@@ -160,10 +159,7 @@ class DebertaContractClauseAdapter(ExtractionAdapter):
         paragraph: str,
         document: VisionDocumentRecord,
     ) -> tuple[VisionBoundingBox | None, int, list[str]]:
-        targets = {
-            re.sub(r"[^a-z0-9]+", "", token.lower())
-            for token in paragraph.split()
-        }
+        targets = {re.sub(r"[^a-z0-9]+", "", token.lower()) for token in paragraph.split()}
         matches = [
             word
             for word in document.ocr_words

@@ -141,8 +141,7 @@ class VisionApprovalPolicyService:
         critical_duplicates = [
             item
             for item in document.duplicate_candidates
-            if item.matched_document_id
-            and item.status == "exact_duplicate"
+            if item.matched_document_id and item.status == "exact_duplicate"
         ]
         if critical_duplicates:
             conditions.append(
@@ -164,8 +163,7 @@ class VisionApprovalPolicyService:
                 field.evidence.evidence_id
                 for field in document.extracted_fields
                 if field.required
-                and field.reviewer_status
-                not in {ReviewerStatus.accepted, ReviewerStatus.edited}
+                and field.reviewer_status not in {ReviewerStatus.accepted, ReviewerStatus.edited}
             }
         )
         missing_evidence = sorted(set(required_evidence) - selected_evidence)

@@ -86,13 +86,18 @@ class TesseractOCRAdapter(OCRAdapter):
                         ),
                     )
                 ]
-            best_score = max((self._candidate_score(item[2]) for item in page_candidates), default=0.0)
+            best_score = max(
+                (self._candidate_score(item[2]) for item in page_candidates), default=0.0
+            )
             if best_score < 0.74:
                 retry_paths = [
                     ("grayscale", Path(artifact.grayscale_image_path or ""), 6),
                     ("enhanced", Path(artifact.enhanced_image_path or ""), 6),
                 ]
-                seen = {str(Path(artifact.original_image_path).resolve()), str(Path(artifact.processed_image_path).resolve())}
+                seen = {
+                    str(Path(artifact.original_image_path).resolve()),
+                    str(Path(artifact.processed_image_path).resolve()),
+                }
                 for variant, image_path, psm in self._unique_paths(retry_paths):
                     if not image_path.is_file() or str(image_path.resolve()) in seen:
                         continue
@@ -127,9 +132,9 @@ class TesseractOCRAdapter(OCRAdapter):
                             "word_count": len(candidate_words),
                             "mean_confidence": self._mean_confidence(candidate_words),
                             "selection_score": self._candidate_score(candidate_words),
-                            "text_preview": " ".join(
-                                word.text for word in candidate_words[:80]
-                            )[:1000],
+                            "text_preview": " ".join(word.text for word in candidate_words[:80])[
+                                :1000
+                            ],
                         }
                         for variant, psm, candidate_words in page_candidates
                     ],
@@ -274,8 +279,7 @@ class PaddleOCRV5Adapter(OCRAdapter):
 
     def status(self) -> AdapterStatus:
         installed = all(
-            importlib.util.find_spec(package) is not None
-            for package in ("paddle", "paddleocr")
+            importlib.util.find_spec(package) is not None for package in ("paddle", "paddleocr")
         )
         enabled = settings.enable_heavy_models and settings.enable_paddleocr
         active = installed and enabled

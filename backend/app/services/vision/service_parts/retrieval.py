@@ -76,10 +76,23 @@ class RetrievalMixin:
                 3,
             ),
             retriever_versions=versions,
+            **self._embedding_backend_identity(),
         )
         response.retrieval_trace = trace
         response.retrieval_trace_id = trace.trace_id
         response.reranker = reranker
+
+    def _embedding_backend_identity(self) -> dict[str, Any]:
+        """Names the backend that served, so the trace never has to be inferred."""
+        try:
+            status = self.retrieval_index.status()
+            return {
+                "embedding_backend": str(status.get("embedding_backend") or ""),
+                "embedding_model": str(status.get("embedding_model") or ""),
+                "semantic_matching": bool(status.get("semantic_embeddings")),
+            }
+        except Exception:  # pragma: no cover - identity is never required
+            return {}
 
     def _retrieval_inventory(
         self,

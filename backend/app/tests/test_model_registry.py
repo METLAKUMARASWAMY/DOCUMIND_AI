@@ -23,9 +23,9 @@ def test_model_registry_reports_local_runtime_and_disabled_heavy_models():
         assert backends["local-layout-adapter-v1"]["health_status"] == "unknown"
     assert backends["PP-OCRv5_mobile"]["status"] in {"disabled", "unavailable"}
     assert backends["LayoutLMv3-base"]["status"] in {"disabled", "unavailable"}
-    assert (
-        "local-layout-adapter-v1" in payload["active_local_pipeline"]
-    ) is (backends["local-layout-adapter-v1"]["status"] == "active")
+    assert ("local-layout-adapter-v1" in payload["active_local_pipeline"]) is (
+        backends["local-layout-adapter-v1"]["status"] == "active"
+    )
 
 
 def test_routing_preview_requests_fallback_without_fake_activation():

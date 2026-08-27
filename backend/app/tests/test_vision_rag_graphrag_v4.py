@@ -90,7 +90,12 @@ def _business_form() -> VisionDocumentRecord:
                 "W. E. Routh",
                 "Sample Specifications Written By: W. E. Routh",
             ),
-            _field(document_id, "request_date", "September 19, 1976", "Request Date: September 19, 1976"),
+            _field(
+                document_id,
+                "request_date",
+                "September 19, 1976",
+                "Request Date: September 19, 1976",
+            ),
             _field(document_id, "purpose", "Filter evaluation", "Purpose: Filter evaluation"),
             _field(
                 document_id,
@@ -278,23 +283,22 @@ def test_persisted_ask_citations_resolve_after_service_restart(tmp_path, monkeyp
         assert stored_question["answer"]["question_id"] == response.question_id
         for citation in response.citations:
             source = restarted.get_document(citation.document_id, tenant_id)
-            evidence_ids = {
-                field.evidence.evidence_id for field in source.extracted_fields
-            } | {
-                field.evidence.evidence_id for field in source.generic_fields
-            } | {
-                evidence.evidence_id
-                for indicator in [*source.risk_indicators, *source.processing_warnings]
-                for evidence in indicator.evidence
-            } | {
-                str(edge.get("evidence_id"))
-                for edge in source.graph.edges
-                if edge.get("evidence_id")
-            }
+            evidence_ids = (
+                {field.evidence.evidence_id for field in source.extracted_fields}
+                | {field.evidence.evidence_id for field in source.generic_fields}
+                | {
+                    evidence.evidence_id
+                    for indicator in [*source.risk_indicators, *source.processing_warnings]
+                    for evidence in indicator.evidence
+                }
+                | {
+                    str(edge.get("evidence_id"))
+                    for edge in source.graph.edges
+                    if edge.get("evidence_id")
+                }
+            )
             chunk_ids = {chunk.chunk_id for chunk in source.evidence_chunks}
-            ocr_locations = {
-                (line.page, line.text) for line in source.ocr_lines
-            }
+            ocr_locations = {(line.page, line.text) for line in source.ocr_lines}
             assert (
                 bool(citation.evidence_id and citation.evidence_id in evidence_ids)
                 or bool(citation.chunk_id and citation.chunk_id in chunk_ids)
@@ -337,7 +341,9 @@ def test_yes_preserves_pending_clarification_until_an_option_is_selected():
 
     assert ambiguous.answer_status == "clarification_needed"
     assert len(ambiguous.clarification_options) == 5
-    assert acknowledgement.answer == "Please select which type of safety check you want me to perform."
+    assert (
+        acknowledgement.answer == "Please select which type of safety check you want me to perform."
+    )
     assert acknowledgement.query_type == "clarification_response"
     assert acknowledgement.retriever == "not_used"
     assert selected.query_type == "approval_question"
@@ -386,7 +392,5 @@ def test_neo4j_rebuild_removes_stale_projected_nodes_before_upsert():
         for statement, parameters in transaction.calls
         if "DETACH DELETE node" in statement
     )
-    assert set(stale_cleanup[1]["node_ids"]) == {
-        node["id"] for node in document.graph.nodes
-    }
+    assert set(stale_cleanup[1]["node_ids"]) == {node["id"] for node in document.graph.nodes}
     assert any("[r:REQUESTED_BY" in statement for statement, _ in transaction.calls)

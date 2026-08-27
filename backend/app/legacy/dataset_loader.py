@@ -10,7 +10,9 @@ from app.core.config import settings
 
 class DatasetLoader:
     def __init__(self, dataset_path: str | None = None) -> None:
-        raw_path = dataset_path or os.getenv("DOCUMIND_DATASET_PATH") or settings.documind_dataset_path
+        raw_path = (
+            dataset_path or os.getenv("DOCUMIND_DATASET_PATH") or settings.documind_dataset_path
+        )
         self.dataset_path = self._resolve_path(raw_path)
         self.labels_path = self.dataset_path / "labels"
         self.documents_path = self.dataset_path / "documents"
@@ -44,7 +46,9 @@ class DatasetLoader:
         return [row for row in self._rows("cross_document_checks.csv") if row["case_id"] == case_id]
 
     def load_case_workflow(self, case_id: str) -> dict[str, Any] | None:
-        return next((row for row in self._rows("workflow_decisions.csv") if row["case_id"] == case_id), None)
+        return next(
+            (row for row in self._rows("workflow_decisions.csv") if row["case_id"] == case_id), None
+        )
 
     def load_case_agents(self, case_id: str) -> list[dict[str, Any]]:
         return [row for row in self._rows("agent_decisions.csv") if row["case_id"] == case_id]

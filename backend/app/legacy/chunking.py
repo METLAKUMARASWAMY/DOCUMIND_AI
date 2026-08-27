@@ -12,7 +12,9 @@ class EvidenceChunkingService:
             chunks.extend(self.chunk_document(case_id, document))
         return chunks
 
-    def chunk_document(self, case_id: str, document: DocumentRecord, window: int = 700) -> list[EvidenceChunk]:
+    def chunk_document(
+        self, case_id: str, document: DocumentRecord, window: int = 700
+    ) -> list[EvidenceChunk]:
         text = " ".join(document.text.split())
         if not text:
             text = "No extracted text available; OCR review required."

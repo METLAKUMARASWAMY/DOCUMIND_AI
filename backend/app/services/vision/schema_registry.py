@@ -378,8 +378,10 @@ class VisionSchemaRegistry:
         cleaned = value.strip()
         if not cleaned:
             return False, "empty_value"
-        validator = spec.validators[0] if spec and spec.validators else (
-            spec.value_kind if spec else "visible_text"
+        validator = (
+            spec.validators[0]
+            if spec and spec.validators
+            else (spec.value_kind if spec else "visible_text")
         )
         validator = {
             "text": "visible_text",
@@ -417,7 +419,11 @@ class VisionSchemaRegistry:
                 r"september|october|november|december)\s+\d{1,2}.*\d",
                 cleaned,
             )
-            valid = bool(re.search(r"[A-Za-z]", cleaned)) and labelled_value is None and date_line is None
+            valid = (
+                bool(re.search(r"[A-Za-z]", cleaned))
+                and labelled_value is None
+                and date_line is None
+            )
             return valid, "title_like_text" if valid else "labelled_value_is_not_a_title"
         if validator == "email":
             valid = re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", cleaned) is not None
@@ -439,9 +445,9 @@ class VisionSchemaRegistry:
             valid = re.search(r"-?\d[\d,]*(?:\.\d+)?", cleaned) is not None
             return valid, "numeric_amount_present" if valid else "amount_not_parseable"
         if validator == "currency":
-            valid = re.fullmatch(
-                r"(?:USD|INR|EUR|GBP|AUD|CAD|JPY|\$|€|£|₹)", cleaned, re.I
-            ) is not None
+            valid = (
+                re.fullmatch(r"(?:USD|INR|EUR|GBP|AUD|CAD|JPY|\$|€|£|₹)", cleaned, re.I) is not None
+            )
             return valid, "known_currency" if valid else "unknown_currency"
         if validator == "date":
             date_cleaned = cleaned.rstrip(" .,:;")
@@ -479,7 +485,11 @@ class VisionSchemaRegistry:
                 )
                 and re.search(r"\d", date_cleaned)
             ) or bool(re.fullmatch(r"\d{1,4}(?:[/-]\d{1,4}){1,2}", date_cleaned))
-            return (True, "date_uncertain_needs_review") if date_like else (False, "date_not_parseable")
+            return (
+                (True, "date_uncertain_needs_review")
+                if date_like
+                else (False, "date_not_parseable")
+            )
         if validator == "time":
             valid = re.search(r"\b\d{1,2}:\d{2}(?:\s*[AP]M)?\b", cleaned, re.I) is not None
             return valid, "valid_time" if valid else "time_not_parseable"
@@ -499,16 +509,21 @@ class VisionSchemaRegistry:
             }
             return valid, "valid_boolean" if valid else "boolean_not_parseable"
         if validator == "quantity":
-            valid = re.fullmatch(
-                r"(?i)\s*\d+(?:[.,]\d+)?\s*(?:lbs?\.?|pounds?|kg|kgs|g|grams?|"
-                r"mg|oz|ounces?|litres?|liters?|ml|units?|pcs?\.?)\s*",
-                cleaned,
-            ) is not None
+            valid = (
+                re.fullmatch(
+                    r"(?i)\s*\d+(?:[.,]\d+)?\s*(?:lbs?\.?|pounds?|kg|kgs|g|grams?|"
+                    r"mg|oz|ounces?|litres?|liters?|ml|units?|pcs?\.?)\s*",
+                    cleaned,
+                )
+                is not None
+            )
             return valid, "number_and_unit_present" if valid else "quantity_not_parseable"
         if validator == "reference":
             valid = bool(re.search(r"[A-Za-z0-9]", cleaned)) and len(cleaned) <= 100
             return valid, "valid_identifier" if valid else "identifier_not_parseable"
-        raise ValueError(f"Schema field {spec.name if spec else '<unknown>'} uses unknown validator {validator}")
+        raise ValueError(
+            f"Schema field {spec.name if spec else '<unknown>'} uses unknown validator {validator}"
+        )
 
     def _document_type(
         self,

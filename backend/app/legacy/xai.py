@@ -16,4 +16,3 @@ class ExplainabilityLayer:
             "confidence_method": "Weighted confidence from parser quality, retrieval similarity, rule coverage, and agent agreement.",
             "reasoning_policy": "Every alert must include source document, page number, evidence snippet, confidence, and recommendation.",
         }
-

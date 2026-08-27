@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
+from app.core.answer_policy import UNSUPPORTED_ANSWER
 from app.core.config import settings
 from app.core.security import hash_document, utc_now_iso
 from app.models.vision import (
@@ -1331,11 +1332,32 @@ class AnsweringMixin:
         return feedback
 
     def _not_found_answer(self, *, requires_review: bool) -> VisionAskResponse:
+        summary = "No extracted field, chunk, or graph evidence matched the question."
+        # A non-semantic embedding backend cannot match a paraphrase, so an
+        # abstention may mean "not reached" rather than "not present". The
+        # reader is entitled to know which. This is a standing property of the
+        # configured backend rather than a fallback taken during this answer,
+        # so it belongs in the reasoning and the retrieval trace — putting it
+        # in `degradations` would make every abstention read as degraded and
+        # dilute the signal that a generator or vector backend actually failed.
+        if not self._semantic_retrieval_available():
+            summary = (
+                f"{summary} Retrieval is served by the lexical/feature-hashing "
+                "backend, which matches wording rather than meaning, so a "
+                "question phrased differently from the document may not reach "
+                "evidence that exists."
+            )
         return VisionAskResponse(
-            answer="The available documents do not contain sufficient evidence to answer this question.",
+            answer=UNSUPPORTED_ANSWER,
             answer_status="not_found",
             citations=[],
             confidence=0.0,
-            reasoning_summary="No extracted field, chunk, or graph evidence matched the question.",
+            reasoning_summary=summary,
             requires_review=requires_review,
         )
+
+    def _semantic_retrieval_available(self) -> bool:
+        try:
+            return bool(self.retrieval_index.status().get("semantic_embeddings"))
+        except Exception:  # pragma: no cover - capability probe is never required
+            return False

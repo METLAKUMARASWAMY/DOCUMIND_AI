@@ -200,10 +200,7 @@ def test_invoice_po_difference_and_percentage_variance_are_decimal_safe():
     assert difference.calculation_trace.currency == "USD"
     assert len(difference.citations) == 2
     assert variance.calculation_trace is not None
-    assert (
-        variance.calculation_trace.operation
-        == VisionAskCalculationOperation.percentage_variance
-    )
+    assert variance.calculation_trace.operation == VisionAskCalculationOperation.percentage_variance
     assert variance.calculation_trace.result == "10.00"
     assert variance.calculation_trace.unit == "percent"
 

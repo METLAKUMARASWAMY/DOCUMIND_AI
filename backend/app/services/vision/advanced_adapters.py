@@ -139,10 +139,14 @@ class PaddleOCRVLAdapter(VisionAdapter):
         content: str,
     ) -> TableResult:
         rows = self._markdown_rows(content)
-        html_value = "<table>" + "".join(
-            "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
-            for row in rows
-        ) + "</table>"
+        html_value = (
+            "<table>"
+            + "".join(
+                "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
+                for row in rows
+            )
+            + "</table>"
+        )
         return TableResult(
             page_number=page_number,
             markdown=content,

@@ -51,7 +51,9 @@ class DatasetCaseService:
             raise ValueError(f"case_id not found in dataset: {selected_case_id}")
 
         evidence_chunks = self._evidence_chunks(selected_case_id)
-        evidence_by_id = {chunk.chunk_id: self._evidence_from_chunk(chunk) for chunk in evidence_chunks}
+        evidence_by_id = {
+            chunk.chunk_id: self._evidence_from_chunk(chunk) for chunk in evidence_chunks
+        }
         documents = self._documents(selected_case_id, evidence_by_id)
         entities = self._entities(selected_case_id)
         self._attach_entities_to_documents(documents, entities, evidence_by_id)
@@ -66,7 +68,9 @@ class DatasetCaseService:
         )
         compliance_score = self.scoring.compliance_score(compliance_findings)
         fraud_probability_score = self.scoring.fraud_probability_score(fraud_signals)
-        risk_score = self.scoring.risk_score(compliance_score, fraud_probability_score, workflow_action)
+        risk_score = self.scoring.risk_score(
+            compliance_score, fraud_probability_score, workflow_action
+        )
         approval_blocked, blocked_reasons = self.scoring.approval_blocked(
             compliance_findings,
             fraud_probability_score,
@@ -81,7 +85,9 @@ class DatasetCaseService:
             blocked_reasons,
             risk_score,
         )
-        agents = self._agents(selected_case_id, compliance_findings, fraud_signals, workflow, evidence_by_id)
+        agents = self._agents(
+            selected_case_id, compliance_findings, fraud_signals, workflow, evidence_by_id
+        )
         graph = self._graph(
             selected_case_id,
             documents,
@@ -99,7 +105,9 @@ class DatasetCaseService:
             fraud_probability_score / 100,
             workflow.recommended_action.value,
         )
-        audit_events = self._audit_events(selected_case_id, documents, compliance_findings, fraud_signals, graph)
+        audit_events = self._audit_events(
+            selected_case_id, documents, compliance_findings, fraud_signals, graph
+        )
         analysis = AnalysisResponse(
             case_id=selected_case_id,
             tenant_id="tenant-local",
@@ -275,7 +283,9 @@ class DatasetCaseService:
             )
         return findings
 
-    def _fraud_signals(self, case_id: str, evidence_by_id: dict[str, Evidence]) -> list[FraudSignal]:
+    def _fraud_signals(
+        self, case_id: str, evidence_by_id: dict[str, Evidence]
+    ) -> list[FraudSignal]:
         signals = []
         for row in self.loader.load_case_fraud_findings(case_id):
             title = row["finding"]
@@ -332,7 +342,9 @@ class DatasetCaseService:
         case_id: str,
         fraud_signals: list[FraudSignal],
     ) -> list[CrossDocumentCheck]:
-        signals = [signal for signal in fraud_signals if "bank account change" in signal.title.lower()]
+        signals = [
+            signal for signal in fraud_signals if "bank account change" in signal.title.lower()
+        ]
         if not signals:
             return []
         evidence = [item for signal in signals for item in signal.evidence]
@@ -390,17 +402,34 @@ class DatasetCaseService:
         for index, row in enumerate(self.loader.load_case_agents(case_id), start=1):
             agent = row["agent_name"]
             status = "completed"
-            if workflow.approval_blocked and agent in {"Legal Agent", "Financial Agent", "Compliance Agent", "Risk Agent"}:
-                status = "blocked" if agent in {"Financial Agent", "Risk Agent"} else "review_required"
-            confidence = max(0.35, min(0.97, self._float(row.get("confidence"), 0.75) - index * 0.007))
-            evidence = self._agent_evidence(agent, compliance_findings, fraud_signals, evidence_by_id)
+            if workflow.approval_blocked and agent in {
+                "Legal Agent",
+                "Financial Agent",
+                "Compliance Agent",
+                "Risk Agent",
+            }:
+                status = (
+                    "blocked" if agent in {"Financial Agent", "Risk Agent"} else "review_required"
+                )
+            confidence = max(
+                0.35, min(0.97, self._float(row.get("confidence"), 0.75) - index * 0.007)
+            )
+            evidence = self._agent_evidence(
+                agent, compliance_findings, fraud_signals, evidence_by_id
+            )
             evidence_ids = [item.evidence_id for item in evidence]
             reasoning = self._agent_reasoning(agent, compliance_findings, fraud_signals, workflow)
-            next_action = row.get("next_action") if row.get("next_action") != "none" else workflow.recommended_action.value
+            next_action = (
+                row.get("next_action")
+                if row.get("next_action") != "none"
+                else workflow.recommended_action.value
+            )
             decisions.append(
                 AgentDecision(
                     agent_name=agent,
-                    decision=self._agent_decision(agent, row.get("decision", ""), compliance_findings, fraud_signals, workflow),
+                    decision=self._agent_decision(
+                        agent, row.get("decision", ""), compliance_findings, fraud_signals, workflow
+                    ),
                     confidence=round(confidence, 3),
                     evidence_ids=evidence_ids,
                     evidence=evidence,
@@ -427,12 +456,17 @@ class DatasetCaseService:
         elif agent == "Retrieval Agent":
             selected = all_evidence[:5]
         elif agent == "Legal Agent":
-            selected = compliance_evidence or [item for item in all_evidence if "contract" in item.source_document.lower()]
+            selected = compliance_evidence or [
+                item for item in all_evidence if "contract" in item.source_document.lower()
+            ]
         elif agent == "Financial Agent":
             selected = [
                 item
                 for item in fraud_evidence
-                if any(term in f"{item.source_document} {item.text}".lower() for term in ("invoice", "email", "bank", "wire", "override"))
+                if any(
+                    term in f"{item.source_document} {item.text}".lower()
+                    for term in ("invoice", "email", "bank", "wire", "override")
+                )
             ] or fraud_evidence
         elif agent == "Compliance Agent":
             selected = compliance_evidence
@@ -448,7 +482,9 @@ class DatasetCaseService:
         seen = set()
         result = []
         for item in evidence:
-            key = item.evidence_id or item.chunk_id or (item.document_id, item.page_number, item.text)
+            key = (
+                item.evidence_id or item.chunk_id or (item.document_id, item.page_number, item.text)
+            )
             if key in seen:
                 continue
             seen.add(key)
@@ -472,7 +508,9 @@ class DatasetCaseService:
         def add_node(node_id: str, label: str, properties: dict[str, Any] | None = None) -> None:
             nodes[node_id] = {"id": node_id, "label": label, "properties": properties or {}}
 
-        def add_edge(source: str, relationship: str, target: str, properties: dict[str, Any] | None = None) -> None:
+        def add_edge(
+            source: str, relationship: str, target: str, properties: dict[str, Any] | None = None
+        ) -> None:
             key = (source, relationship, target)
             edges[key] = {
                 "source": source,
@@ -483,41 +521,77 @@ class DatasetCaseService:
 
         add_node(case_id, "Case", {"case_id": case_id})
         for document in documents:
-            add_node(document.document_id, "Document", {"filename": document.filename, "type": document.document_type.value})
+            add_node(
+                document.document_id,
+                "Document",
+                {"filename": document.filename, "type": document.document_type.value},
+            )
             add_edge(case_id, "CASE_CONTAINS_DOCUMENT", document.document_id)
         for entity in entities:
             node_id = f"{entity['entity_type']}:{self._normalize(entity['entity_value'])}"
-            add_node(node_id, self._entity_label(entity["entity_type"]), {"value": entity["entity_value"]})
+            add_node(
+                node_id,
+                self._entity_label(entity["entity_type"]),
+                {"value": entity["entity_value"]},
+            )
             add_edge(entity["source_document_id"], "DOCUMENT_MENTIONS_ENTITY", node_id)
             if entity["entity_type"] == "vendor":
-                invoice_docs = [doc for doc in documents if doc.document_type == DocumentType.invoice]
+                invoice_docs = [
+                    doc for doc in documents if doc.document_type == DocumentType.invoice
+                ]
                 for invoice in invoice_docs:
                     add_edge(invoice.document_id, "INVOICE_ISSUED_BY_VENDOR", node_id)
             if entity["entity_type"] == "purchase_order_number":
-                invoice_docs = [doc for doc in documents if doc.document_type == DocumentType.invoice]
+                invoice_docs = [
+                    doc for doc in documents if doc.document_type == DocumentType.invoice
+                ]
                 for invoice in invoice_docs:
                     add_edge(invoice.document_id, "INVOICE_REFERENCES_PO", node_id)
         for finding in compliance_findings:
             finding_node = f"finding:{finding.finding_id}"
-            add_node(finding_node, "Finding", {"title": finding.title, "severity": finding.severity.value})
+            add_node(
+                finding_node,
+                "Finding",
+                {"title": finding.title, "severity": finding.severity.value},
+            )
             if "missing" in finding.title.lower():
-                add_node(f"clause:{finding.clause_or_policy}", "Clause", {"name": finding.clause_or_policy, "status": "missing"})
-                add_edge(finding_node, "CONTRACT_MISSING_CLAUSE", f"clause:{finding.clause_or_policy}")
+                add_node(
+                    f"clause:{finding.clause_or_policy}",
+                    "Clause",
+                    {"name": finding.clause_or_policy, "status": "missing"},
+                )
+                add_edge(
+                    finding_node, "CONTRACT_MISSING_CLAUSE", f"clause:{finding.clause_or_policy}"
+                )
             for evidence in finding.evidence:
                 evidence_node = f"evidence:{evidence.evidence_id}"
-                add_node(evidence_node, "Evidence", {"document": evidence.source_document, "page": evidence.page_number})
+                add_node(
+                    evidence_node,
+                    "Evidence",
+                    {"document": evidence.source_document, "page": evidence.page_number},
+                )
                 add_edge(finding_node, "FINDING_SUPPORTED_BY_EVIDENCE", evidence_node)
         for signal in fraud_signals:
             signal_node = f"fraud:{signal.signal_id}"
-            add_node(signal_node, "FraudSignal", {"title": signal.title, "severity": signal.severity.value})
+            add_node(
+                signal_node,
+                "FraudSignal",
+                {"title": signal.title, "severity": signal.severity.value},
+            )
             for evidence in signal.evidence:
                 evidence_node = f"evidence:{evidence.evidence_id}"
-                add_node(evidence_node, "Evidence", {"document": evidence.source_document, "page": evidence.page_number})
+                add_node(
+                    evidence_node,
+                    "Evidence",
+                    {"document": evidence.source_document, "page": evidence.page_number},
+                )
                 add_edge(signal_node, "FINDING_SUPPORTED_BY_EVIDENCE", evidence_node)
         risk_node = f"risk:{case_id}"
         workflow_node = f"workflow:{case_id}"
         add_node(risk_node, "Risk", {"risk_score": risk_score})
-        add_node(workflow_node, "Workflow", {"recommended_action": workflow.recommended_action.value})
+        add_node(
+            workflow_node, "Workflow", {"recommended_action": workflow.recommended_action.value}
+        )
         add_edge(case_id, "CASE_HAS_RISK", risk_node)
         add_edge(case_id, "CASE_HAS_WORKFLOW_ACTION", workflow_node)
         return {"nodes": list(nodes.values()), "edges": list(edges.values())}
@@ -536,11 +610,16 @@ class DatasetCaseService:
             ("evidence_indexed", "Indexed dataset evidence chunks."),
             ("compliance_analyzed", f"Loaded {len(compliance_findings)} compliance finding(s)."),
             ("fraud_analyzed", f"Loaded {len(fraud_signals)} fraud finding(s)."),
-            ("graph_created", f"Created {len(graph['nodes'])} graph nodes and {len(graph['edges'])} edges."),
+            (
+                "graph_created",
+                f"Created {len(graph['nodes'])} graph nodes and {len(graph['edges'])} edges.",
+            ),
             ("report_generated", "Generated markdown, JSON, and PDF report outputs."),
         ]
         return [
-            AuditEvent(case_id=case_id, event_type=event_type, message=message, created_at=utc_now_iso())
+            AuditEvent(
+                case_id=case_id, event_type=event_type, message=message, created_at=utc_now_iso()
+            )
             for event_type, message in events
         ]
 
@@ -621,7 +700,14 @@ class DatasetCaseService:
 
     def _clause_or_policy(self, finding: str) -> str:
         lower = finding.lower()
-        for key in ("indemnity", "confidentiality", "termination", "governing law", "audit rights", "hipaa baa"):
+        for key in (
+            "indemnity",
+            "confidentiality",
+            "termination",
+            "governing law",
+            "audit rights",
+            "hipaa baa",
+        ):
             if key in lower:
                 return key
         return "policy"

@@ -75,9 +75,7 @@ def test_generator_failure_is_disclosed_not_silent(
     service_with_document: VisionAIService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service = service_with_document
-    monkeypatch.setattr(
-        service.generator_router, "active", lambda: _ExplodingGenerator()
-    )
+    monkeypatch.setattr(service.generator_router, "active", lambda: _ExplodingGenerator())
 
     response = _ask(service, "describe the quarterly logistics arrangement")
 
@@ -96,17 +94,13 @@ def test_ungrounded_generated_answer_is_rejected_and_disclosed(
     service_with_document: VisionAIService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service = service_with_document
-    monkeypatch.setattr(
-        service.generator_router, "active", lambda: _UngroundedGenerator()
-    )
+    monkeypatch.setattr(service.generator_router, "active", lambda: _UngroundedGenerator())
 
     response = _ask(service, "describe the quarterly logistics arrangement")
 
     assert "999,999" not in response.answer, "an ungrounded claim must never be returned"
     assert response.degraded is True
-    reported = [
-        item for item in response.degradations if item.stage == "grounding_validation"
-    ]
+    reported = [item for item in response.degradations if item.stage == "grounding_validation"]
     assert reported, f"expected a grounding_validation degradation, got {response.degradations}"
     assert reported[0].component == "grounding_validator"
     assert reported[0].impact == "generated_answer_rejected"
@@ -127,9 +121,7 @@ def test_degradations_survive_api_serialisation(
     """The disclosure has to reach the client, not just the Python object."""
 
     service = service_with_document
-    monkeypatch.setattr(
-        service.generator_router, "active", lambda: _ExplodingGenerator()
-    )
+    monkeypatch.setattr(service.generator_router, "active", lambda: _ExplodingGenerator())
 
     payload = _ask(service, "describe the quarterly logistics arrangement").model_dump(mode="json")
 

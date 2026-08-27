@@ -396,9 +396,7 @@ class ModelSmokeService:
             return {"analysis": analysis.model_dump(mode="json")}
         if adapter_id in {"local-hashing-embedding", "bge-m3-embedding"}:
             query_vector = adapter.embed("What is the invoice total?")
-            document_vector = adapter.embed(
-                "Invoice INV-SMOKE-1042 has a total of INR 1250.00."
-            )
+            document_vector = adapter.embed("Invoice INV-SMOKE-1042 has a total of INR 1250.00.")
             return {
                 "query_dense_dimensions": len(query_vector.dense),
                 "document_dense_dimensions": len(document_vector.dense),
@@ -406,8 +404,7 @@ class ModelSmokeService:
                 "query_sparse_terms": len(query_vector.sparse),
                 "document_sparse_terms": len(document_vector.sparse),
                 "finite": all(
-                    _finite(value)
-                    for value in [*query_vector.dense, *document_vector.dense]
+                    _finite(value) for value in [*query_vector.dense, *document_vector.dense]
                 ),
                 "scope_metadata": {
                     "tenant_id": document.tenant_id,
@@ -581,8 +578,7 @@ class ModelSmokeService:
             return {
                 "supported_response": supported,
                 "unsupported_response": unsupported,
-                "citation_ids_preserved": supported.get("citation_ids")
-                == ["smoke-evidence-1"],
+                "citation_ids_preserved": supported.get("citation_ids") == ["smoke-evidence-1"],
             }
         raise RuntimeError(f"No inference probe is implemented for adapter {adapter_id}")
 
@@ -590,10 +586,12 @@ class ModelSmokeService:
         validators: dict[str, tuple[str, Any]] = {
             "local-parser-v1": (
                 "parser-v1",
-                lambda value: bool(value.get("text"))
-                and value.get("page_count") == 1
-                and value.get("evidence_count", 0) > 0
-                and value.get("stored_then_removed") is True,
+                lambda value: (
+                    bool(value.get("text"))
+                    and value.get("page_count") == 1
+                    and value.get("evidence_count", 0) > 0
+                    and value.get("stored_then_removed") is True
+                ),
             ),
             "tesseract-local-ocr": (
                 "ocr-words-v1",
@@ -672,8 +670,10 @@ class ModelSmokeService:
             ),
             "bge-reranker-v2-m3": (
                 "reranker-scores-v1",
-                lambda value: value.get("score_count") == 2
-                and all(_finite(float(score)) for score in value.get("scores", [])),
+                lambda value: (
+                    value.get("score_count") == 2
+                    and all(_finite(float(score)) for score in value.get("scores", []))
+                ),
             ),
             "local-vector-store-v1": (
                 "retrieval-hits-v1",
@@ -681,16 +681,18 @@ class ModelSmokeService:
             ),
             "qdrant-hybrid-retrieval": (
                 "qdrant-filtered-replacement-v1",
-                lambda value: all(
-                    value.get(key) is True
-                    for key in (
-                        "idempotent_replace",
-                        "document_filter_valid",
-                        "tenant_filter_valid",
-                        "delete_valid",
+                lambda value: (
+                    all(
+                        value.get(key) is True
+                        for key in (
+                            "idempotent_replace",
+                            "document_filter_valid",
+                            "tenant_filter_valid",
+                            "delete_valid",
+                        )
                     )
-                )
-                and value.get("vector_dimensions", 0) > 0,
+                    and value.get("vector_dimensions", 0) > 0
+                ),
             ),
             "local-graph-projection-v1": (
                 "evidence-graph-v2",
@@ -698,10 +700,12 @@ class ModelSmokeService:
             ),
             "Neo4j": (
                 "neo4j-evidence-path-v1",
-                lambda value: value.get("path_length") == 1
-                and value.get("relationship_type") == "HAS_EVIDENCE"
-                and value.get("evidence_property_present") is True
-                and value.get("tenant_isolation_applied") is True,
+                lambda value: (
+                    value.get("path_length") == 1
+                    and value.get("relationship_type") == "HAS_EVIDENCE"
+                    and value.get("evidence_property_present") is True
+                    and value.get("tenant_isolation_applied") is True
+                ),
             ),
             "grounded-template-generator": ("grounded-answer-v1", _valid_generated),
             "qwen-grounded-generator": ("grounded-answer-v1", _valid_generated),

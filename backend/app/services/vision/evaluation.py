@@ -9,11 +9,10 @@ from collections.abc import Iterable
 from statistics import mean
 from typing import Any
 
+from app.core.answer_policy import UNSUPPORTED_ANSWER
 from app.core.security import utc_now_iso
 
-NO_ANSWER_TEXT = (
-    "the available documents do not contain sufficient evidence to answer this question"
-)
+NO_ANSWER_TEXT = UNSUPPORTED_ANSWER.lower().rstrip(".")
 
 
 class VisionEvaluationService:
@@ -203,7 +202,9 @@ class VisionEvaluationService:
             )
             matched: set[int] = set()
             for predicted in predicted_words:
-                best = self._best_box_match(predicted, reference_words, matched, require_label=False)
+                best = self._best_box_match(
+                    predicted, reference_words, matched, require_label=False
+                )
                 if best is not None and self._iou(predicted, reference_words[best]) >= 0.5:
                     matched.add(best)
                     true_positive += 1
@@ -338,9 +339,7 @@ class VisionEvaluationService:
                         reverse=True,
                     )
                     eligible = [
-                        item
-                        for item in reference_records
-                        if self._detection_label(item) == label
+                        item for item in reference_records if self._detection_label(item) == label
                     ]
                     matched: set[int] = set()
                     for candidate in candidates:
@@ -371,9 +370,7 @@ class VisionEvaluationService:
                 "ap50": self._average_precision(flags50, total_references),
             }
         map50 = self._mean(ap_by_threshold[0.5])
-        map50_95 = self._mean(
-            [value for values in ap_by_threshold.values() for value in values]
-        )
+        map50_95 = self._mean([value for values in ap_by_threshold.values() for value in values])
         return {
             "mean_iou": self._mean(matched_ious),
             "map50": map50,
@@ -382,9 +379,7 @@ class VisionEvaluationService:
             "per_class_precision": {
                 label: values["precision"] for label, values in per_class.items()
             },
-            "per_class_recall": {
-                label: values["recall"] for label, values in per_class.items()
-            },
+            "per_class_recall": {label: values["recall"] for label, values in per_class.items()},
             "iou_thresholds": thresholds,
             "ap_method": "ranked all-points average precision",
         }
@@ -402,7 +397,9 @@ class VisionEvaluationService:
             prediction_tables = self._records(prediction.get("tables"))
             for index in range(max(len(reference_tables), len(prediction_tables))):
                 reference_table = reference_tables[index] if index < len(reference_tables) else {}
-                prediction_table = prediction_tables[index] if index < len(prediction_tables) else {}
+                prediction_table = (
+                    prediction_tables[index] if index < len(prediction_tables) else {}
+                )
                 reference_cells = self._table_cells(reference_table)
                 prediction_cells = self._table_cells(prediction_table)
                 true_positive += len(reference_cells & prediction_cells)
@@ -413,10 +410,12 @@ class VisionEvaluationService:
                 structures.append(float(reference_shape == prediction_shape))
                 reference_serialized = self._table_serialized(reference_table)
                 prediction_serialized = self._table_serialized(prediction_table)
-                teds_scores.append(self._normalized_edit_similarity(
-                    reference_serialized,
-                    prediction_serialized,
-                ))
+                teds_scores.append(
+                    self._normalized_edit_similarity(
+                        reference_serialized,
+                        prediction_serialized,
+                    )
+                )
         precision = self._ratio(true_positive, true_positive + false_positive)
         recall = self._ratio(true_positive, true_positive + false_negative)
         return {
@@ -437,7 +436,9 @@ class VisionEvaluationService:
             prediction_answers = self._answer_list(prediction)
             reference_text = " | ".join(reference_answers)
             prediction_text = " | ".join(prediction_answers)
-            exact_values.append(float(self._normalize(reference_text) == self._normalize(prediction_text)))
+            exact_values.append(
+                float(self._normalize(reference_text) == self._normalize(prediction_text))
+            )
             anls_values.append(
                 max(
                     (
@@ -489,10 +490,7 @@ class VisionEvaluationService:
                     for index, value in enumerate(retrieved)
                     if value in relevant
                 )
-                ideal = sum(
-                    1.0 / math.log2(index + 2)
-                    for index in range(min(k, len(relevant)))
-                )
+                ideal = sum(1.0 / math.log2(index + 2) for index in range(min(k, len(relevant))))
                 ndcgs.append(self._ratio(dcg, ideal))
             recall_at_k[str(k)] = self._mean(recalls)
             precision_at_k[str(k)] = self._mean(precisions)
@@ -528,7 +526,12 @@ class VisionEvaluationService:
         supported = sum(int(item.get("supported_claims", 0)) for item in judgements)
         total = sum(int(item.get("total_claims", 0)) for item in judgements)
         unsupported = sum(
-            int(item.get("unsupported_claims", max(0, int(item.get("total_claims", 0)) - int(item.get("supported_claims", 0)))))
+            int(
+                item.get(
+                    "unsupported_claims",
+                    max(0, int(item.get("total_claims", 0)) - int(item.get("supported_claims", 0))),
+                )
+            )
             for item in judgements
         )
         hallucinated = sum(int(item.get("hallucinated_claims", 0)) for item in judgements)
@@ -643,7 +646,9 @@ class VisionEvaluationService:
         total_fields = sum(int(item.get("field_count", 0)) for item in records)
         accepted = sum(int(item.get("accepted_fields", 0)) for item in records)
         corrected = sum(int(item.get("corrected_fields", 0)) for item in records)
-        review_times = [float(item["review_time_seconds"]) for item in records if "review_time_seconds" in item]
+        review_times = [
+            float(item["review_time_seconds"]) for item in records if "review_time_seconds" in item
+        ]
         grouped_labels: dict[str, list[str]] = defaultdict(list)
         for item in records:
             if item.get("document_id") and item.get("reviewer_label") is not None:
@@ -699,8 +704,7 @@ class VisionEvaluationService:
 
     def character_error_rate(self, reference: str, prediction: str) -> float:
         return self._round(
-            self._levenshtein_sequence(list(reference), list(prediction))
-            / max(len(reference), 1)
+            self._levenshtein_sequence(list(reference), list(prediction)) / max(len(reference), 1)
         )
 
     def word_error_rate(self, reference: str, prediction: str) -> float:
@@ -889,10 +893,7 @@ class VisionEvaluationService:
         available = set(range(len(predictions)))
         scores = []
         for reference in references:
-            options = [
-                (self._anls(reference, predictions[index]), index)
-                for index in available
-            ]
+            options = [(self._anls(reference, predictions[index]), index) for index in available]
             if not options:
                 scores.append(0.0)
                 continue
@@ -950,9 +951,7 @@ class VisionEvaluationService:
             for prediction_index, prediction_item in enumerate(prediction, start=1):
                 insert = current[prediction_index - 1] + 1
                 delete = previous[prediction_index] + 1
-                substitute = previous[prediction_index - 1] + (
-                    reference_item != prediction_item
-                )
+                substitute = previous[prediction_index - 1] + (reference_item != prediction_item)
                 current.append(min(insert, delete, substitute))
             previous = current
         return previous[-1]

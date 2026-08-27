@@ -82,9 +82,7 @@ class DocumentIngestionService:
         detected_mime = self.detect_mime(extension, content)
         expected_mime = self.mime_by_extension.get(extension)
         if expected_mime and detected_mime != expected_mime:
-            raise ValueError(
-                f"File signature does not match {extension}; detected {detected_mime}"
-            )
+            raise ValueError(f"File signature does not match {extension}; detected {detected_mime}")
         if detected_mime not in settings.allowed_mime_types:
             raise ValueError(f"MIME type is not permitted: {detected_mime}")
         if declared_mime and declared_mime != "application/octet-stream":
@@ -156,7 +154,9 @@ class DocumentIngestionService:
             from docx import Document
 
             document = Document(BytesIO(content))
-            paragraphs = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
+            paragraphs = [
+                paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()
+            ]
             return "\n".join(paragraphs), 1
         except Exception as exc:
             raise ValueError("DOCX could not be parsed") from exc
@@ -210,8 +210,7 @@ class DocumentIngestionService:
                 handle.write(content)
                 temporary_path = handle.name
             arguments = [
-                part.replace("{path}", temporary_path)
-                for part in shlex.split(command_template)
+                part.replace("{path}", temporary_path) for part in shlex.split(command_template)
             ]
             if not any(temporary_path in argument for argument in arguments):
                 arguments.append(temporary_path)

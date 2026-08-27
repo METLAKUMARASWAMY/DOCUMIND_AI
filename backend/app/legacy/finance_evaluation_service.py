@@ -29,7 +29,9 @@ class FinanceEvaluationService:
     ) -> EvaluationResult:
         selected_ids = [document_id] if document_id else sorted(extractions)
         selected_extractions = {
-            doc_id: extraction for doc_id, extraction in extractions.items() if doc_id in selected_ids
+            doc_id: extraction
+            for doc_id, extraction in extractions.items()
+            if doc_id in selected_ids
         }
         selected_narratives = {
             doc_id: narrative for doc_id, narrative in narratives.items() if doc_id in selected_ids
@@ -59,7 +61,11 @@ class FinanceEvaluationService:
             human_review_acceptance=self._review_acceptance(selected_reviews),
             retrieval=self._retrieval_metrics(vector_store, selected_ids),
             safety=self._safety_metrics(document_results),
-            cost={"cost_per_100_requests": 0.0, "gpu_or_inference_cost": 0.0, "mode": "local_deterministic"},
+            cost={
+                "cost_per_100_requests": 0.0,
+                "gpu_or_inference_cost": 0.0,
+                "mode": "local_deterministic",
+            },
             document_results=document_results,
             created_at=datetime.now(UTC).isoformat(),
         )
@@ -87,8 +93,12 @@ class FinanceEvaluationService:
         vector_store: FinanceVectorStore,
     ) -> dict[str, Any]:
         truth_fields = ground_truth.get("fields", ground_truth)
-        extracted_fields = extraction.corrected_extraction or extraction.original_extraction or extraction.fields
-        exact, normalized, precision, recall, f1 = self._field_scores(extracted_fields, truth_fields)
+        extracted_fields = (
+            extraction.corrected_extraction or extraction.original_extraction or extraction.fields
+        )
+        exact, normalized, precision, recall, f1 = self._field_scores(
+            extracted_fields, truth_fields
+        )
         unsupported = len(narrative.unsupported_claims) if narrative else 0
         total_claims = max(1, len(self._claims(narrative.narrative if narrative else "")))
         vector_hits = vector_store.search(
@@ -104,31 +114,51 @@ class FinanceEvaluationService:
             "precision": precision,
             "recall": recall,
             "f1_score": f1,
-            "line_item_extraction_accuracy": self._line_item_accuracy(extracted_fields, truth_fields),
+            "line_item_extraction_accuracy": self._line_item_accuracy(
+                extracted_fields, truth_fields
+            ),
             "amount_mismatch_rate": self._amount_mismatch_rate(extracted_fields, truth_fields),
             "missing_field_rate": len(extraction.missing_fields) / max(1, len(extracted_fields)),
             "unsupported_claims": unsupported,
             "total_generated_claims": total_claims,
             "hallucination_rate": unsupported / total_claims,
             "missing_citation_count": 0 if narrative and narrative.source_references else 1,
-            "hallucinated_amount_count": self._claim_type_count(narrative, r"(?:INR|USD|EUR|GBP)\s?[\d,]+", unsupported_only=True),
-            "hallucinated_date_count": self._claim_type_count(narrative, r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}", unsupported_only=True),
-            "hallucinated_bank_detail_count": self._claim_type_count(narrative, r"\*{4}\d{4}", unsupported_only=True),
+            "hallucinated_amount_count": self._claim_type_count(
+                narrative, r"(?:INR|USD|EUR|GBP)\s?[\d,]+", unsupported_only=True
+            ),
+            "hallucinated_date_count": self._claim_type_count(
+                narrative, r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}", unsupported_only=True
+            ),
+            "hallucinated_bank_detail_count": self._claim_type_count(
+                narrative, r"\*{4}\d{4}", unsupported_only=True
+            ),
             "groundedness_score": narrative.groundedness_score if narrative else 0,
             "review_status": review.status.value if review else "not_reviewed",
-            "acceptance_status": review.acceptance_status.value if review and review.acceptance_status else "pending",
+            "acceptance_status": review.acceptance_status.value
+            if review and review.acceptance_status
+            else "pending",
             "retrieval_top_k_hit_rate": 1.0 if vector_hits else 0.0,
             "risk_flags": [flag.title for flag in extraction.risk_flags],
         }
 
-    def _field_scores(self, extracted: dict[str, Any], truth: dict[str, Any]) -> tuple[float, float, float, float, float]:
-        comparable_truth = {key: value for key, value in truth.items() if key not in {"field_confidence", "risk_level"}}
+    def _field_scores(
+        self, extracted: dict[str, Any], truth: dict[str, Any]
+    ) -> tuple[float, float, float, float, float]:
+        comparable_truth = {
+            key: value
+            for key, value in truth.items()
+            if key not in {"field_confidence", "risk_level"}
+        }
         if not comparable_truth:
             return 0.0, 0.0, 0.0, 0.0, 0.0
         exact_matches = 0
         normalized_matches = 0
-        predicted_keys = {key for key, value in extracted.items() if value not in (None, "", [], {})}
-        truth_keys = {key for key, value in comparable_truth.items() if value not in (None, "", [], {})}
+        predicted_keys = {
+            key for key, value in extracted.items() if value not in (None, "", [], {})
+        }
+        truth_keys = {
+            key for key, value in comparable_truth.items() if value not in (None, "", [], {})
+        }
         for key, truth_value in comparable_truth.items():
             extracted_value = extracted.get(key)
             if extracted_value == truth_value:
@@ -176,7 +206,9 @@ class FinanceEvaluationService:
             ],
         )
 
-    def _aggregate_latency(self, latency_by_document: dict[str, dict[str, float]], selected_ids: list[str]) -> dict[str, float]:
+    def _aggregate_latency(
+        self, latency_by_document: dict[str, dict[str, float]], selected_ids: list[str]
+    ) -> dict[str, float]:
         stages = [
             "upload_processing_latency",
             "extraction_latency",
@@ -192,14 +224,25 @@ class FinanceEvaluationService:
             for stage in stages:
                 values[stage].append(latency_by_document.get(doc_id, {}).get(stage, 0.0))
         flattened = [value for stage_values in values.values() for value in stage_values if value]
-        response = {stage: round(sum(items) / len(items), 4) if items else 0.0 for stage, items in values.items()}
-        response["average_latency"] = round(sum(flattened) / len(flattened), 4) if flattened else 0.0
+        response = {
+            stage: round(sum(items) / len(items), 4) if items else 0.0
+            for stage, items in values.items()
+        }
+        response["average_latency"] = (
+            round(sum(flattened) / len(flattened), 4) if flattened else 0.0
+        )
         response["p50_latency"] = round(median(flattened), 4) if flattened else 0.0
-        response["p95_latency"] = round(sorted(flattened)[max(0, int(len(flattened) * 0.95) - 1)], 4) if flattened else 0.0
+        response["p95_latency"] = (
+            round(sorted(flattened)[max(0, int(len(flattened) * 0.95) - 1)], 4)
+            if flattened
+            else 0.0
+        )
         return response
 
     def _review_acceptance(self, reviews: dict[str, HumanReview]) -> dict[str, float]:
-        total_reviewed = len([review for review in reviews.values() if review.review_decision != "pending"])
+        total_reviewed = len(
+            [review for review in reviews.values() if review.review_decision != "pending"]
+        )
         total = max(1, total_reviewed)
         counts = {
             "accepted_without_changes": 0,
@@ -222,17 +265,25 @@ class FinanceEvaluationService:
             correction_counts.append(review.correction_count)
             review_times.append(1.0 if review.review_timestamp else 0.0)
         acceptance_rate = (
-            counts["accepted_without_changes"] + counts["accepted_with_minor_changes"] + counts["accepted_with_major_changes"]
+            counts["accepted_without_changes"]
+            + counts["accepted_with_minor_changes"]
+            + counts["accepted_with_major_changes"]
         ) / total
         return {
             **{key: round(value / total, 3) for key, value in counts.items()},
-            "average_correction_count": round(sum(correction_counts) / len(correction_counts), 3) if correction_counts else 0.0,
-            "average_review_time": round(sum(review_times) / len(review_times), 3) if review_times else 0.0,
+            "average_correction_count": round(sum(correction_counts) / len(correction_counts), 3)
+            if correction_counts
+            else 0.0,
+            "average_review_time": round(sum(review_times) / len(review_times), 3)
+            if review_times
+            else 0.0,
             "reviewer_acceptance_rate": round(acceptance_rate, 3),
             "total_reviewed": float(total_reviewed),
         }
 
-    def _retrieval_metrics(self, vector_store: FinanceVectorStore, selected_ids: list[str]) -> dict[str, float]:
+    def _retrieval_metrics(
+        self, vector_store: FinanceVectorStore, selected_ids: list[str]
+    ) -> dict[str, float]:
         if not selected_ids:
             return {"grounded_answer_accuracy": 0.0, "retrieval_top_k_hit_rate": 0.0}
         hits = 0
@@ -251,7 +302,9 @@ class FinanceEvaluationService:
         )
         unsupported = sum(row.get("unsupported_claims", 0) for row in rows)
         return {
-            "unsafe_response_rate": round(unsupported / max(1, sum(row.get("total_generated_claims", 1) for row in rows)), 3),
+            "unsafe_response_rate": round(
+                unsupported / max(1, sum(row.get("total_generated_claims", 1) for row in rows)), 3
+            ),
             "prompt_injection_detection_rate": round(injection_cases / total, 3),
             "prompt_injection_failure_rate": 0.0,
         }
@@ -260,8 +313,7 @@ class FinanceEvaluationService:
         if not rows:
             return {key: 0.0 for key in keys}
         return {
-            key: round(sum(float(row.get(key, 0.0)) for row in rows) / len(rows), 3)
-            for key in keys
+            key: round(sum(float(row.get(key, 0.0)) for row in rows) / len(rows), 3) for key in keys
         }
 
     def _line_item_accuracy(self, extracted: dict[str, Any], truth: dict[str, Any]) -> float:
@@ -283,14 +335,19 @@ class FinanceEvaluationService:
                 mismatches += 1
         return round(mismatches / max(1, compared), 3)
 
-    def _claim_type_count(self, narrative: FinanceNarrative | None, pattern: str, unsupported_only: bool = False) -> int:
+    def _claim_type_count(
+        self, narrative: FinanceNarrative | None, pattern: str, unsupported_only: bool = False
+    ) -> int:
         if not narrative:
             return 0
         source = " ".join(narrative.unsupported_claims) if unsupported_only else narrative.narrative
         return len(re.findall(pattern, source, re.IGNORECASE))
 
     def _claims(self, narrative: str) -> list[str]:
-        return re.findall(r"\b(?:INR|USD|EUR|GBP)\s?[\d,]+(?:\.\d{2})?\b|\b[A-Z]{2,}-?\d{3,}\b|\*{4}\d{4}\b", narrative)
+        return re.findall(
+            r"\b(?:INR|USD|EUR|GBP)\s?[\d,]+(?:\.\d{2})?\b|\b[A-Z]{2,}-?\d{3,}\b|\*{4}\d{4}\b",
+            narrative,
+        )
 
     def _normalize(self, value: Any) -> str:
         if isinstance(value, list):

@@ -181,9 +181,7 @@ class OpenCVVisualDetectionAdapter(VisualDetectionAdapter):
         page_words = [word for word in document.ocr_words if word.page == page_number]
         for detection_class, terms in anchors.items():
             matching = [
-                word
-                for word in page_words
-                if any(term in word.text.lower() for term in terms)
+                word for word in page_words if any(term in word.text.lower() for term in terms)
             ]
             if not matching:
                 continue
@@ -234,7 +232,10 @@ class OpenCVVisualDetectionAdapter(VisualDetectionAdapter):
             model_name=self.adapter_id,
             model_version=self.model_version,
             reviewer_status=ReviewerStatus.unverified,
-            notes=[*notes, "Detection does not establish signature, stamp, or document authenticity."],
+            notes=[
+                *notes,
+                "Detection does not establish signature, stamp, or document authenticity.",
+            ],
         )
 
     def _save_crop(
@@ -290,7 +291,9 @@ class Yolo26VisualDetectionAdapter(VisualDetectionAdapter):
 
     def status(self) -> AdapterStatus:
         installed = importlib.util.find_spec("ultralytics") is not None
-        checkpoint = Path(settings.yolo26_checkpoint).expanduser() if settings.yolo26_checkpoint else None
+        checkpoint = (
+            Path(settings.yolo26_checkpoint).expanduser() if settings.yolo26_checkpoint else None
+        )
         checkpoint_validation = validate_project_file_checkpoint(
             checkpoint,
             expected_tasks={"visual_detection", "yolo26_visual_detection"},

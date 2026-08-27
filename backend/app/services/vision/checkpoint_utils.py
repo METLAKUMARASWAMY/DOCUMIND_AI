@@ -27,9 +27,7 @@ def checkpoint_assets_complete(path: Path) -> bool:
         return False
 
     index_paths = [
-        index_path
-        for index_name in _SHARD_INDEX_NAMES
-        for index_path in path.rglob(index_name)
+        index_path for index_name in _SHARD_INDEX_NAMES for index_path in path.rglob(index_name)
     ]
     for index_path in index_paths:
         try:
@@ -38,8 +36,7 @@ def checkpoint_assets_complete(path: Path) -> bool:
         except (OSError, ValueError, TypeError, AttributeError):
             continue
         if shard_names and all(
-            (index_path.parent / shard).is_file()
-            and (index_path.parent / shard).stat().st_size > 0
+            (index_path.parent / shard).is_file() and (index_path.parent / shard).stat().st_size > 0
             for shard in shard_names
         ):
             return True
@@ -60,8 +57,8 @@ def local_or_hf_cached_checkpoint(value: str) -> Path | None:
         return local
     if "/" not in value:
         return None
-    repository = Path.home() / ".cache" / "huggingface" / "hub" / (
-        "models--" + value.replace("/", "--")
+    repository = (
+        Path.home() / ".cache" / "huggingface" / "hub" / ("models--" + value.replace("/", "--"))
     )
     try:
         revision = (repository / "refs" / "main").read_text(encoding="utf-8").strip()

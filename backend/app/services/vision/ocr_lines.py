@@ -46,9 +46,7 @@ class OCRLineReconstructor:
             )
             for word in ordered:
                 candidates = [
-                    cluster
-                    for cluster in page_clusters
-                    if self._same_line(cluster, word)
+                    cluster for cluster in page_clusters if self._same_line(cluster, word)
                 ]
                 if candidates:
                     selected = min(candidates, key=lambda item: self._distance(item, word))
@@ -118,9 +116,7 @@ class OCRLineReconstructor:
         word_height = max(1.0, word_box.y2 - word_box.y1)
         cluster_height = max(1.0, box.y2 - box.y1)
         height = max(word_height, cluster_height)
-        centre_delta = abs(
-            ((box.y1 + box.y2) / 2) - ((word_box.y1 + word_box.y2) / 2)
-        )
+        centre_delta = abs(((box.y1 + box.y2) / 2) - ((word_box.y1 + word_box.y2) / 2))
         # A tall/low-confidence OCR box must not bridge adjacent form rows.
         # Baseline and centre agreement make this robust to fonts and scale while
         # remaining independent of any template coordinates.

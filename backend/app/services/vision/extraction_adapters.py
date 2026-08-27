@@ -29,8 +29,7 @@ class LayoutLMv3ExtractionAdapter(ExtractionAdapter):
 
     def status(self) -> AdapterStatus:
         installed = all(
-            importlib.util.find_spec(package) is not None
-            for package in ("transformers", "torch")
+            importlib.util.find_spec(package) is not None for package in ("transformers", "torch")
         )
         checkpoint = (
             Path(settings.layoutlmv3_checkpoint).expanduser()
@@ -76,7 +75,10 @@ class LayoutLMv3ExtractionAdapter(ExtractionAdapter):
             if not words:
                 continue
             image = Image.open(artifact.processed_image_path).convert("RGB")
-            boxes = [self._normalise_box(word.bounding_box, artifact.width, artifact.height) for word in words]
+            boxes = [
+                self._normalise_box(word.bounding_box, artifact.width, artifact.height)
+                for word in words
+            ]
             encoded = processor(
                 image,
                 [word.text for word in words],
@@ -227,8 +229,7 @@ class LayoutLMv3ClassificationAdapter:
 
     def status(self) -> AdapterStatus:
         installed = all(
-            importlib.util.find_spec(package) is not None
-            for package in ("transformers", "torch")
+            importlib.util.find_spec(package) is not None for package in ("transformers", "torch")
         )
         checkpoint = (
             Path(settings.layoutlmv3_classification_checkpoint).expanduser()
@@ -245,9 +246,9 @@ class LayoutLMv3ClassificationAdapter:
         return AdapterStatus(
             adapter_id=self.adapter_id,
             stage="document_classification",
-            status="active" if enabled and installed and ready else (
-                "disabled" if not enabled else "unavailable"
-            ),
+            status="active"
+            if enabled and installed and ready
+            else ("disabled" if not enabled else "unavailable"),
             reason=(
                 "Fine-tuned LayoutLMv3 classification checkpoint is ready."
                 if enabled and installed and ready
@@ -307,10 +308,11 @@ class DonutExtractionAdapter(OCRFreeAdapter):
 
     def status(self) -> AdapterStatus:
         installed = all(
-            importlib.util.find_spec(package) is not None
-            for package in ("transformers", "torch")
+            importlib.util.find_spec(package) is not None for package in ("transformers", "torch")
         )
-        checkpoint = Path(settings.donut_checkpoint).expanduser() if settings.donut_checkpoint else None
+        checkpoint = (
+            Path(settings.donut_checkpoint).expanduser() if settings.donut_checkpoint else None
+        )
         checkpoint_validation = validate_transformer_checkpoint(
             checkpoint,
             expected_tasks={"donut", "donut_extraction", "ocr_free_extraction"},
@@ -320,9 +322,9 @@ class DonutExtractionAdapter(OCRFreeAdapter):
         return AdapterStatus(
             adapter_id=self.adapter_id,
             stage=self.stage,
-            status="active" if enabled and installed and ready else (
-                "disabled" if not enabled else "unavailable"
-            ),
+            status="active"
+            if enabled and installed and ready
+            else ("disabled" if not enabled else "unavailable"),
             reason=(
                 "Fine-tuned Donut checkpoint is ready."
                 if enabled and installed and ready

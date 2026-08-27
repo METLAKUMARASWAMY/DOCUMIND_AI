@@ -131,7 +131,7 @@ def test_breaker_lets_one_call_through_once_the_backoff_elapses(neo4j_enabled, m
 
 
 def test_recovery_closes_the_breaker_and_clears_the_error(neo4j_enabled, monkeypatch):
-    coordinator, driver = _coordinator_with_dead_driver(monkeypatch)
+    coordinator, _driver = _coordinator_with_dead_driver(monkeypatch)
     monkeypatch.setattr(settings, "neo4j_retry_backoff_seconds", 0.01)
 
     coordinator.upsert_graph("tenant-a", "doc-1", _graph())

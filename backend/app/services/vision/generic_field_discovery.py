@@ -500,9 +500,7 @@ class GenericFieldDiscoveryEngine:
                     text=text,
                     page=max(1, int(_attribute(record, "page", 1))),
                     box=EvidenceBox.from_value(box_value),
-                    confidence=_optional_confidence(
-                        _attribute(record, "mean_confidence", None)
-                    ),
+                    confidence=_optional_confidence(_attribute(record, "mean_confidence", None)),
                     reading_order=max(
                         1,
                         int(_attribute(record, "reading_order", index)),
@@ -538,7 +536,9 @@ class GenericFieldDiscoveryEngine:
                     )
                 )
         return tuple(
-            sorted(adapted, key=lambda item: (item.page, item.reading_order, item.box.y1, item.box.x1))
+            sorted(
+                adapted, key=lambda item: (item.page, item.reading_order, item.box.y1, item.box.x1)
+            )
         )
 
     def _pair_candidates(self, lines: tuple[_LineView, ...]) -> tuple[_PairCandidate, ...]:
@@ -724,9 +724,7 @@ class GenericFieldDiscoveryEngine:
                     line_ids=(label_line.line_id, value_line.line_id),
                     label_word_ids=tuple(item.word_id for item in label_line.words),
                     value_word_ids=tuple(item.word_id for item in value_line.words),
-                    ocr_confidence=_mean_confidence(
-                        (label_line.confidence, value_line.confidence)
-                    ),
+                    ocr_confidence=_mean_confidence((label_line.confidence, value_line.confidence)),
                 )
             )
             consumed.update((label_line.line_id, value_line.line_id))
@@ -782,9 +780,7 @@ class GenericFieldDiscoveryEngine:
                     line_ids=(label_line.line_id, value_line.line_id),
                     label_word_ids=tuple(item.word_id for item in label_line.words),
                     value_word_ids=tuple(item.word_id for item in value_line.words),
-                    ocr_confidence=_mean_confidence(
-                        (label_line.confidence, value_line.confidence)
-                    ),
+                    ocr_confidence=_mean_confidence((label_line.confidence, value_line.confidence)),
                 )
             )
             consumed.update((label_line.line_id, value_line.line_id))
@@ -1173,9 +1169,7 @@ def _identity(
     value: str,
     box: EvidenceBox,
 ) -> str:
-    payload = (
-        f"{page}|{name}|{value}|{box.x1:.2f}|{box.y1:.2f}|{box.x2:.2f}|{box.y2:.2f}"
-    )
+    payload = f"{page}|{name}|{value}|{box.x1:.2f}|{box.y1:.2f}|{box.x2:.2f}|{box.y2:.2f}"
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:14]
     return f"generic-{prefix}-{digest}"
 

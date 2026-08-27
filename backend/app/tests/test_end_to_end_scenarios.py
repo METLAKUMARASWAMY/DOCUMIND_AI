@@ -22,6 +22,7 @@ import secrets
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.answer_policy import UNSUPPORTED_ANSWER
 from app.core.config import settings
 from app.main import create_app
 from app.models.schemas import SignupRequest, TextAnalysisRequest, UserRole
@@ -231,7 +232,9 @@ def test_scenario_c_unsupported_question_abstains(
         f"expected abstention, got {response.answer_status}: {response.answer}"
     )
     assert response.citations == [], "an abstention must not carry citations"
-    assert "not contain sufficient evidence" in response.answer.lower()
+    # Assert against the single definition rather than a literal, so the
+    # wording can be corrected without silently loosening the contract.
+    assert response.answer == UNSUPPORTED_ANSWER, response.answer
 
 
 def test_scenario_c_partially_answerable_question_is_not_overclaimed(
@@ -248,9 +251,7 @@ def test_scenario_c_partially_answerable_question_is_not_overclaimed(
 
     response = _ask(service, "how many employees does the contractor have")
 
-    assert response.answer_status != "supported", (
-        f"overclaimed support: {response.answer}"
-    )
+    assert response.answer_status != "supported", f"overclaimed support: {response.answer}"
     if response.answer_status == "partially_supported":
         assert "employees" in response.reasoning_summary, response.reasoning_summary
 

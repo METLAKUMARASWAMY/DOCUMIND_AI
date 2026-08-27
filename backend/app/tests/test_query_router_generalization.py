@@ -38,9 +38,7 @@ def router() -> VisionQueryRouter:
         "what did the assumption say",
     ],
 )
-def test_words_containing_sum_are_not_arithmetic(
-    router: VisionQueryRouter, question: str
-) -> None:
+def test_words_containing_sum_are_not_arithmetic(router: VisionQueryRouter, question: str) -> None:
     assert router.route(question) != "arithmetic_question", (
         f"{question!r} was misrouted by substring matching on 'sum'"
     )

@@ -17,11 +17,7 @@ def test_cross_document_engine_detects_mismatch_conflict_and_exception():
             ),
             (
                 "purchase-order-2001.txt",
-                (
-                    b"Purchase Order PO-2001\n"
-                    b"Vendor: Acme Finance Ltd\n"
-                    b"Amount USD 13,000.00\n"
-                ),
+                (b"Purchase Order PO-2001\nVendor: Acme Finance Ltd\nAmount USD 13,000.00\n"),
                 {},
             ),
             (
@@ -35,11 +31,7 @@ def test_cross_document_engine_detects_mismatch_conflict_and_exception():
             ),
             (
                 "bank-statement-2001.txt",
-                (
-                    b"Bank Statement\n"
-                    b"Account Holder: Contoso Holdings\n"
-                    b"Account Number: 12345678\n"
-                ),
+                (b"Bank Statement\nAccount Holder: Contoso Holdings\nAccount Number: 12345678\n"),
                 {},
             ),
         ]
@@ -71,28 +63,17 @@ def test_cross_document_engine_marks_consistent_values_as_passed():
             ),
             (
                 "purchase-order-2002.txt",
-                (
-                    b"Purchase Order PO-2002\n"
-                    b"Vendor: Acme Finance Ltd\n"
-                    b"Amount USD 9,500.00\n"
-                ),
+                (b"Purchase Order PO-2002\nVendor: Acme Finance Ltd\nAmount USD 9,500.00\n"),
                 {},
             ),
             (
                 "contract-2002.txt",
-                (
-                    b"Master Services Agreement\n"
-                    b"Payment terms Net 30\n"
-                ),
+                (b"Master Services Agreement\nPayment terms Net 30\n"),
                 {},
             ),
             (
                 "bank-statement-2002.txt",
-                (
-                    b"Bank Statement\n"
-                    b"Account Holder: Acme Finance Ltd\n"
-                    b"Account Number: 87654321\n"
-                ),
+                (b"Bank Statement\nAccount Holder: Acme Finance Ltd\nAccount Number: 87654321\n"),
                 {},
             ),
         ]

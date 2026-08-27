@@ -54,7 +54,9 @@ def test_case_graph_evidence_agent_and_finding_endpoints():
     }.issubset(edge_types)
 
     entity_id = quote("vendor:aster analytics inc", safe="")
-    entity = client.get(f"/api/v1/demo-legacy/graph/entities/{entity_id}", params={"case_id": case_id})
+    entity = client.get(
+        f"/api/v1/demo-legacy/graph/entities/{entity_id}", params={"case_id": case_id}
+    )
     assert entity.status_code == 200
     assert entity.json()["matches"][0]["relationship_count"] >= 1
 

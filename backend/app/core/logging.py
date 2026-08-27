@@ -26,7 +26,9 @@ def mask_sensitive_value(key: str, value: Any) -> Any:
 
 def sanitize_log_data(value: Any) -> Any:
     if isinstance(value, dict):
-        return {key: mask_sensitive_value(key, sanitize_log_data(item)) for key, item in value.items()}
+        return {
+            key: mask_sensitive_value(key, sanitize_log_data(item)) for key, item in value.items()
+        }
     if isinstance(value, list):
         return [sanitize_log_data(item) for item in value]
     if isinstance(value, tuple):

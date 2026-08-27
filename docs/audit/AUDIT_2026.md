@@ -846,3 +846,200 @@ these tests — the browser's API calls 404. Run them against the compose stack.
 | Full stack boot | 7/7 services healthy, migrations 001–004 applied |
 | Evaluation harness | extraction/answer/citation/grounding/abstention **100 %**, **0 overclaims** |
 | Playwright | 1/2 (remaining failure = OCR engine version, cause proven) |
+
+---
+
+# Phase 4 — Final release engineering pass (2026-08-27)
+
+Scope: close the three registered P2 defects, then treat every remaining claim
+as unproven until re-measured. Six further defects were found, five of them by
+tests written to prove a claim rather than to confirm one.
+
+## D-16 · A 9,538-line class — **CLOSED (P2)**
+
+`VisionAIService` held 244 members and every concern the service has. The
+members now live in seventeen mixins under `service_parts/`, composed back into
+one class so `self` still reaches every collaborator.
+
+The split moved exact source spans and was verified member-by-member against
+the previous revision: **244 members before and after, zero body differences,
+the 53-method public API identical**. Constants moved to
+`service_parts/constants.py` and are re-exported, so existing importers of
+`app.services.vision.service.RETRIEVAL_SOURCE_SEQUENCE` are unaffected.
+
+## D-17 · The 385 kB chunk was not the component — **CLOSED (P2), diagnosis corrected**
+
+The defect was registered as "GenericIntelligencePanel emits a 385 kB chunk
+from 174 source lines". That was wrong, and the build output is what misled it.
+Rollup puts modules shared by two lazily-loaded pages into an anonymous shared
+chunk and names it after the first source module it meets. The contents were
+**pdfjs-dist**, reached through `DocumentCanvas` on both the document viewer and
+the review workspace.
+
+| chunk | before | after |
+|---|---:|---:|
+| `GenericIntelligencePanel` | 385.34 kB | **14.97 kB** |
+| `index` | 429.92 kB | **28.82 kB** |
+| `vendor-pdf` | — | 344.97 kB |
+| `vendor-mui` | — | 395.17 kB |
+| `vendor-charts` | — | 408.09 kB |
+| `vendor-graph` | — | 446.60 kB |
+
+The panel was also split into the four sections it already rendered. That is a
+maintainability change, not the chunk fix — conflating the two is how the
+original diagnosis went wrong.
+
+## D-19b · The suite was not slow, it was asleep — **CLOSED (P2), root cause was a production defect**
+
+The defect assumed cold-cache OCR. Profiling with a `time.sleep` attribution
+plugin found otherwise: on `test_answer_degradation_disclosure.py`, **156.54 of
+166.78 seconds** were spent inside `neo4j/_sync/work/session.py:610
+_run_transaction` — the driver retrying against a Neo4j that was not running.
+Nothing bounded `max_transaction_retry_time`, so its 30-second default applied
+to every graph write.
+
+A previous session had probed `verify_connectivity()`, measured 0.00s, and
+concluded Neo4j was not the cause. That was the wrong probe: connectivity fails
+fast, transactions retry.
+
+This is a production defect before it is a test defect. With Neo4j down, an
+upload blocked for thirty seconds per document instead of degrading. The fix
+bounds the driver and adds a circuit breaker that holds calls off after a
+failure and lets one through when the backoff elapses; `health()` discloses the
+breaker state.
+
+A/B on the same 73 tests, same machine, same session — the "before" arm
+reproduced by restoring the old values through the new environment variables:
+
+| | before | after |
+|---|---:|---:|
+| wall clock | **680.14 s** | **31.68 s** |
+| slept in Neo4j retry | 651.81 s (85 calls) | 3.50 s (2 calls) |
+
+95.8% of the "before" time was sleep. Full suite: 311.68 s, total sleep 23.09 s.
+
+## D-29 · Two unrelated documents were declared duplicates — **CLOSED (P0)**
+
+Found by the cross-domain generalization test. A clinical laboratory report and
+a bill of lading — sharing no entity, party, reference or amount — were joined
+by a `DUPLICATE_OF` graph edge and raised a "Duplicate Document Review" risk.
+
+The cause is structural, not fixture-specific. A dHash bit records "this pixel
+is darker than the next one". On a mostly-blank page almost every comparison is
+a tie, so almost every bit is 0, and any two such pages agree on ~98% of their
+bits — over the 0.92 duplicate threshold. Measured set-bit ratios:
+
+| page | set-bit ratio |
+|---|---:|
+| real content (six screenshots) | 0.24 – 0.40 |
+| three-line text page | 0.008 |
+| blank page | 0.000 |
+
+Raising the threshold would only move the false positive. The fix refuses to
+report a measurement the hash cannot support: outside a usable bit-ratio band,
+`perceptual_similarity` returns `None` — an absent measurement, not a match.
+Byte-identical duplicates never depended on this signal and are still caught by
+the SHA-256 path, which is pinned by test.
+
+## D-30 · The prompt had no boundary between instructions and document text — **CLOSED (P0)**
+
+Both generator adapters built their prompt by concatenation:
+
+```
+f"Question: {question}\nEvidence: {json.dumps(evidence)}\n..."
+```
+
+Nothing told a model where its instructions ended and an uploaded document
+began, so a document containing "ignore all previous instructions" arrived in
+the same channel as the real instructions. The directive is explicit that
+document text is untrusted data.
+
+Both adapters now share one builder: hardened system instructions that state
+the boundary, and untrusted content — the evidence *and* the question — fenced
+with a per-request nonce a document cannot forge. Fourteen tests cover the
+boundary, including delimiter-forgery variants.
+
+One self-inflicted bug on the way: the first delimiter neutraliser matched to
+end-of-line, and because JSON escapes its newlines it swallowed the rest of the
+evidence payload. Narrowed to the marker token; pinned by test.
+
+## D-31 · The pipeline description named a stage that never ran — **CLOSED (P1)**
+
+`LocalHybridRetrievalIndex.status()` returned the fixed string
+`top30_hybrid_then_top15_rerank_then_top5_to_8` while the reranker was
+`disabled`. A description claiming a stage that does not execute is the same
+class of defect as a disabled model rendering as ACTIVE. The description is now
+derived from adapter state and names the embedding model:
+
+```
+top30_hybrid(feature-hashing-v1)_then_no_rerank(disabled)_then_top5_to_8
+```
+
+## D-32 · An abstention blamed the documents for a retrieval limit — **CLOSED (P1)**
+
+"The available documents do not contain sufficient evidence to answer this
+question" asserts something about the documents. What the system knows is that
+nothing *matched*. Those differ whenever retrieval is the limiting factor.
+
+Measured cosine similarity between a paraphrase and the field that answers it:
+
+| pair | BGE-M3 | feature hashing |
+|---|---:|---:|
+| "how much rent is payable each month" → "Monthly Rent: 1,275.00 GBP" | 0.7070 | 0.0925 |
+| "how much rent is payable each month" → "Port of Discharge: Santos" | 0.2842 | 0.0000 |
+| "who owns the property being let" → "Landlord: Brackenfield Estates" | 0.5448 | **0.0000** |
+| "who owns the property being let" → "Monthly Rent" | 0.5033 | −0.1005 |
+
+Feature hashing scores exact-token overlap. With zero shared tokens it scores
+exactly zero — so evidence that plainly exists is never reached. The wording is
+now "No evidence in the selected documents matched this question", defined once
+and shared by the four sites that emit it, and an abstention under a
+non-semantic backend says so in its reasoning. Every retrieval trace now names
+the backend that served (`embedding_backend`, `embedding_model`,
+`semantic_matching`).
+
+The disclosure deliberately does **not** go in `degradations`: that field means
+a fallback was taken during this answer, and a standing capability limit is not
+one. Overloading it would make every abstention read as degraded and hide the
+answers where something really did fail. Pinned by test.
+
+## BGE-M3 — activation path verified, not assumed
+
+The directive forbids claiming BGE-M3 is active unless it genuinely generates
+embeddings. It is **not** active by default and never claimed to be: the index
+reports `local-hashing-embedding` / `feature-hashing-v1`, and the Qdrant
+collection name encodes the embedding identity
+(`vision_evidence_chunks__local_hashing_v1__d768_v1`) so vectors from different
+models can never mix.
+
+The activation path was executed rather than described. With
+`ENABLE_HEAVY_MODELS=true ENABLE_BGE_M3=true` against the locally cached
+checkpoint, the repository's own `BGEM3EmbeddingAdapter` reports `active`,
+loads, and returns 1024-dimension dense vectors plus sparse lexical weights;
+the paraphrase pairs above are its measured output. Evidence:
+`docs/audit/artifacts/release/bge-m3-activation.txt`.
+
+It stays optional because it requires `torch` and a 4.3 GB checkpoint, which
+the backend image does not carry. That is a stated trade, not a hidden one.
+
+## Tesseract — pinned by version and by checksum
+
+Debian trixie packages Tesseract 5.5.0; the project targets 5.5.3. The
+difference is the whole of the remaining Playwright failure. The engine is now
+built from source at 5.5.3 in a builder stage (**measured: ~75 s**), and the
+language data is pinned by checksum to the exact files the development host
+resolves to.
+
+The host does not use the default `tessdata` — it uses `tessdata_fast`, which
+is a different model producing different output:
+
+| source | sha256 (eng) | bytes |
+|---|---|---:|
+| `tessdata` | `daa0c97d…` | 23,466,654 |
+| `tessdata_best` | `8280aed0…` | 15,400,601 |
+| **`tessdata_fast`** | **`7d4322bd…`** | **4,113,088** |
+| **development host** | **`7d4322bd…`** | **4,113,088** |
+
+The build downloads `tessdata_fast@4.1.0` and verifies both `eng` and `osd`
+against those checksums, and asserts the engine version, so an upstream change
+fails the build loudly rather than silently shifting OCR.

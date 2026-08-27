@@ -123,7 +123,9 @@ def test_schema_selection_modes_are_mutually_exclusive_and_complete() -> None:
             assert selection.fallback_schema is None
 
     for prefer_key_value in (False, True):
-        unknown = vision_schema_registry.resolve("not-a-registered-type", prefer_key_value=prefer_key_value)
+        unknown = vision_schema_registry.resolve(
+            "not-a-registered-type", prefer_key_value=prefer_key_value
+        )
         assert unknown.mode == "C"
         assert unknown.schema_status == "generic"
 

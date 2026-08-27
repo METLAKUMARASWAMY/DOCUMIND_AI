@@ -120,6 +120,14 @@ class Settings(BaseSettings):
         default=0.92,
         alias="VISUAL_DUPLICATE_THRESHOLD",
     )
+    # A dHash whose bits are almost all identical carries no information: two
+    # near-blank pages agree on ~98% of bits while sharing no content. Below
+    # this set-bit ratio (or above its complement) the hash is treated as an
+    # absent measurement rather than as similarity. Measured separation: pages
+    # with real content score 0.24-0.40; a blank page scores 0.00.
+    perceptual_hash_min_bit_ratio: float = Field(
+        default=0.08, alias="PERCEPTUAL_HASH_MIN_BIT_RATIO"
+    )
     dinov2_duplicate_threshold: float = Field(
         default=0.94,
         alias="DINOV2_DUPLICATE_THRESHOLD",

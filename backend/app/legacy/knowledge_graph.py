@@ -56,7 +56,9 @@ class KnowledgeGraphEngine:
                 seen_nodes.add(node_id)
                 nodes.append({"id": node_id, "label": label, "properties": properties})
 
-        def add_edge(source: str, target: str, relation_type: str, properties: dict | None = None) -> None:
+        def add_edge(
+            source: str, target: str, relation_type: str, properties: dict | None = None
+        ) -> None:
             edge_key = (source, target, relation_type, tuple(sorted((properties or {}).items())))
             if edge_key not in seen_edges:
                 seen_edges.add(edge_key)
@@ -77,7 +79,12 @@ class KnowledgeGraphEngine:
         if workflow:
             workflow_id = f"workflow:{case_id}"
             add_node(workflow_id, "Workflow", workflow.model_dump(mode="json"))
-            add_edge(case_id, workflow_id, "CASE_HAS_WORKFLOW_ACTION", {"workflow_status": workflow.status})
+            add_edge(
+                case_id,
+                workflow_id,
+                "CASE_HAS_WORKFLOW_ACTION",
+                {"workflow_status": workflow.status},
+            )
 
         entity_index: dict[str, list[str]] = defaultdict(list)
         document_by_type: dict[DocumentType, list[DocumentRecord]] = defaultdict(list)
@@ -109,7 +116,11 @@ class KnowledgeGraphEngine:
                         "confidence": field.confidence,
                     },
                 )
-                add_edge(document.document_id, entity_id, self._relationship_for_field(document, field.name))
+                add_edge(
+                    document.document_id,
+                    entity_id,
+                    self._relationship_for_field(document, field.name),
+                )
                 entity_index[entity_id].append(document.document_id)
 
         self._add_check_relationships(add_edge, cross_document_checks)
@@ -134,7 +145,11 @@ class KnowledgeGraphEngine:
             add_edge(finding_id, framework_id, "DOCUMENT_MENTIONS_ENTITY")
             for evidence in finding.evidence[:3]:
                 evidence_id = f"evidence:{evidence.evidence_id}"
-                add_node(evidence_id, "Evidence", {"text": evidence.text[:240], "page": evidence.page_number})
+                add_node(
+                    evidence_id,
+                    "Evidence",
+                    {"text": evidence.text[:240], "page": evidence.page_number},
+                )
                 add_edge(finding_id, evidence_id, "FINDING_SUPPORTED_BY_EVIDENCE")
                 add_edge(evidence_id, evidence.document_id, "DOCUMENT_MENTIONS_ENTITY")
 
@@ -154,20 +169,28 @@ class KnowledgeGraphEngine:
             add_edge(risk_id, signal_id, "CASE_HAS_RISK")
             for evidence in signal.evidence[:3]:
                 evidence_id = f"evidence:{evidence.evidence_id}"
-                add_node(evidence_id, "Evidence", {"text": evidence.text[:240], "page": evidence.page_number})
+                add_node(
+                    evidence_id,
+                    "Evidence",
+                    {"text": evidence.text[:240], "page": evidence.page_number},
+                )
                 add_edge(signal_id, evidence_id, "FINDING_SUPPORTED_BY_EVIDENCE")
                 add_edge(evidence_id, evidence.document_id, "DOCUMENT_MENTIONS_ENTITY")
 
         for decision in agent_decisions:
             agent_id = f"agent:{self._normalize_key(decision.agent_name)}"
-            add_node(agent_id, "Agent", {"agent_name": decision.agent_name, "status": decision.status})
+            add_node(
+                agent_id, "Agent", {"agent_name": decision.agent_name, "status": decision.status}
+            )
             for finding_id in decision.evidence_ids[:4]:
                 add_edge(agent_id, f"evidence:{finding_id}", "AGENT_CREATED_FINDING")
 
         for entity_id, doc_ids in entity_index.items():
             if len(doc_ids) > 1:
                 for doc_id in doc_ids:
-                    add_edge(doc_id, entity_id, "DOCUMENT_MENTIONS_ENTITY", {"cross_document": True})
+                    add_edge(
+                        doc_id, entity_id, "DOCUMENT_MENTIONS_ENTITY", {"cross_document": True}
+                    )
 
         return {
             "nodes": nodes,
@@ -191,7 +214,13 @@ class KnowledgeGraphEngine:
                     "Agent",
                 ],
                 "relationship_types": sorted({edge["type"] for edge in edges}),
-                "merge_keys": ["case_id", "document_id", "field:value", "finding_id", "evidence_id"],
+                "merge_keys": [
+                    "case_id",
+                    "document_id",
+                    "field:value",
+                    "finding_id",
+                    "evidence_id",
+                ],
                 "fallback_repository": "local_graph_repository",
             },
         }
@@ -227,7 +256,8 @@ class KnowledgeGraphEngine:
             case_signals = [
                 signal
                 for signal in case.fraud_signals
-                if signal.severity in {RiskLevel.high, RiskLevel.critical} or signal.probability >= 0.6
+                if signal.severity in {RiskLevel.high, RiskLevel.critical}
+                or signal.probability >= 0.6
             ]
             paths.append(
                 {
@@ -239,7 +269,9 @@ class KnowledgeGraphEngine:
                         {
                             "start": case.case_id,
                             "relationship": "CASE_HAS_RISK",
-                            "end": item.finding_id if hasattr(item, "finding_id") else item.signal_id,
+                            "end": item.finding_id
+                            if hasattr(item, "finding_id")
+                            else item.signal_id,
                             "title": item.title,
                             "severity": item.severity,
                         }
@@ -251,7 +283,9 @@ class KnowledgeGraphEngine:
 
     def _add_check_relationships(self, add_edge, checks: list[CrossDocumentCheck]) -> None:
         for check in checks:
-            documents_with_evidence = [evidence.document_id for evidence in check.evidence if evidence.document_id]
+            documents_with_evidence = [
+                evidence.document_id for evidence in check.evidence if evidence.document_id
+            ]
             if len(documents_with_evidence) < 2:
                 continue
             relation_type = "DOCUMENT_MENTIONS_ENTITY"

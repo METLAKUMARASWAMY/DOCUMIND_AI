@@ -225,7 +225,11 @@ def _parse_catalog(payload: Any, source: str) -> dict[str, Any]:
                 exact_types[document_type] = schema.schema_id
         else:
             if schema.document_types:
-                _fail(source, f"$.schemas[{schema.schema_id}]", "generic schema cannot bind a document type")
+                _fail(
+                    source,
+                    f"$.schemas[{schema.schema_id}]",
+                    "generic schema cannot bind a document type",
+                )
             generic_ids.add(schema.schema_id)
     for required_generic in ("generic_key_value_form", "generic_document"):
         if required_generic not in generic_ids:
@@ -282,7 +286,9 @@ def _parse_value_kinds(payload: Any, source: str) -> dict[str, ConfiguredValueKi
         if normalizer not in _NORMALIZERS:
             _fail(source, f"{path}.normalizer", f"unsupported normalizer {normalizer!r}")
         if semantic_type not in semantic_types:
-            _fail(source, f"{path}.semantic_entity_type", f"unknown semantic type {semantic_type!r}")
+            _fail(
+                source, f"{path}.semantic_entity_type", f"unknown semantic type {semantic_type!r}"
+            )
         parsed[name] = ConfiguredValueKind(name, validator, normalizer, semantic_type)
     return parsed
 
@@ -382,8 +388,7 @@ def _parse_fields(
     if not isinstance(payload, list) or not payload:
         _fail(source, path, "must be a non-empty array")
     fields = tuple(
-        _parse_field(item, index, value_kinds, path, source)
-        for index, item in enumerate(payload)
+        _parse_field(item, index, value_kinds, path, source) for index, item in enumerate(payload)
     )
     _unique([item.name for item in fields], f"{path}[*].name", source)
     return fields
@@ -533,7 +538,9 @@ def _nonempty_string(value: Any, path: str, source: str) -> str:
 def _string_list(value: Any, path: str, source: str) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         _fail(source, path, "must be an array of strings")
-    parsed = tuple(_nonempty_string(item, f"{path}[{index}]", source) for index, item in enumerate(value))
+    parsed = tuple(
+        _nonempty_string(item, f"{path}[{index}]", source) for index, item in enumerate(value)
+    )
     _unique(list(parsed), path, source)
     return parsed
 

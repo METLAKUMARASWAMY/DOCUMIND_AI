@@ -461,15 +461,38 @@ class LocalHybridRetrievalIndex:
         )
         self.qdrant.invalidate_liveness_cache()
 
+    def _pipeline_description(self, embedding: Any, reranker: Any) -> str:
+        """Describes the stages that actually run, not the stages that exist.
+
+        This was a fixed string naming a rerank stage. With the reranker
+        disabled — its default — the description claimed a stage that never
+        executed, which is the same class of defect as a disabled model
+        rendering as ACTIVE.
+        """
+        stages = [f"top30_hybrid({embedding.model_version})"]
+        if reranker.status == "active":
+            stages.append(f"top15_rerank({reranker.model_version})")
+        else:
+            stages.append(f"no_rerank({reranker.status})")
+        stages.append("top5_to_8")
+        return "_then_".join(stages)
+
     def status(self) -> dict[str, Any]:
         qdrant_status = self.qdrant.status()
+        embedding_status = self.embedding.status()
+        reranker_status = self.reranker.status()
         degraded = self._external_error is not None
         return {
-            "embedding": self.embedding.status().__dict__,
-            "reranker": self.reranker.status().__dict__,
+            "embedding": embedding_status.__dict__,
+            "reranker": reranker_status.__dict__,
             "chunks": len(self._chunks),
             "documents": len(self._document_chunks),
-            "pipeline": "top30_hybrid_then_top15_rerank_then_top5_to_8",
+            "pipeline": self._pipeline_description(embedding_status, reranker_status),
+            # The model that actually produced the vectors in this index, named
+            # so no caller has to infer it from the pipeline string.
+            "embedding_backend": embedding_status.adapter_id,
+            "embedding_model": embedding_status.model_version,
+            "semantic_embeddings": embedding_status.adapter_id != "local-hashing-embedding",
             "qdrant": qdrant_status.__dict__,
             "external_error": self._external_error,
             "external_consecutive_failures": self._external_failures,

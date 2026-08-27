@@ -46,7 +46,9 @@ def install_observability(app: FastAPI) -> None:
         if REQUEST_COUNT is not None:
             REQUEST_COUNT.labels(request.method, route_path, str(response.status_code)).inc()
         if REQUEST_LATENCY is not None:
-            REQUEST_LATENCY.labels(request.method, route_path).observe(time.perf_counter() - started)
+            REQUEST_LATENCY.labels(request.method, route_path).observe(
+                time.perf_counter() - started
+            )
         return response
 
     @app.get("/metrics", include_in_schema=False)
@@ -61,7 +63,9 @@ def install_observability(app: FastAPI) -> None:
                 status_code=403,
             )
         if generate_latest is None:
-            return Response(content="prometheus-client unavailable\n", media_type="text/plain", status_code=503)
+            return Response(
+                content="prometheus-client unavailable\n", media_type="text/plain", status_code=503
+            )
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

@@ -139,9 +139,7 @@ def test_admin_mutations_and_report_download_are_tenant_scoped_and_audited():
         json={"email": auditor_email, "password": auditor_password},
     )
     assert auditor_login.status_code == 200, auditor_login.text
-    auditor = {
-        "Authorization": f"Bearer {auditor_login.json()['data']['access_token']}"
-    }
+    auditor = {"Authorization": f"Bearer {auditor_login.json()['data']['access_token']}"}
 
     requested = client.patch(
         "/api/v1/admin/models/BAAI%2Fbge-m3/requested-state",
@@ -207,7 +205,4 @@ def test_admin_mutations_and_report_download_are_tenant_scoped_and_audited():
 
     other_tenant_audit = client.get("/api/v1/admin/audit", headers=auditor)
     assert other_tenant_audit.status_code == 200, other_tenant_audit.text
-    assert all(
-        item["actor"] != admin_email
-        for item in other_tenant_audit.json()["data"]["events"]
-    )
+    assert all(item["actor"] != admin_email for item in other_tenant_audit.json()["data"]["events"])

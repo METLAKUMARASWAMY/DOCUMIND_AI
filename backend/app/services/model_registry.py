@@ -7,6 +7,7 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
+from app.core.answer_policy import UNSUPPORTED_ANSWER
 from app.core.config import settings
 from app.models.schemas import ModelRoutingPreviewRequest
 
@@ -32,9 +33,7 @@ class ModelRegistryService:
                     "Suspicious indicators require human review; only Compliance Officers, "
                     "Senior Reviewers, or Admins may confirm fraud."
                 ),
-                "unsupported_answer": (
-                    "The available documents do not contain sufficient evidence to answer this question."
-                ),
+                "unsupported_answer": (UNSUPPORTED_ANSWER),
                 "fake_metrics_policy": "Metrics are shown only when calculated from labelled validation or test data.",
             },
             "active_local_pipeline": [
@@ -718,9 +717,7 @@ class ModelRegistryService:
         if not smoke or not smoke.get("completed_at"):
             return True
         try:
-            completed = datetime.fromisoformat(
-                str(smoke["completed_at"]).replace("Z", "+00:00")
-            )
+            completed = datetime.fromisoformat(str(smoke["completed_at"]).replace("Z", "+00:00"))
             if completed.tzinfo is None:
                 completed = completed.replace(tzinfo=UTC)
         except (TypeError, ValueError):

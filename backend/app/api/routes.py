@@ -50,7 +50,14 @@ async def health() -> dict:
 async def capabilities() -> dict:
     return {
         "ingestion": ["pdf", "docx", "pptx-adapter", "images", "emails", "scanned-documents"],
-        "ai": ["ocr-layout", "classification", "ner-extraction", "hybrid-retrieval", "rag", "multi-agent"],
+        "ai": [
+            "ocr-layout",
+            "classification",
+            "ner-extraction",
+            "hybrid-retrieval",
+            "rag",
+            "multi-agent",
+        ],
         "risk": ["compliance", "fraud", "cross-document-verification", "explainability"],
         "enterprise": ["workflow", "reports", "knowledge-graph", "mlops-ready"],
     }
@@ -114,7 +121,8 @@ async def case_dashboard(case_id: str) -> dict:
     data = {
         "summary": pipeline.case_summary(analysis),
         "executive_summary": analysis.executive_summary,
-        "scores": analysis.scores or {
+        "scores": analysis.scores
+        or {
             "compliance_score": analysis.compliance_score,
             "risk_score": analysis.risk_score,
             "fraud_probability": analysis.fraud_probability,
@@ -122,13 +130,16 @@ async def case_dashboard(case_id: str) -> dict:
         },
         "metrics": {
             "document_count": len(analysis.documents),
-            "evidence_count": len(analysis.evidence_chunks) + len(pipeline.collect_evidence(analysis)),
+            "evidence_count": len(analysis.evidence_chunks)
+            + len(pipeline.collect_evidence(analysis)),
             "open_findings": len(analysis.compliance_findings) + len(analysis.fraud_signals),
             "agent_count": len(analysis.agent_decisions),
             "approval_gate": "Blocked" if analysis.workflow.approval_blocked else "Open",
         },
         "workflow": analysis.workflow.model_dump(mode="json"),
-        "agent_decisions": [decision.model_dump(mode="json") for decision in analysis.agent_decisions],
+        "agent_decisions": [
+            decision.model_dump(mode="json") for decision in analysis.agent_decisions
+        ],
     }
     return _envelope(data, case_id)
 
@@ -158,7 +169,9 @@ async def case_evidence(case_id: str) -> dict:
 
 
 @router.get("/cases/{case_id}/search", response_model=None)
-async def case_search(case_id: str, q: str = Query(..., min_length=1), top_k: int = Query(default=5, ge=1, le=12)):
+async def case_search(
+    case_id: str, q: str = Query(..., min_length=1), top_k: int = Query(default=5, ge=1, le=12)
+):
     analysis = _get_case_or_load(case_id)
     structured = _structured_case_search(analysis, q, top_k)
     if structured:
@@ -175,9 +188,13 @@ async def case_risk(case_id: str) -> dict:
         "risk_severity": analysis.workflow.status,
         "scores": analysis.scores,
         "blockers": analysis.workflow.blocked_reasons,
-        "compliance_findings": [finding.model_dump(mode="json") for finding in analysis.compliance_findings],
+        "compliance_findings": [
+            finding.model_dump(mode="json") for finding in analysis.compliance_findings
+        ],
         "fraud_signals": [signal.model_dump(mode="json") for signal in analysis.fraud_signals],
-        "cross_document_checks": [check.model_dump(mode="json") for check in analysis.cross_document_checks],
+        "cross_document_checks": [
+            check.model_dump(mode="json") for check in analysis.cross_document_checks
+        ],
         "workflow": analysis.workflow.model_dump(mode="json"),
     }
     return _envelope(data, case_id)
@@ -256,13 +273,17 @@ async def case_workflow_decision(
 @router.get("/cases/{case_id}/audit")
 async def case_audit(case_id: str) -> dict:
     analysis = _get_case_or_load(case_id)
-    return _envelope({"events": [event.model_dump(mode="json") for event in analysis.audit_events]}, case_id)
+    return _envelope(
+        {"events": [event.model_dump(mode="json") for event in analysis.audit_events]}, case_id
+    )
 
 
 @router.get("/cases/{case_id}/agents")
 async def case_agents(case_id: str) -> dict:
     analysis = _get_case_or_load(case_id)
-    return _envelope([decision.model_dump(mode="json") for decision in analysis.agent_decisions], case_id)
+    return _envelope(
+        [decision.model_dump(mode="json") for decision in analysis.agent_decisions], case_id
+    )
 
 
 @router.get("/cases/{case_id}", response_model=AnalysisResponse)
@@ -374,7 +395,8 @@ async def project_graph(case_id: str) -> dict:
 async def graph_entity(entity_id: str, case_id: str | None = Query(default=None)) -> dict:
     cases = _case_scope(case_id)
     neighborhoods = [
-        pipeline.knowledge_graph.entity_neighborhood(case.knowledge_graph, entity_id) for case in cases
+        pipeline.knowledge_graph.entity_neighborhood(case.knowledge_graph, entity_id)
+        for case in cases
     ]
     matches = [neighborhood for neighborhood in neighborhoods if neighborhood["nodes"]]
     if not matches:
@@ -485,7 +507,9 @@ def _case_payload(case_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     return {"case_id": case_id, **payload}
 
 
-def _envelope(data: Any, case_id: str | None = None, errors: list[str] | None = None) -> dict[str, Any]:
+def _envelope(
+    data: Any, case_id: str | None = None, errors: list[str] | None = None
+) -> dict[str, Any]:
     return {
         "success": not errors,
         "case_id": case_id,
@@ -494,7 +518,9 @@ def _envelope(data: Any, case_id: str | None = None, errors: list[str] | None = 
     }
 
 
-def _record_workflow_decision(request: WorkflowDecisionRequest, user: AuthUser | None = None) -> dict:
+def _record_workflow_decision(
+    request: WorkflowDecisionRequest, user: AuthUser | None = None
+) -> dict:
     analysis = _get_case_or_load(request.case_id)
     result = pipeline.workflow.record_decision(request, analysis.workflow)
     event = pipeline.audit.record(
@@ -530,18 +556,29 @@ def _fraud_coverage(analysis: AnalysisResponse) -> list[dict[str, str]]:
         },
         {
             "name": "Amount mismatches",
-            "status": review_if("amount mismatch" in signal_text or "does not match" in signal_text or amount_check_review),
+            "status": review_if(
+                "amount mismatch" in signal_text
+                or "does not match" in signal_text
+                or amount_check_review
+            ),
             "rule": "Review when invoice and PO values fail comparison.",
         },
         {
             "name": "Vendor anomalies",
-            "status": review_if("bank account change" in signal_text or "vendor anomaly" in signal_text or "new bank" in signal_text),
+            "status": review_if(
+                "bank account change" in signal_text
+                or "vendor anomaly" in signal_text
+                or "new bank" in signal_text
+            ),
             "rule": "Review for vendor bank changes, anomalies, or new bank details.",
         },
         {
             "name": "Payment anomalies",
             "status": review_if(
-                any(term in signal_text for term in ["urgent", "manual override", "off-cycle", "bank account change"])
+                any(
+                    term in signal_text
+                    for term in ["urgent", "manual override", "off-cycle", "bank account change"]
+                )
             ),
             "rule": "Review urgent, manual override, off-cycle, or bank-change evidence.",
         },
@@ -553,13 +590,18 @@ def _fraud_coverage(analysis: AnalysisResponse) -> list[dict[str, str]]:
     ]
 
 
-def _structured_case_search(analysis: AnalysisResponse, question: str, top_k: int) -> QueryResponse | None:
+def _structured_case_search(
+    analysis: AnalysisResponse, question: str, top_k: int
+) -> QueryResponse | None:
     lower = question.lower()
     if _is_payment_query(lower):
         return _payment_answer(analysis, top_k)
 
     if any(term in lower for term in ["exception", "review", "fraud signal", "clause", "missing"]):
-        include_compliance = not ("fraud signal" in lower or (lower.startswith("what fraud") or lower.startswith("which fraud")))
+        include_compliance = not (
+            "fraud signal" in lower
+            or (lower.startswith("what fraud") or lower.startswith("which fraud"))
+        )
         include_fraud = not ("clause" in lower or "which clause" in lower)
         finding_rows = []
         evidence_items: list[Evidence] = []
@@ -573,7 +615,9 @@ def _structured_case_search(analysis: AnalysisResponse, question: str, top_k: in
                     {
                         "title": title,
                         "severity": f"{finding.severity.value.title()} severity",
-                        "reason": evidence.reasoning if evidence and evidence.reasoning else finding.recommendation,
+                        "reason": evidence.reasoning
+                        if evidence and evidence.reasoning
+                        else finding.recommendation,
                         "evidence": evidence,
                     }
                 )
@@ -587,7 +631,9 @@ def _structured_case_search(analysis: AnalysisResponse, question: str, top_k: in
                     {
                         "title": title,
                         "severity": _fraud_severity_label(title, signal.severity.value),
-                        "reason": evidence.reasoning if evidence and evidence.reasoning else signal.recommendation,
+                        "reason": evidence.reasoning
+                        if evidence and evidence.reasoning
+                        else signal.recommendation,
                         "evidence": evidence,
                     }
                 )
@@ -647,10 +693,17 @@ def _structured_case_search(analysis: AnalysisResponse, question: str, top_k: in
             reasoning=["Answered from the backend case document registry."],
         )
 
-    if "workflow" in lower or "recommended action" in lower or "payment blocked" in lower or "approval" in lower:
+    if (
+        "workflow" in lower
+        or "recommended action" in lower
+        or "payment blocked" in lower
+        or "approval" in lower
+    ):
         evidence = pipeline.collect_evidence(analysis)[:top_k]
         citations = _evidence_citations(evidence)
-        blockers = "; ".join(analysis.workflow.blocked_reasons) or "No approval blockers are active."
+        blockers = (
+            "; ".join(analysis.workflow.blocked_reasons) or "No approval blockers are active."
+        )
         answer = (
             f"Recommended workflow action: {_humanize_label(analysis.workflow.recommended_action.value)}.\n"
             f"Approval gate: {'Blocked' if analysis.workflow.approval_blocked else 'Open'}.\n"
@@ -689,15 +742,17 @@ def _is_payment_query(lower_question: str) -> bool:
 
 
 def _payment_answer(analysis: AnalysisResponse, top_k: int) -> QueryResponse:
-    invoice_amount = _entity_value(analysis, "invoice_amount") or _document_field_value(analysis, "invoice", "amount")
-    po_amount = _entity_value(analysis, "po_amount") or _document_field_value(analysis, "purchase_order", "amount")
-    payment_terms = _entity_value(analysis, "payment_terms") or _document_field_value(analysis, "invoice", "payment_terms")
+    invoice_amount = _entity_value(analysis, "invoice_amount") or _document_field_value(
+        analysis, "invoice", "amount"
+    )
+    po_amount = _entity_value(analysis, "po_amount") or _document_field_value(
+        analysis, "purchase_order", "amount"
+    )
+    payment_terms = _entity_value(analysis, "payment_terms") or _document_field_value(
+        analysis, "invoice", "payment_terms"
+    )
     amount_check = next(
-        (
-            check
-            for check in analysis.cross_document_checks
-            if "amount" in check.title.lower()
-        ),
+        (check for check in analysis.cross_document_checks if "amount" in check.title.lower()),
         None,
     )
     amount_status = _humanize_label(amount_check.status if amount_check else "review_required")
@@ -734,7 +789,9 @@ def _payment_answer(analysis: AnalysisResponse, top_k: int) -> QueryResponse:
         answer=answer,
         citations=citations,
         confidence=0.96,
-        reasoning=["Answered from invoice, purchase order, workflow, fraud, compliance, and evidence chunks."],
+        reasoning=[
+            "Answered from invoice, purchase order, workflow, fraud, compliance, and evidence chunks."
+        ],
     )
 
 
@@ -745,7 +802,9 @@ def _entity_value(analysis: AnalysisResponse, entity_type: str) -> str | None:
     return None
 
 
-def _document_field_value(analysis: AnalysisResponse, document_type: str, field_name: str) -> str | None:
+def _document_field_value(
+    analysis: AnalysisResponse, document_type: str, field_name: str
+) -> str | None:
     for document in analysis.documents:
         if document.document_type.value != document_type:
             continue

@@ -48,10 +48,15 @@ def test_vision_text_pipeline_preserves_boxes_tables_risk_and_review():
 
     assert document["document_type"] == "invoice"
     assert document["ocr_words"]
-    assert document["ocr_words"][0]["bounding_box"]["x2"] > document["ocr_words"][0]["bounding_box"]["x1"]
+    assert (
+        document["ocr_words"][0]["bounding_box"]["x2"]
+        > document["ocr_words"][0]["bounding_box"]["x1"]
+    )
     assert document["tables"]
     assert any(item["detection_class"] == "signature" for item in document["visual_detections"])
-    assert any(item["title"] == "Amount Arithmetic Mismatch" for item in document["risk_indicators"])
+    assert any(
+        item["title"] == "Amount Arithmetic Mismatch" for item in document["risk_indicators"]
+    )
     assert any(item["title"] == "Bank Detail Mismatch" for item in document["risk_indicators"])
     assert document["status"] == "REVIEW_REQUIRED"
     assert document["review_task"]
@@ -178,7 +183,9 @@ def test_vision_review_ask_report_and_model_comparison_flow():
     reviews = client.get("/api/v1/vision/reviews", headers=headers)
     assert reviews.status_code == 200
     matching = [
-        review for review in reviews.json()["data"]["reviews"] if review["document_id"] == document_id
+        review
+        for review in reviews.json()["data"]["reviews"]
+        if review["document_id"] == document_id
     ]
     assert matching
     review_id = matching[0]["review_id"]

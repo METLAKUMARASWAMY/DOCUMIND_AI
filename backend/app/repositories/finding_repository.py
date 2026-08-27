@@ -6,7 +6,9 @@ class FindingRepository:
         self._compliance: dict[str, list[ComplianceFinding]] = {}
         self._fraud: dict[str, list[FraudSignal]] = {}
 
-    def save_compliance(self, case_id: str, findings: list[ComplianceFinding]) -> list[ComplianceFinding]:
+    def save_compliance(
+        self, case_id: str, findings: list[ComplianceFinding]
+    ) -> list[ComplianceFinding]:
         self._compliance[case_id] = findings
         return findings
 

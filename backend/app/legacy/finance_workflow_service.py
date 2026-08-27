@@ -75,10 +75,14 @@ class FinanceProject6Workflow:
         detected_type = self.extractor.detect_type(document)
         document.metadata["user_selected_document_type"] = selected_type.value
         document.metadata["auto_detected_document_type"] = detected_type.value
-        document.document_type = self._resolve_document_type(selected_type, detected_type, document.metadata)
+        document.document_type = self._resolve_document_type(
+            selected_type, detected_type, document.metadata
+        )
         if document.document_type == FinanceDocumentType.bank_change_request:
             document.risk_level = RiskLevel.high
-        ground_truth_path = self._ground_truth_for_upload(document.file_name, document.document_type)
+        ground_truth_path = self._ground_truth_for_upload(
+            document.file_name, document.document_type
+        )
         if ground_truth_path and not document.metadata.get("ground_truth_path"):
             document.metadata["ground_truth_path"] = ground_truth_path
         self.documents[document.document_id] = document
@@ -102,7 +106,9 @@ class FinanceProject6Workflow:
         self.extractions[document_id] = extraction
         vector_started = time.perf_counter()
         self.vector_store.upsert(self._record_from_extraction(document, extraction))
-        self.vector_store.upsert_many(self._records_from_risk_flags(document, extraction.risk_flags))
+        self.vector_store.upsert_many(
+            self._records_from_risk_flags(document, extraction.risk_flags)
+        )
         self._latency(document_id, "extraction_latency", started)
         self._latency(document_id, "vector_storage_latency", vector_started)
         return extraction
@@ -140,7 +146,9 @@ class FinanceProject6Workflow:
         self.vector_store.upsert(self._record_from_review(document, review, "human_review_queue"))
         return review
 
-    def review(self, document_id: str, request: HumanReviewRequest, action: str = "update") -> HumanReview:
+    def review(
+        self, document_id: str, request: HumanReviewRequest, action: str = "update"
+    ) -> HumanReview:
         document = self._document(document_id)
         started = time.perf_counter()
         review = self.reviews.get(document_id) or self.send_to_review(document_id)
@@ -149,19 +157,24 @@ class FinanceProject6Workflow:
         if request.corrected_extraction and extraction:
             extraction.corrected_extraction = request.corrected_extraction
             review.corrected_extraction = request.corrected_extraction
-            review.correction_count += self._correction_count(extraction.original_extraction, request.corrected_extraction)
+            review.correction_count += self._correction_count(
+                extraction.original_extraction, request.corrected_extraction
+            )
 
         if action == "approve":
-            if self._approval_requires_verification(document, extraction, narrative) and not self._has_verification_proof(
-                request.reviewer_comments
-            ):
+            if self._approval_requires_verification(
+                document, extraction, narrative
+            ) and not self._has_verification_proof(request.reviewer_comments):
                 raise FinanceReviewGuardrailError(
                     "Approval blocked: high-risk or bank-change finance documents require escalation, correction, "
                     "or reviewer comments documenting independent out-of-band verification."
                 )
             review.status = FinanceWorkflowStatus.approved
             review.review_decision = "approved"
-            review.acceptance_status = request.acceptance_status or self._acceptance_for_corrections(review.correction_count)
+            review.acceptance_status = (
+                request.acceptance_status
+                or self._acceptance_for_corrections(review.correction_count)
+            )
         elif action == "reject":
             review.status = FinanceWorkflowStatus.rejected
             review.review_decision = "rejected"
@@ -170,11 +183,20 @@ class FinanceProject6Workflow:
             review.status = FinanceWorkflowStatus.escalated
             review.review_decision = "escalated"
             review.acceptance_status = HumanReviewAcceptance.escalated
-            review.escalation_reason = request.escalation_reason or request.reviewer_comments or "High-risk finance review required."
-        elif action in {"request_correction", "needs_correction"} or request.decision == "request_correction":
+            review.escalation_reason = (
+                request.escalation_reason
+                or request.reviewer_comments
+                or "High-risk finance review required."
+            )
+        elif (
+            action in {"request_correction", "needs_correction"}
+            or request.decision == "request_correction"
+        ):
             review.status = FinanceWorkflowStatus.needs_correction
             review.review_decision = "needs_correction"
-            review.acceptance_status = request.acceptance_status or HumanReviewAcceptance.accepted_with_major_changes
+            review.acceptance_status = (
+                request.acceptance_status or HumanReviewAcceptance.accepted_with_major_changes
+            )
         else:
             review.review_decision = request.decision
             if request.acceptance_status:
@@ -184,7 +206,9 @@ class FinanceProject6Workflow:
         review.reviewer_id = request.reviewer_id
         review.reviewer_comments = request.reviewer_comments
         review.final_approved_narrative = request.final_approved_narrative or (
-            narrative.narrative if narrative and review.status == FinanceWorkflowStatus.approved else review.final_approved_narrative
+            narrative.narrative
+            if narrative and review.status == FinanceWorkflowStatus.approved
+            else review.final_approved_narrative
         )
         review.review_timestamp = self._now()
         review.history.append(
@@ -200,7 +224,9 @@ class FinanceProject6Workflow:
         document.status = review.status
         document.review_status = review.status
         self.reviews[document_id] = review
-        self.vector_store.upsert(self._record_from_review(document, review, "human_review_decision"))
+        self.vector_store.upsert(
+            self._record_from_review(document, review, "human_review_decision")
+        )
         if review.final_approved_narrative:
             self.vector_store.upsert(self._record_from_final_narrative(document, review))
         self._latency(document_id, "review_submission_latency", started)
@@ -231,9 +257,27 @@ class FinanceProject6Workflow:
         evaluation = self.evaluations.get("all") or self.evaluate()
         return {
             "documents_processed": len(self.documents),
-            "pending_reviews": len([review for review in self.reviews.values() if review.status == FinanceWorkflowStatus.pending_review]),
-            "completed_reviews": len([review for review in self.reviews.values() if review.status != FinanceWorkflowStatus.pending_review]),
-            "high_risk_documents": len([document for document in self.documents.values() if document.risk_level in {RiskLevel.high, RiskLevel.critical}]),
+            "pending_reviews": len(
+                [
+                    review
+                    for review in self.reviews.values()
+                    if review.status == FinanceWorkflowStatus.pending_review
+                ]
+            ),
+            "completed_reviews": len(
+                [
+                    review
+                    for review in self.reviews.values()
+                    if review.status != FinanceWorkflowStatus.pending_review
+                ]
+            ),
+            "high_risk_documents": len(
+                [
+                    document
+                    for document in self.documents.values()
+                    if document.risk_level in {RiskLevel.high, RiskLevel.critical}
+                ]
+            ),
             "vector_records": self.vector_store.facets()["record_count"],
             "extraction_accuracy": evaluation.extraction_accuracy,
             "hallucination": evaluation.hallucination,
@@ -257,7 +301,9 @@ class FinanceProject6Workflow:
             metadata={"demo_case_id": demo.case_id, "ground_truth_path": demo.ground_truth_path},
         )
         extraction = self.extract(document.document_id)
-        narrative = self.generate_narrative(FinanceNarrativeRequest(document_id=document.document_id))
+        narrative = self.generate_narrative(
+            FinanceNarrativeRequest(document_id=document.document_id)
+        )
         review = self.send_to_review(document.document_id)
         if demo.document_type == FinanceDocumentType.bank_change_request:
             review = self.review(
@@ -300,15 +346,25 @@ class FinanceProject6Workflow:
             "evaluation": evaluation.model_dump(mode="json"),
             "vector_verification": {
                 "document_records": len(self.vector_store.document_records(document.document_id)),
-                "search_hits": self.vector_store.search("finance risk payment", document_id=document.document_id),
+                "search_hits": self.vector_store.search(
+                    "finance risk payment", document_id=document.document_id
+                ),
             },
         }
 
     def pending_reviews(self) -> list[dict[str, Any]]:
-        return [self._review_payload(review) for review in self.reviews.values() if review.status == FinanceWorkflowStatus.pending_review]
+        return [
+            self._review_payload(review)
+            for review in self.reviews.values()
+            if review.status == FinanceWorkflowStatus.pending_review
+        ]
 
     def completed_reviews(self) -> list[dict[str, Any]]:
-        return [self._review_payload(review) for review in self.reviews.values() if review.status != FinanceWorkflowStatus.pending_review]
+        return [
+            self._review_payload(review)
+            for review in self.reviews.values()
+            if review.status != FinanceWorkflowStatus.pending_review
+        ]
 
     def _review_payload(self, review: HumanReview) -> dict[str, Any]:
         document = self.documents.get(review.document_id)
@@ -369,7 +425,9 @@ class FinanceProject6Workflow:
             )
         ]
 
-    def _record_from_extraction(self, document: FinanceDocument, extraction: ExtractedFinanceFields) -> VectorRecord:
+    def _record_from_extraction(
+        self, document: FinanceDocument, extraction: ExtractedFinanceFields
+    ) -> VectorRecord:
         return self._vector_record(
             document,
             "extracted_finance_json",
@@ -377,7 +435,9 @@ class FinanceProject6Workflow:
             extraction_version=extraction.extraction_version,
         )
 
-    def _records_from_risk_flags(self, document: FinanceDocument, flags: list[RiskFlag]) -> list[VectorRecord]:
+    def _records_from_risk_flags(
+        self, document: FinanceDocument, flags: list[RiskFlag]
+    ) -> list[VectorRecord]:
         return [
             self._vector_record(
                 document,
@@ -389,7 +449,9 @@ class FinanceProject6Workflow:
             for flag in flags
         ]
 
-    def _record_from_narrative(self, document: FinanceDocument, narrative: FinanceNarrative) -> VectorRecord:
+    def _record_from_narrative(
+        self, document: FinanceDocument, narrative: FinanceNarrative
+    ) -> VectorRecord:
         return self._vector_record(
             document,
             "finance_narrative",
@@ -403,7 +465,9 @@ class FinanceProject6Workflow:
             },
         )
 
-    def _record_from_review(self, document: FinanceDocument, review: HumanReview, source_type: str) -> VectorRecord:
+    def _record_from_review(
+        self, document: FinanceDocument, review: HumanReview, source_type: str
+    ) -> VectorRecord:
         return self._vector_record(
             document,
             source_type,
@@ -418,10 +482,17 @@ class FinanceProject6Workflow:
                 if part
             )
             or "Pending human review.",
-            metadata={"review_id": review.review_id, "acceptance_status": review.acceptance_status.value if review.acceptance_status else None},
+            metadata={
+                "review_id": review.review_id,
+                "acceptance_status": review.acceptance_status.value
+                if review.acceptance_status
+                else None,
+            },
         )
 
-    def _record_from_final_narrative(self, document: FinanceDocument, review: HumanReview) -> VectorRecord:
+    def _record_from_final_narrative(
+        self, document: FinanceDocument, review: HumanReview
+    ) -> VectorRecord:
         return self._vector_record(
             document,
             "final_approved_narrative",
@@ -429,7 +500,9 @@ class FinanceProject6Workflow:
             metadata={"review_id": review.review_id},
         )
 
-    def _record_from_evaluation(self, document: FinanceDocument, evaluation: EvaluationResult) -> VectorRecord:
+    def _record_from_evaluation(
+        self, document: FinanceDocument, evaluation: EvaluationResult
+    ) -> VectorRecord:
         return self._vector_record(
             document,
             "evaluation_result",
@@ -552,7 +625,10 @@ class FinanceProject6Workflow:
         if selected_type == FinanceDocumentType.unknown:
             metadata["document_type_resolution"] = "auto_detected"
             return detected_type
-        if detected_type == FinanceDocumentType.bank_change_request and selected_type != detected_type:
+        if (
+            detected_type == FinanceDocumentType.bank_change_request
+            and selected_type != detected_type
+        ):
             metadata["document_type_resolution"] = "overridden_by_bank_change_guardrail"
             metadata["document_type_warning"] = (
                 f"User selected {selected_type.value}, but bank-change risk language was detected."
@@ -560,10 +636,14 @@ class FinanceProject6Workflow:
             return detected_type
         if selected_type != detected_type:
             metadata["document_type_resolution"] = "user_selected_with_detection_warning"
-            metadata["document_type_warning"] = f"Auto-detection suggested {detected_type.value}; reviewer should confirm."
+            metadata["document_type_warning"] = (
+                f"Auto-detection suggested {detected_type.value}; reviewer should confirm."
+            )
         return selected_type
 
-    def _ground_truth_for_upload(self, filename: str, document_type: FinanceDocumentType) -> str | None:
+    def _ground_truth_for_upload(
+        self, filename: str, document_type: FinanceDocumentType
+    ) -> str | None:
         filename_key = filename.lower().replace(" ", "_")
         by_filename = {
             "invoice_demo.txt": "demo_data/ground_truth/invoice_demo.json",
@@ -573,7 +653,10 @@ class FinanceProject6Workflow:
         }
         if filename_key in by_filename:
             return by_filename[filename_key]
-        if "bank_change" in filename_key and document_type == FinanceDocumentType.bank_change_request:
+        if (
+            "bank_change" in filename_key
+            and document_type == FinanceDocumentType.bank_change_request
+        ):
             return "demo_data/ground_truth/bank_change_risk_demo.json"
         return None
 
@@ -587,21 +670,35 @@ class FinanceProject6Workflow:
             return True
         if document.risk_level in {RiskLevel.high, RiskLevel.critical}:
             return True
-        flags = [*(extraction.risk_flags if extraction else []), *(narrative.risk_flags if narrative else [])]
+        flags = [
+            *(extraction.risk_flags if extraction else []),
+            *(narrative.risk_flags if narrative else []),
+        ]
         return any(flag.severity in {RiskLevel.high, RiskLevel.critical} for flag in flags)
 
     def _has_verification_proof(self, comments: str) -> bool:
         lowered = comments.lower()
         verification_terms = ("verified", "verification", "validated", "confirmed")
-        trusted_channel_terms = ("out-of-band", "trusted", "callback", "call back", "independent", "registered contact")
-        return any(term in lowered for term in verification_terms) and any(term in lowered for term in trusted_channel_terms)
+        trusted_channel_terms = (
+            "out-of-band",
+            "trusted",
+            "callback",
+            "call back",
+            "independent",
+            "registered contact",
+        )
+        return any(term in lowered for term in verification_terms) and any(
+            term in lowered for term in trusted_channel_terms
+        )
 
     def _correction_count(self, original: dict[str, Any], corrected: dict[str, Any]) -> int:
         keys = set(original) | set(corrected)
         return sum(1 for key in keys if original.get(key) != corrected.get(key))
 
     def _latency(self, document_id: str, key: str, started: float) -> None:
-        self.latency_by_document.setdefault(document_id, {})[key] = round(time.perf_counter() - started, 4)
+        self.latency_by_document.setdefault(document_id, {})[key] = round(
+            time.perf_counter() - started, 4
+        )
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()

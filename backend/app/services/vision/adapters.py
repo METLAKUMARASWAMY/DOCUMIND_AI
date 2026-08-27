@@ -50,7 +50,9 @@ class VisionAdapter(ABC):
     def ensure_ready(self) -> None:
         current = self.status()
         if current.status != "active":
-            raise AdapterUnavailableError(f"{current.adapter_id} is {current.status}: {current.reason}")
+            raise AdapterUnavailableError(
+                f"{current.adapter_id} is {current.status}: {current.reason}"
+            )
 
 
 class OCRAdapter(VisionAdapter):
@@ -69,7 +71,9 @@ class LayoutAdapter(VisionAdapter):
     stage = "layout"
 
     @abstractmethod
-    def analyze_layout(self, document: VisionDocumentRecord) -> tuple[list[LayoutRegion], list[TableResult]]:
+    def analyze_layout(
+        self, document: VisionDocumentRecord
+    ) -> tuple[list[LayoutRegion], list[TableResult]]:
         raise NotImplementedError
 
 
@@ -127,4 +131,3 @@ class GeneratorAdapter(VisionAdapter):
     @abstractmethod
     def answer(self, question: str, evidence: list[VisionEvidenceChunk]) -> VisionAskResponse:
         raise NotImplementedError
-

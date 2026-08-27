@@ -30,4 +30,3 @@ class OCRLayoutService:
                 reasoning="Detected layout regions from textual and structural cues.",
             ).model_dump(),
         }
-

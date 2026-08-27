@@ -324,11 +324,7 @@ class GeometryLayoutAdapter(LayoutAdapter):
         uncertainty_reasons: list[str] = []
         if any(len(row.cells) < column_count for row in rows):
             uncertainty_reasons.append("sparse_or_merged_cell_geometry")
-        if any(
-            row_values[index] == ""
-            for row_values in values
-            for index in range(column_count)
-        ):
+        if any(row_values[index] == "" for row_values in values for index in range(column_count)):
             uncertainty_reasons.append("empty_cell_preserved")
 
         table_box = self._union([row.bounding_box for row in rows]) or VisionBoundingBox(
@@ -353,9 +349,7 @@ class GeometryLayoutAdapter(LayoutAdapter):
             cells=cells,
             bounding_box=table_box,
             confidence=round(min(0.99, sum(confidences) / max(len(confidences), 1)), 4),
-            structure_status=(
-                "table_uncertain" if uncertainty_reasons else "structured"
-            ),
+            structure_status=("table_uncertain" if uncertainty_reasons else "structured"),
             uncertainty_reasons=uncertainty_reasons,
             model_name=self.adapter_id,
             model_version=self.model_version,

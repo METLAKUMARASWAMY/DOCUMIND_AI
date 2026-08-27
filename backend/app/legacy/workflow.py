@@ -46,7 +46,10 @@ class WorkflowEngine:
         )
         approval_blocked = bool(blocked_reasons)
 
-        if any(signal.severity in {RiskLevel.high, RiskLevel.critical} for signal in fraud_signals) or fraud_probability >= 0.55:
+        if (
+            any(signal.severity in {RiskLevel.high, RiskLevel.critical} for signal in fraud_signals)
+            or fraud_probability >= 0.55
+        ):
             return WorkflowState(
                 case_id=case_id,
                 status="payment_hold",
@@ -58,7 +61,10 @@ class WorkflowEngine:
                 approval_blocked=approval_blocked,
                 blocked_reasons=blocked_reasons,
             )
-        if any(finding.severity in {RiskLevel.high, RiskLevel.critical} for finding in compliance_findings):
+        if any(
+            finding.severity in {RiskLevel.high, RiskLevel.critical}
+            for finding in compliance_findings
+        ):
             return WorkflowState(
                 case_id=case_id,
                 status="compliance_review",

@@ -768,6 +768,13 @@ class VisionRetrievalTrace(BaseModel):
     selected_evidence: list[str] = Field(default_factory=list)
     retrieval_duration_ms: float = Field(default=0.0, ge=0)
     retriever_versions: dict[str, str] = Field(default_factory=dict)
+    #: Which embedding backend actually produced the vectors searched here.
+    embedding_backend: str = ""
+    embedding_model: str = ""
+    #: False when matching is lexical/feature-hashing rather than semantic. It
+    #: is the difference between "this is not in the documents" and "this
+    #: backend could not reach it", and a reader is entitled to tell them apart.
+    semantic_matching: bool = False
 
 
 class VisionConversationState(BaseModel):

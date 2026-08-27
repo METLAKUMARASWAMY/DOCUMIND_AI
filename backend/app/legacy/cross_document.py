@@ -12,7 +12,9 @@ class CrossDocumentVerificationService:
         "net 45": re.compile(r"\bnet\s*45\b", re.IGNORECASE),
         "net 60": re.compile(r"\bnet\s*60\b", re.IGNORECASE),
         "due on receipt": re.compile(r"\bdue\s+on\s+receipt\b", re.IGNORECASE),
-        "prepayment": re.compile(r"\b(?:prepayment|pre-pay(?:ment)?|upfront|advance payment)\b", re.IGNORECASE),
+        "prepayment": re.compile(
+            r"\b(?:prepayment|pre-pay(?:ment)?|upfront|advance payment)\b", re.IGNORECASE
+        ),
     }
     exception_markers: ClassVar[tuple[str, ...]] = (
         "approved exception",
@@ -64,7 +66,9 @@ class CrossDocumentVerificationService:
             )
         ]
 
-    def _contract_invoice_terms_match(self, documents: list[DocumentRecord]) -> list[CrossDocumentCheck]:
+    def _contract_invoice_terms_match(
+        self, documents: list[DocumentRecord]
+    ) -> list[CrossDocumentCheck]:
         contracts = [doc for doc in documents if doc.document_type == DocumentType.contract]
         invoices = [doc for doc in documents if doc.document_type == DocumentType.invoice]
         if not contracts or not invoices:
@@ -92,12 +96,16 @@ class CrossDocumentVerificationService:
             )
         ]
 
-    def _invoice_po_reference_match(self, documents: list[DocumentRecord]) -> list[CrossDocumentCheck]:
+    def _invoice_po_reference_match(
+        self, documents: list[DocumentRecord]
+    ) -> list[CrossDocumentCheck]:
         invoices = [doc for doc in documents if doc.document_type == DocumentType.invoice]
         pos = [doc for doc in documents if doc.document_type == DocumentType.purchase_order]
         if not invoices or not pos:
             return []
-        invoice_refs = self._normalized_field_values(invoices, "purchase_order_number", self._normalize_po)
+        invoice_refs = self._normalized_field_values(
+            invoices, "purchase_order_number", self._normalize_po
+        )
         po_numbers = self._normalized_field_values(pos, "purchase_order_number", self._normalize_po)
         if not invoice_refs or not po_numbers:
             return [
@@ -132,7 +140,9 @@ class CrossDocumentVerificationService:
             )
         ]
 
-    def _invoice_contract_vendor_match(self, documents: list[DocumentRecord]) -> list[CrossDocumentCheck]:
+    def _invoice_contract_vendor_match(
+        self, documents: list[DocumentRecord]
+    ) -> list[CrossDocumentCheck]:
         invoices = [doc for doc in documents if doc.document_type == DocumentType.invoice]
         contracts = [doc for doc in documents if doc.document_type == DocumentType.contract]
         if not invoices or not contracts:
@@ -159,13 +169,21 @@ class CrossDocumentVerificationService:
             )
         ]
 
-    def _vendor_bank_details_match(self, documents: list[DocumentRecord]) -> list[CrossDocumentCheck]:
-        vendor_docs = [doc for doc in documents if doc.document_type in {DocumentType.invoice, DocumentType.purchase_order}]
+    def _vendor_bank_details_match(
+        self, documents: list[DocumentRecord]
+    ) -> list[CrossDocumentCheck]:
+        vendor_docs = [
+            doc
+            for doc in documents
+            if doc.document_type in {DocumentType.invoice, DocumentType.purchase_order}
+        ]
         bank_docs = [doc for doc in documents if doc.document_type == DocumentType.bank_statement]
         if not vendor_docs or not bank_docs:
             return []
         vendors = self._normalized_field_values(vendor_docs, "vendor")
-        vendors.update(self._text_label_values(vendor_docs, ("vendor", "supplier", "seller", "company")))
+        vendors.update(
+            self._text_label_values(vendor_docs, ("vendor", "supplier", "seller", "company"))
+        )
         bank_details = self._normalized_bank_values(bank_docs)
         if not vendors or not bank_details:
             return []
@@ -190,7 +208,9 @@ class CrossDocumentVerificationService:
             )
         ]
 
-    def _bank_change_request_checks(self, documents: list[DocumentRecord]) -> list[CrossDocumentCheck]:
+    def _bank_change_request_checks(
+        self, documents: list[DocumentRecord]
+    ) -> list[CrossDocumentCheck]:
         hits = [
             doc
             for doc in documents
@@ -206,7 +226,12 @@ class CrossDocumentVerificationService:
                 title="Bank account change request detected",
                 status="Review Required",
                 confidence=0.86,
-                evidence=[self._evidence(doc, "Bank account change language requires independent verification.") for doc in hits[:2]],
+                evidence=[
+                    self._evidence(
+                        doc, "Bank account change language requires independent verification."
+                    )
+                    for doc in hits[:2]
+                ],
                 recommendation="Hold payment until bank account change is verified outside email.",
             )
         ]
@@ -221,7 +246,10 @@ class CrossDocumentVerificationService:
                 title="Approved exception or waiver detected",
                 status="Review Required",
                 confidence=0.87,
-                evidence=[self._evidence(doc, "Exception or waiver language found in the source text.") for doc in hits[:2]],
+                evidence=[
+                    self._evidence(doc, "Exception or waiver language found in the source text.")
+                    for doc in hits[:2]
+                ],
             )
         ]
 
@@ -269,13 +297,24 @@ class CrossDocumentVerificationService:
         for document in documents:
             values.update(self._bank_detail_values(document))
             lower = document.text.lower()
-            if "beneficiary" in lower or "account holder" in lower or "account name" in lower or "payee" in lower:
+            if (
+                "beneficiary" in lower
+                or "account holder" in lower
+                or "account name" in lower
+                or "payee" in lower
+            ):
                 values.update(self._extract_labeled_values(document.text))
         return values
 
     def _extract_labeled_values(self, text: str) -> set[str]:
         values = set()
-        for marker in ("account holder", "account name", "beneficiary", "beneficiary name", "payee"):
+        for marker in (
+            "account holder",
+            "account name",
+            "beneficiary",
+            "beneficiary name",
+            "payee",
+        ):
             index = text.lower().find(marker)
             if index < 0:
                 continue
@@ -285,7 +324,9 @@ class CrossDocumentVerificationService:
                 values.add(self._normalize_text(candidate))
         return values
 
-    def _text_label_values(self, documents: list[DocumentRecord], labels: tuple[str, ...]) -> set[str]:
+    def _text_label_values(
+        self, documents: list[DocumentRecord], labels: tuple[str, ...]
+    ) -> set[str]:
         values = set()
         for document in documents:
             lower = document.text.lower()

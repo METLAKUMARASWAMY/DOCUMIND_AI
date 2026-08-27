@@ -35,7 +35,9 @@ def test_finance_upload_extract_narrative_vector_review_and_evaluation_flow():
     document = upload.json()["data"]
     document_id = document["document_id"]
 
-    extraction_response = client.post("/api/v1/demo-legacy/finance/extract", json={"document_id": document_id})
+    extraction_response = client.post(
+        "/api/v1/demo-legacy/finance/extract", json={"document_id": document_id}
+    )
     assert extraction_response.status_code == 200
     extraction = extraction_response.json()["data"]
     assert extraction["fields"]["invoice_number"] == "INV-7777"
@@ -51,7 +53,10 @@ def test_finance_upload_extract_narrative_vector_review_and_evaluation_flow():
     assert "INV-7777" in narrative["narrative"]
     assert narrative["groundedness_score"] >= 0.8
 
-    vector_response = client.get("/api/v1/demo-legacy/finance/vector/search", params={"q": "invoice Apex payment bank", "document_id": document_id})
+    vector_response = client.get(
+        "/api/v1/demo-legacy/finance/vector/search",
+        params={"q": "invoice Apex payment bank", "document_id": document_id},
+    )
     assert vector_response.status_code == 200
     assert vector_response.json()["data"]["hits"]
 
@@ -59,12 +64,18 @@ def test_finance_upload_extract_narrative_vector_review_and_evaluation_flow():
     assert queued.status_code == 200
     approved = client.post(
         f"/api/v1/demo-legacy/finance/review/{document_id}/approve",
-        json={"reviewer_name": "Pytest Reviewer", "decision": "approve", "reviewer_comments": "Accepted."},
+        json={
+            "reviewer_name": "Pytest Reviewer",
+            "decision": "approve",
+            "reviewer_comments": "Accepted.",
+        },
     )
     assert approved.status_code == 200
     assert approved.json()["data"]["status"] == "Approved"
 
-    evaluation = client.post("/api/v1/demo-legacy/finance/evaluation/run", json={"document_id": document_id})
+    evaluation = client.post(
+        "/api/v1/demo-legacy/finance/evaluation/run", json={"document_id": document_id}
+    )
     assert evaluation.status_code == 200
     metrics = evaluation.json()["data"]
     assert "field_level_exact_match_accuracy" in metrics["extraction_accuracy"]
@@ -80,7 +91,10 @@ def test_bank_change_demo_escalates_and_masks_sensitive_details():
     assert fields["new_bank_account"] == "****1098"
     assert fields["fraud_risk_level"] == "high"
     assert payload["review"]["status"] == "Escalated"
-    assert any(flag["title"] == "Bank change requires human verification" for flag in payload["extraction"]["risk_flags"])
+    assert any(
+        flag["title"] == "Bank change requires human verification"
+        for flag in payload["extraction"]["risk_flags"]
+    )
     assert payload["vector_verification"]["document_records"] >= 4
 
 
@@ -109,9 +123,14 @@ def test_bank_change_upload_overrides_wrong_type_and_blocks_unsafe_approval():
     assert document["risk_level"] == "high"
     assert document["metadata"]["user_selected_document_type"] == "invoice"
     assert document["metadata"]["document_type_resolution"] == "overridden_by_bank_change_guardrail"
-    assert document["metadata"]["ground_truth_path"] == "demo_data/ground_truth/bank_change_risk_demo.json"
+    assert (
+        document["metadata"]["ground_truth_path"]
+        == "demo_data/ground_truth/bank_change_risk_demo.json"
+    )
 
-    extraction_response = client.post("/api/v1/demo-legacy/finance/extract", json={"document_id": document_id})
+    extraction_response = client.post(
+        "/api/v1/demo-legacy/finance/extract", json={"document_id": document_id}
+    )
     assert extraction_response.status_code == 200
     extraction = extraction_response.json()["data"]
     assert extraction["document_type"] == "bank_change_request"
@@ -131,7 +150,11 @@ def test_bank_change_upload_overrides_wrong_type_and_blocks_unsafe_approval():
     assert queued.status_code == 200
     unsafe_approval = client.post(
         f"/api/v1/demo-legacy/finance/review/{document_id}/approve",
-        json={"reviewer_name": "Pytest Reviewer", "decision": "approve", "reviewer_comments": "Looks fine."},
+        json={
+            "reviewer_name": "Pytest Reviewer",
+            "decision": "approve",
+            "reviewer_comments": "Looks fine.",
+        },
     )
     assert unsafe_approval.status_code == 409
 
@@ -146,7 +169,9 @@ def test_bank_change_upload_overrides_wrong_type_and_blocks_unsafe_approval():
     assert verified_approval.status_code == 200
     assert verified_approval.json()["data"]["status"] == "Approved"
 
-    evaluation = client.post("/api/v1/demo-legacy/finance/evaluation/run", json={"document_id": document_id})
+    evaluation = client.post(
+        "/api/v1/demo-legacy/finance/evaluation/run", json={"document_id": document_id}
+    )
     assert evaluation.status_code == 200
     row = evaluation.json()["data"]["document_results"][0]
     assert row["document_type"] == "bank_change_request"
@@ -157,7 +182,12 @@ def test_finance_demo_cases_and_metrics_are_available():
     cases = client.get("/api/v1/demo-legacy/finance/demo-cases")
     assert cases.status_code == 200
     case_ids = {item["case_id"] for item in cases.json()["data"]["cases"]}
-    assert {"invoice-demo", "purchase-order-demo", "contract-demo", "bank-change-risk-demo"}.issubset(case_ids)
+    assert {
+        "invoice-demo",
+        "purchase-order-demo",
+        "contract-demo",
+        "bank-change-risk-demo",
+    }.issubset(case_ids)
 
     metrics = client.get("/api/v1/demo-legacy/finance/metrics")
     assert metrics.status_code == 200

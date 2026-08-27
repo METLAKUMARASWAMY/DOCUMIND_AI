@@ -1,0 +1,134 @@
+........................................................................ [ 15%]
+...........s.....FF..................................................... [ 31%]
+........................................................................ [ 47%]
+........................................................................ [ 63%]
+........................................................................ [ 79%]
+........................................................................ [ 94%]
+.......................                                                  [100%]
+=================================== FAILURES ===================================
+_ test_scenario_c_unsupported_question_abstains[what is the mean time between failures for the turbine] _
+
+service = <app.services.vision.service.VisionAIService object at 0x154938550>
+related_corpus = {'invoice': 'vision-doc-a547e4d5c1', 'purchase_order': 'vision-doc-3ffc016352', 'contract': 'vision-doc-851139f7b5'}
+question = 'what is the mean time between failures for the turbine'
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "what is the mean time between failures for the turbine",
+            "what was the closing share price on the day of issue",
+        ],
+    )
+    def test_scenario_c_unsupported_question_abstains(
+        service: VisionAIService, related_corpus: dict[str, str], question: str
+    ) -> None:
+        response = _ask(service, question)
+    
+        assert response.answer_status == "not_found", (
+            f"expected abstention, got {response.answer_status}: {response.answer}"
+        )
+        assert response.citations == [], "an abstention must not carry citations"
+>       assert "not contain sufficient evidence" in response.answer.lower()
+E       AssertionError: assert 'not contain sufficient evidence' in 'no evidence in the selected documents matched this question.'
+E        +  where 'no evidence in the selected documents matched this question.' = <built-in method lower of str object at 0x1038aeaa0>()
+E        +    where <built-in method lower of str object at 0x1038aeaa0> = 'No evidence in the selected documents matched this question.'.lower
+E        +      where 'No evidence in the selected documents matched this question.' = VisionAskResponse(question_id='vision-question-b36cba464a', answer='No evidence in the selected documents matched this...ch existing evidence.', impact='paraphrase_recall_limited')], generator='grounded-evidence-composer:v1', degraded=True).answer
+
+app/tests/test_end_to_end_scenarios.py:234: AssertionError
+_ test_scenario_c_unsupported_question_abstains[what was the closing share price on the day of issue] _
+
+service = <app.services.vision.service.VisionAIService object at 0x154938550>
+related_corpus = {'invoice': 'vision-doc-a547e4d5c1', 'purchase_order': 'vision-doc-3ffc016352', 'contract': 'vision-doc-851139f7b5'}
+question = 'what was the closing share price on the day of issue'
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "what is the mean time between failures for the turbine",
+            "what was the closing share price on the day of issue",
+        ],
+    )
+    def test_scenario_c_unsupported_question_abstains(
+        service: VisionAIService, related_corpus: dict[str, str], question: str
+    ) -> None:
+        response = _ask(service, question)
+    
+        assert response.answer_status == "not_found", (
+            f"expected abstention, got {response.answer_status}: {response.answer}"
+        )
+        assert response.citations == [], "an abstention must not carry citations"
+>       assert "not contain sufficient evidence" in response.answer.lower()
+E       AssertionError: assert 'not contain sufficient evidence' in 'no evidence in the selected documents matched this question.'
+E        +  where 'no evidence in the selected documents matched this question.' = <built-in method lower of str object at 0x1038aeaa0>()
+E        +    where <built-in method lower of str object at 0x1038aeaa0> = 'No evidence in the selected documents matched this question.'.lower
+E        +      where 'No evidence in the selected documents matched this question.' = VisionAskResponse(question_id='vision-question-08ab710740', answer='No evidence in the selected documents matched this...ch existing evidence.', impact='paraphrase_recall_limited')], generator='grounded-evidence-composer:v1', degraded=True).answer
+
+app/tests/test_end_to_end_scenarios.py:234: AssertionError
+=============================== warnings summary ===============================
+../.venv/lib/python3.13/site-packages/fastapi/testclient.py:1
+  /Users/kumar/Downloads/DocuMind AI/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+app/tests/test_answer_degradation_disclosure.py: 4 warnings
+app/tests/test_cross_domain_generalization.py: 4 warnings
+app/tests/test_document_variation_acceptance.py: 10 warnings
+app/tests/test_duplicate_signal_honesty.py: 4 warnings
+app/tests/test_end_to_end_scenarios.py: 9 warnings
+app/tests/test_generalization_regressions.py: 5 warnings
+app/tests/test_graph_ontology_generalization.py: 3 warnings
+app/tests/test_negative_campaign.py: 8 warnings
+app/tests/test_schema_configuration_v1.py: 1 warning
+app/tests/test_semantic_risk_feedback_resolution.py: 5 warnings
+app/tests/test_tenant_isolation_attacks.py: 2 warnings
+app/tests/test_vision_ai.py: 4 warnings
+app/tests/test_vision_alias_endpoints.py: 1 warning
+app/tests/test_vision_core_intelligence_v3.py: 7 warnings
+app/tests/test_vision_finance_reports_tenants.py: 2 warnings
+app/tests/test_vision_rag_graphrag_v4.py: 2 warnings
+app/tests/test_vision_remediation_phase2.py: 12 warnings
+app/tests/test_vision_remediation_phase3.py: 3 warnings
+app/tests/test_vision_remediation_phase5.py: 2 warnings
+app/tests/test_vision_remediation_phase6.py: 3 warnings
+app/tests/test_vision_remediation_phase7.py: 4 warnings
+app/tests/test_vision_remediation_phase8.py: 1 warning
+app/tests/test_vision_remediation_phase9.py: 2 warnings
+app/tests/test_vision_repository_worker.py: 6 warnings
+tests/test_vision_demo.py: 4 warnings
+  /Users/kumar/Downloads/DocuMind AI/backend/app/services/vision/duplicate_detection.py:99: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    pixels = list(resized.getdata())
+
+app/tests/test_document_variation_acceptance.py::test_scanned_multi_page_tiff_and_pdf_preserve_pages_and_evidence[scan.pdf-PDF]
+app/tests/test_document_variation_acceptance.py::test_scanned_multi_page_tiff_and_pdf_preserve_pages_and_evidence[scan.pdf-PDF]
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+app/tests/test_document_variation_acceptance.py::test_scanned_multi_page_tiff_and_pdf_preserve_pages_and_evidence[scan.pdf-PDF]
+app/tests/test_document_variation_acceptance.py::test_scanned_multi_page_tiff_and_pdf_preserve_pages_and_evidence[scan.pdf-PDF]
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+app/tests/test_document_variation_acceptance.py::test_scanned_multi_page_tiff_and_pdf_preserve_pages_and_evidence[scan.pdf-PDF]
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+
+=== SLEEP PROFILE (wall seconds spent blocked in time.sleep) ===
+     8.28s  x6      /Users/kumar/Downloads/DocuMind AI/.venv/lib/python3.13/site-packages/neo4j/_sync/work/session.py:610 _run_transaction
+     0.06s  x1      /Users/kumar/Downloads/DocuMind AI/backend/app/tests/test_neo4j_failure_isolation.py:128 test_breaker_lets_one_call_through_once_the_backoff_elapses
+     0.03s  x1      /Users/kumar/Downloads/DocuMind AI/backend/app/tests/test_neo4j_failure_isolation.py:155 test_recovery_closes_the_breaker_and_clears_the_error
+     8.36s  TOTAL SLEEP
+============================= slowest 10 durations =============================
+31.43s call     app/tests/test_document_variation_acceptance.py::test_repository_holdout_pdf_is_genuinely_multi_page_and_not_fixture_tuned
+20.73s call     app/tests/test_tenant_isolation_attacks.py::test_review_queue_is_tenant_scoped
+12.71s call     app/tests/test_generalization_regressions.py::test_00093726_generic_layer_rejects_geometry_fragments_without_losing_fields
+12.56s call     tests/test_vision_demo.py::test_connected_demo_seed_powers_ask_and_finance_narrative
+10.31s call     app/tests/test_vision_remediation_phase7.py::test_dashboard_library_queue_risk_and_report_totals_are_consistent
+8.74s setup    app/tests/test_deterministic_extraction_v3_fixture.py::test_00093726_date_is_corrected_from_roi_evidence_not_promoted_to_title
+8.73s call     app/tests/test_vision_finance_reports_tenants.py::test_verified_finance_narrative_and_typed_report_flow
+7.35s call     app/tests/test_vision_ai.py::test_vision_review_ask_report_and_model_comparison_flow
+7.24s call     app/tests/test_vision_alias_endpoints.py::test_top_level_vision_aliases_questions_analytics_graph_and_admin
+7.12s call     app/tests/test_vision_remediation_phase9.py::test_analytics_health_and_narrative_aliases_execute_real_service_paths
+=========================== short test summary info ============================
+FAILED app/tests/test_end_to_end_scenarios.py::test_scenario_c_unsupported_question_abstains[what is the mean time between failures for the turbine]
+FAILED app/tests/test_end_to_end_scenarios.py::test_scenario_c_unsupported_question_abstains[what was the closing share price on the day of issue]
+2 failed, 452 passed, 1 skipped, 114 warnings in 311.68s (0:05:11)
+<sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+EXIT=1

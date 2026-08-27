@@ -81,34 +81,100 @@ class FinanceExtractionService:
     )
 
     patterns: ClassVar[dict[str, re.Pattern[str]]] = {
-        "vendor_name": re.compile(r"(?:vendor|supplier|seller|beneficiary|payee)\s*[:#-]\s*([^\n\r:]{2,100})", re.IGNORECASE),
-        "buyer_name": re.compile(r"(?:buyer|bill to|customer|ordered by)\s*[:#-]\s*([^\n\r:]{2,100})", re.IGNORECASE),
-        "invoice_number": re.compile(r"(?:invoice(?: number| no\.?)?|inv)\s*[:#-]\s*([A-Z0-9-]{3,40})", re.IGNORECASE),
-        "po_number": re.compile(r"(?:purchase order(?: number| no\.?)?|po(?: number| no\.?)?|po)\s*[:#-]\s*([A-Z0-9-]{3,40})", re.IGNORECASE),
-        "invoice_date": re.compile(r"(?:invoice date|date)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})", re.IGNORECASE),
-        "due_date": re.compile(r"(?:due date|payment due)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})", re.IGNORECASE),
-        "po_date": re.compile(r"(?:po date|purchase order date|date)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})", re.IGNORECASE),
-        "delivery_date": re.compile(r"(?:delivery date|required by|deliver by)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})", re.IGNORECASE),
-        "contract_start_date": re.compile(r"(?:start date|effective date|contract start)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})", re.IGNORECASE),
-        "contract_end_date": re.compile(r"(?:end date|expiry date|expiration date|contract end)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})", re.IGNORECASE),
-        "subtotal": re.compile(r"(?:subtotal|sub total)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)", re.IGNORECASE),
-        "tax_amount": re.compile(r"(?:tax|gst|vat)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)", re.IGNORECASE),
-        "total_amount": re.compile(r"(?:total amount|amount due|invoice total|grand total|total)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)", re.IGNORECASE),
-        "total_value": re.compile(r"(?:total value|po value|approved amount|total)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)", re.IGNORECASE),
-        "unit_price": re.compile(r"(?:unit price|rate)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)", re.IGNORECASE),
+        "vendor_name": re.compile(
+            r"(?:vendor|supplier|seller|beneficiary|payee)\s*[:#-]\s*([^\n\r:]{2,100})",
+            re.IGNORECASE,
+        ),
+        "buyer_name": re.compile(
+            r"(?:buyer|bill to|customer|ordered by)\s*[:#-]\s*([^\n\r:]{2,100})", re.IGNORECASE
+        ),
+        "invoice_number": re.compile(
+            r"(?:invoice(?: number| no\.?)?|inv)\s*[:#-]\s*([A-Z0-9-]{3,40})", re.IGNORECASE
+        ),
+        "po_number": re.compile(
+            r"(?:purchase order(?: number| no\.?)?|po(?: number| no\.?)?|po)\s*[:#-]\s*([A-Z0-9-]{3,40})",
+            re.IGNORECASE,
+        ),
+        "invoice_date": re.compile(
+            r"(?:invoice date|date)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+            re.IGNORECASE,
+        ),
+        "due_date": re.compile(
+            r"(?:due date|payment due)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+            re.IGNORECASE,
+        ),
+        "po_date": re.compile(
+            r"(?:po date|purchase order date|date)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+            re.IGNORECASE,
+        ),
+        "delivery_date": re.compile(
+            r"(?:delivery date|required by|deliver by)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+            re.IGNORECASE,
+        ),
+        "contract_start_date": re.compile(
+            r"(?:start date|effective date|contract start)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+            re.IGNORECASE,
+        ),
+        "contract_end_date": re.compile(
+            r"(?:end date|expiry date|expiration date|contract end)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+            re.IGNORECASE,
+        ),
+        "subtotal": re.compile(
+            r"(?:subtotal|sub total)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)",
+            re.IGNORECASE,
+        ),
+        "tax_amount": re.compile(
+            r"(?:tax|gst|vat)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)",
+            re.IGNORECASE,
+        ),
+        "total_amount": re.compile(
+            r"(?:total amount|amount due|invoice total|grand total|total)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)",
+            re.IGNORECASE,
+        ),
+        "total_value": re.compile(
+            r"(?:total value|po value|approved amount|total)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)",
+            re.IGNORECASE,
+        ),
+        "unit_price": re.compile(
+            r"(?:unit price|rate)\s*[:#-]\s*((?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?)",
+            re.IGNORECASE,
+        ),
         "quantity": re.compile(r"(?:quantity|qty)\s*[:#-]\s*(\d+(?:\.\d+)?)", re.IGNORECASE),
-        "payment_terms": re.compile(r"(?:payment terms|terms)\s*[:#-]\s*([^\n\r]{2,100})", re.IGNORECASE),
-        "approval_status": re.compile(r"(?:approval status|approved by|status)\s*[:#-]\s*([^\n\r]{2,80})", re.IGNORECASE),
-        "bank_name": re.compile(r"(?:bank name|beneficiary bank)\s*[:#-]\s*([^\n\r:]{2,100})", re.IGNORECASE),
-        "old_bank_account": re.compile(r"(?:old bank account|old account|existing account)\s*[:#-]\s*([A-Z0-9 -]{6,34})", re.IGNORECASE),
-        "new_bank_account": re.compile(r"(?:new bank account|new account|updated account|account number)\s*[:#-]\s*([A-Z0-9 -]{6,34})", re.IGNORECASE),
-        "IFSC_or_SWIFT": re.compile(r"(?:ifsc|swift|bic|routing)\s*[:#-]\s*([A-Z0-9-]{6,34})", re.IGNORECASE),
-        "request_date": re.compile(r"(?:request date|requested on|date)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})", re.IGNORECASE),
-        "requester_email_or_contact": re.compile(r"([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})", re.IGNORECASE),
+        "payment_terms": re.compile(
+            r"(?:payment terms|terms)\s*[:#-]\s*([^\n\r]{2,100})", re.IGNORECASE
+        ),
+        "approval_status": re.compile(
+            r"(?:approval status|approved by|status)\s*[:#-]\s*([^\n\r]{2,80})", re.IGNORECASE
+        ),
+        "bank_name": re.compile(
+            r"(?:bank name|beneficiary bank)\s*[:#-]\s*([^\n\r:]{2,100})", re.IGNORECASE
+        ),
+        "old_bank_account": re.compile(
+            r"(?:old bank account|old account|existing account)\s*[:#-]\s*([A-Z0-9 -]{6,34})",
+            re.IGNORECASE,
+        ),
+        "new_bank_account": re.compile(
+            r"(?:new bank account|new account|updated account|account number)\s*[:#-]\s*([A-Z0-9 -]{6,34})",
+            re.IGNORECASE,
+        ),
+        "IFSC_or_SWIFT": re.compile(
+            r"(?:ifsc|swift|bic|routing)\s*[:#-]\s*([A-Z0-9-]{6,34})", re.IGNORECASE
+        ),
+        "request_date": re.compile(
+            r"(?:request date|requested on|date)\s*[:#-]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+            re.IGNORECASE,
+        ),
+        "requester_email_or_contact": re.compile(
+            r"([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})", re.IGNORECASE
+        ),
     }
 
     def extract(self, document: FinanceDocument) -> ExtractedFinanceFields:
-        doc_type = document.document_type if document.document_type != FinanceDocumentType.unknown else self.detect_type(document)
+        doc_type = (
+            document.document_type
+            if document.document_type != FinanceDocumentType.unknown
+            else self.detect_type(document)
+        )
         document.document_type = doc_type
         fields: dict[str, Any] = {}
         references: list[SourceReference] = []
@@ -140,7 +206,9 @@ class FinanceExtractionService:
             risk_flags=risk_flags,
             confidence_score=confidence,
             source_references=references,
-            original_extraction={key: value for key, value in fields.items() if key != "field_confidence"},
+            original_extraction={
+                key: value for key, value in fields.items() if key != "field_confidence"
+            },
             created_at=self._now(),
         )
 
@@ -159,14 +227,24 @@ class FinanceExtractionService:
                     "do not call the old",
                 )
             ),
-            FinanceDocumentType.purchase_order: sum(term in text for term in ("purchase order", "po number", "approved amount", "ship to")),
-            FinanceDocumentType.invoice: sum(term in text for term in ("invoice", "amount due", "invoice number", "tax")),
-            FinanceDocumentType.contract: sum(term in text for term in ("agreement", "contract", "termination", "renewal", "obligations")),
+            FinanceDocumentType.purchase_order: sum(
+                term in text
+                for term in ("purchase order", "po number", "approved amount", "ship to")
+            ),
+            FinanceDocumentType.invoice: sum(
+                term in text for term in ("invoice", "amount due", "invoice number", "tax")
+            ),
+            FinanceDocumentType.contract: sum(
+                term in text
+                for term in ("agreement", "contract", "termination", "renewal", "obligations")
+            ),
         }
         doc_type, score = max(scores.items(), key=lambda item: item[1])
         return doc_type if score else FinanceDocumentType.unknown
 
-    def _extract_invoice(self, document: FinanceDocument) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
+    def _extract_invoice(
+        self, document: FinanceDocument
+    ) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
         names = [
             "vendor_name",
             "invoice_number",
@@ -186,10 +264,14 @@ class FinanceExtractionService:
         fields["bank_account_details"] = self._bank_details(document)
         self._add_confidence(confidence, "currency", fields["currency"])
         self._add_confidence(confidence, "line_items", fields["line_items"], 0.72)
-        self._add_confidence(confidence, "bank_account_details", fields["bank_account_details"], 0.68)
+        self._add_confidence(
+            confidence, "bank_account_details", fields["bank_account_details"], 0.68
+        )
         return fields, refs, confidence
 
-    def _extract_purchase_order(self, document: FinanceDocument) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
+    def _extract_purchase_order(
+        self, document: FinanceDocument
+    ) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
         fields, refs, confidence = self._extract_named(
             document,
             [
@@ -214,12 +296,22 @@ class FinanceExtractionService:
         self._add_confidence(confidence, "line_items", fields["line_items"], 0.72)
         return fields, refs, confidence
 
-    def _extract_contract(self, document: FinanceDocument) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
+    def _extract_contract(
+        self, document: FinanceDocument
+    ) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
         fields, refs, confidence = self._extract_named(
             document,
-            ["buyer_name", "vendor_name", "contract_start_date", "contract_end_date", "payment_terms"],
+            [
+                "buyer_name",
+                "vendor_name",
+                "contract_start_date",
+                "contract_end_date",
+                "payment_terms",
+            ],
         )
-        fields["parties"] = [value for value in [fields.get("buyer_name"), fields.get("vendor_name")] if value]
+        fields["parties"] = [
+            value for value in [fields.get("buyer_name"), fields.get("vendor_name")] if value
+        ]
         fields["renewal_clause"] = self._clause(document, "renewal")
         fields["termination_clause"] = self._clause(document, "termination")
         fields["penalty_clause"] = self._clause(document, "penalty")
@@ -230,11 +322,19 @@ class FinanceExtractionService:
             if clause not in document.text.lower()
         ]
         fields["risky_clauses"] = self._risky_clauses(document)
-        for name in ["parties", "renewal_clause", "termination_clause", "penalty_clause", "obligations"]:
+        for name in [
+            "parties",
+            "renewal_clause",
+            "termination_clause",
+            "penalty_clause",
+            "obligations",
+        ]:
             self._add_confidence(confidence, name, fields.get(name), 0.7)
         return fields, refs, confidence
 
-    def _extract_bank_change(self, document: FinanceDocument) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
+    def _extract_bank_change(
+        self, document: FinanceDocument
+    ) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
         fields, refs, confidence = self._extract_named(
             document,
             [
@@ -247,18 +347,30 @@ class FinanceExtractionService:
                 "requester_email_or_contact",
             ],
         )
-        account = fields.get("new_bank_account") or fields.get("old_bank_account") or self._first_account(document.text)
+        account = (
+            fields.get("new_bank_account")
+            or fields.get("old_bank_account")
+            or self._first_account(document.text)
+        )
         fields["account_number_masked"] = self._mask_account(account)
         fields["mismatch_indicators"] = self._bank_mismatch_indicators(document, fields)
         fields["fraud_risk_level"] = "high" if fields["mismatch_indicators"] else "medium"
-        fields["recommended_human_action"] = "Escalate to finance reviewer and verify bank change out of band before payment."
-        self._add_confidence(confidence, "account_number_masked", fields["account_number_masked"], 0.82)
+        fields["recommended_human_action"] = (
+            "Escalate to finance reviewer and verify bank change out of band before payment."
+        )
+        self._add_confidence(
+            confidence, "account_number_masked", fields["account_number_masked"], 0.82
+        )
         self._add_confidence(confidence, "mismatch_indicators", fields["mismatch_indicators"], 0.74)
         self._add_confidence(confidence, "fraud_risk_level", fields["fraud_risk_level"], 0.76)
-        self._add_confidence(confidence, "recommended_human_action", fields["recommended_human_action"], 0.9)
+        self._add_confidence(
+            confidence, "recommended_human_action", fields["recommended_human_action"], 0.9
+        )
         return fields, refs, confidence
 
-    def _extract_named(self, document: FinanceDocument, names: list[str]) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
+    def _extract_named(
+        self, document: FinanceDocument, names: list[str]
+    ) -> tuple[dict[str, Any], list[SourceReference], dict[str, float]]:
         fields: dict[str, Any] = {}
         refs: list[SourceReference] = []
         confidence: dict[str, float] = {}
@@ -333,7 +445,10 @@ class FinanceExtractionService:
                     source_references=references[:3],
                 )
             )
-        if any(term in text_lower for term in ("urgent", "manual override", "same day wire", "off-cycle payment")):
+        if any(
+            term in text_lower
+            for term in ("urgent", "manual override", "same day wire", "off-cycle payment")
+        ):
             flags.append(
                 RiskFlag(
                     title="Urgent or manual payment language",
@@ -363,10 +478,15 @@ class FinanceExtractionService:
         items = []
         for line in document.text.splitlines():
             lower = line.lower()
-            if not any(term in lower for term in ("item", "service", "qty", "quantity", "unit price", "amount")):
+            if not any(
+                term in lower
+                for term in ("item", "service", "qty", "quantity", "unit price", "amount")
+            ):
                 continue
             amount = re.search(r"(?:INR|USD|EUR|GBP|\$)?\s?[\d,]+(?:\.\d{2})?", line, re.IGNORECASE)
-            quantity = re.search(r"(?:qty|quantity)\s*[:#-]?\s*(\d+(?:\.\d+)?)", line, re.IGNORECASE)
+            quantity = re.search(
+                r"(?:qty|quantity)\s*[:#-]?\s*(\d+(?:\.\d+)?)", line, re.IGNORECASE
+            )
             if amount or quantity:
                 items.append(
                     {
@@ -377,14 +497,22 @@ class FinanceExtractionService:
                 )
         return items[:8]
 
-    def _bank_mismatch_indicators(self, document: FinanceDocument, fields: dict[str, Any]) -> list[str]:
+    def _bank_mismatch_indicators(
+        self, document: FinanceDocument, fields: dict[str, Any]
+    ) -> list[str]:
         indicators = []
         lower = document.text.lower()
-        if fields.get("old_bank_account") and fields.get("new_bank_account") and fields["old_bank_account"] != fields["new_bank_account"]:
+        if (
+            fields.get("old_bank_account")
+            and fields.get("new_bank_account")
+            and fields["old_bank_account"] != fields["new_bank_account"]
+        ):
             indicators.append("old_new_account_changed")
         if "urgent" in lower or "same day" in lower:
             indicators.append("urgent_change_request")
-        if fields.get("requester_email_or_contact") and not str(fields["requester_email_or_contact"]).lower().endswith((".com", ".in", ".org")):
+        if fields.get("requester_email_or_contact") and not str(
+            fields["requester_email_or_contact"]
+        ).lower().endswith((".com", ".in", ".org")):
             indicators.append("unusual_requester_contact")
         if "do not call" in lower or "skip verification" in lower:
             indicators.append("verification_bypass_language")
@@ -400,7 +528,9 @@ class FinanceExtractionService:
         return [
             self._clean_value(line)
             for line in document.text.splitlines()
-            if any(term in line.lower() for term in ("shall", "must", "responsible for", "obligation"))
+            if any(
+                term in line.lower() for term in ("shall", "must", "responsible for", "obligation")
+            )
         ][:8]
 
     def _risky_clauses(self, document: FinanceDocument) -> list[str]:
@@ -419,7 +549,9 @@ class FinanceExtractionService:
         match = pattern.search(text) if pattern else None
         return self._clean_value(match.group(1)) if match else None
 
-    def _reference(self, document: FinanceDocument, field_name: str, matched_text: str) -> SourceReference:
+    def _reference(
+        self, document: FinanceDocument, field_name: str, matched_text: str
+    ) -> SourceReference:
         index = max(document.text.lower().find(matched_text.lower()), 0)
         start = max(index - 80, 0)
         end = min(index + len(matched_text) + 120, len(document.text))
@@ -436,7 +568,9 @@ class FinanceExtractionService:
         )
 
     def _first_account(self, text: str) -> str | None:
-        match = re.search(r"(?:account number|account|iban)\s*[:#-]\s*([A-Z0-9 -]{6,34})", text, re.IGNORECASE)
+        match = re.search(
+            r"(?:account number|account|iban)\s*[:#-]\s*([A-Z0-9 -]{6,34})", text, re.IGNORECASE
+        )
         return self._clean_value(match.group(1)) if match else None
 
     def _mask_account(self, value: str | None) -> str | None:
@@ -454,7 +588,9 @@ class FinanceExtractionService:
             value,
             flags=re.IGNORECASE,
         )
-        return re.sub(r"\b\d{8,18}\b", lambda match: self._mask_account(match.group(0)) or "****", labeled)
+        return re.sub(
+            r"\b\d{8,18}\b", lambda match: self._mask_account(match.group(0)) or "****", labeled
+        )
 
     def _currency(self, text: str) -> str | None:
         match = re.search(r"\b(INR|USD|EUR|GBP)\b|[$]", text, re.IGNORECASE)
@@ -482,14 +618,24 @@ class FinanceExtractionService:
         if not required:
             return 0.48
         coverage = (len(required) - len(missing_fields)) / len(required)
-        avg_confidence = sum(field_confidence.values()) / len(field_confidence) if field_confidence else 0.5
-        high_risk_penalty = 0.08 if any(flag.severity in {RiskLevel.high, RiskLevel.critical} for flag in risk_flags) else 0
-        return round(max(0.1, min(0.98, coverage * 0.58 + avg_confidence * 0.42 - high_risk_penalty)), 3)
+        avg_confidence = (
+            sum(field_confidence.values()) / len(field_confidence) if field_confidence else 0.5
+        )
+        high_risk_penalty = (
+            0.08
+            if any(flag.severity in {RiskLevel.high, RiskLevel.critical} for flag in risk_flags)
+            else 0
+        )
+        return round(
+            max(0.1, min(0.98, coverage * 0.58 + avg_confidence * 0.42 - high_risk_penalty)), 3
+        )
 
     def _is_missing(self, value: Any) -> bool:
         return value is None or value == "" or value == [] or value == {}
 
-    def _add_confidence(self, confidence: dict[str, float], name: str, value: Any, score: float = 0.8) -> None:
+    def _add_confidence(
+        self, confidence: dict[str, float], name: str, value: Any, score: float = 0.8
+    ) -> None:
         if not self._is_missing(value):
             confidence[name] = score
 

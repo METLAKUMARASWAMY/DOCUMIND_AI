@@ -1656,3 +1656,15 @@ pre {
   background: #f2f7fa;
   border-radius: 6px;
 }
+
+/* Names the retrieval backend under an answer, so the page never implies a
+   semantic capability the configured backend does not have. */
+.retrieval-backend-note {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #dfe4e8;
+  border-radius: 999px;
+  background: #f7f9fa;
+  font-size: 0.7rem !important;
+  letter-spacing: 0.01em;
+}

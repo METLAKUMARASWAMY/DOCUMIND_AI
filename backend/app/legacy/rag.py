@@ -20,7 +20,9 @@ class RAGEngine:
             )
 
         answer = self._compose_grounded_answer(question, citations)
-        confidence = min(0.95, 0.28 + sum(citation.confidence for citation in citations[:3]) / 3 * 0.68)
+        confidence = min(
+            0.95, 0.28 + sum(citation.confidence for citation in citations[:3]) / 3 * 0.68
+        )
         return QueryResponse(
             answer=answer,
             citations=citations,
@@ -37,7 +39,10 @@ class RAGEngine:
         if self._is_payment_query(lower_question):
             return self._compose_payment_answer(citations)
 
-        if any(term in lower_question for term in ["exception", "review", "blocked", "fraud", "clause", "missing"]):
+        if any(
+            term in lower_question
+            for term in ["exception", "review", "blocked", "fraud", "clause", "missing"]
+        ):
             items = self._exception_items(citations)
             if items:
                 heading = "Exceptions requiring review:"
@@ -110,10 +115,14 @@ class RAGEngine:
             "Expected payout:",
             f"- Invoice amount: {invoice_amount or 'Not found'}",
             f"- Purchase Order amount: {po_amount or 'Not found'}",
-            "- Match status: Passed" if invoice_amount and po_amount and invoice_amount == po_amount else "- Match status: Review Required",
+            "- Match status: Passed"
+            if invoice_amount and po_amount and invoice_amount == po_amount
+            else "- Match status: Review Required",
             f"- Payment terms: {payment_terms or 'Not found'}",
             f"- Due date: {due_date or 'Not found'}",
-            "- Current payment status: Hold Payment" if blockers else "- Current payment status: Ready For Review",
+            "- Current payment status: Hold Payment"
+            if blockers
+            else "- Current payment status: Ready For Review",
             "- Approval gate: Blocked" if blockers else "- Approval gate: Open",
             "",
             "Reason:",

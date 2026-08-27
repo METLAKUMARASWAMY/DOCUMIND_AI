@@ -49,9 +49,7 @@ class VisionLanguageAnalysisService:
 
         valid_characters = sum(script_counts.values())
         confidence = (
-            round(confidence_weight / confidence_characters, 4)
-            if confidence_characters
-            else None
+            round(confidence_weight / confidence_characters, 4) if confidence_characters else None
         )
         groups = sorted(script_counts.items(), key=lambda item: item[1], reverse=True)
         detected = [
@@ -65,9 +63,7 @@ class VisionLanguageAnalysisService:
             for script, count in groups
         ]
         secondary_characters = groups[1][1] if len(groups) > 1 else 0
-        secondary_ratio = (
-            secondary_characters / valid_characters if valid_characters else 0.0
-        )
+        secondary_ratio = secondary_characters / valid_characters if valid_characters else 0.0
         mixed, reason = self._decision(
             valid_characters,
             len(groups),
@@ -110,9 +106,7 @@ class VisionLanguageAnalysisService:
         return True, "mixed_language_thresholds_met"
 
     def _sample(self, words: list[OCRWord]) -> str:
-        text = " ".join(
-            word.text for word in sorted(words, key=lambda item: item.reading_order)
-        )
+        text = " ".join(word.text for word in sorted(words, key=lambda item: item.reading_order))
         return text[:320]
 
     def _script(self, character: str) -> str | None:

@@ -12,8 +12,7 @@ def legacy_document_flags(document: dict[str, Any]) -> list[str]:
     flags: list[str] = []
     pipeline_version = str(metadata.get("pipeline_version") or "legacy")
     manual_verification = any(
-        event.get("event_type")
-        in {"manual_approval_fields_confirmed", "review_decision_recorded"}
+        event.get("event_type") in {"manual_approval_fields_confirmed", "review_decision_recorded"}
         and (event.get("metadata") or {}).get("confirmed_field_names")
         for event in events
     )

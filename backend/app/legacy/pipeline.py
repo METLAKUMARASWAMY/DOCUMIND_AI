@@ -64,7 +64,9 @@ class DocumentIntelligencePipeline:
         self.cases: dict[str, AnalysisResponse] = self.case_repository._cases
 
     def process_text(self, request: TextAnalysisRequest) -> AnalysisResponse:
-        return self.process_files([(request.filename, request.text.encode("utf-8"), request.metadata)])
+        return self.process_files(
+            [(request.filename, request.text.encode("utf-8"), request.metadata)]
+        )
 
     def process_files(self, files: list[tuple[str, bytes, dict]]) -> AnalysisResponse:
         case_id = f"case-{uuid4().hex[:10]}"
@@ -110,7 +112,11 @@ class DocumentIntelligencePipeline:
                 case_id,
                 "document_ingested",
                 f"Ingested {filename} as {doc_type.value}.",
-                metadata={"document_id": document_id, "checksum": document.checksum, "stored_path": stored_path},
+                metadata={
+                    "document_id": document_id,
+                    "checksum": document.checksum,
+                    "stored_path": stored_path,
+                },
             )
 
         evidence_chunks = self.chunking.chunk_documents(case_id, documents)
@@ -118,7 +124,9 @@ class DocumentIntelligencePipeline:
         self.evidence_repository.save_chunks(case_id, evidence_chunks)
         self.retrieval.clear_case(case_id)
         self.retrieval.index_chunks(evidence_chunks)
-        self.audit.record(case_id, "evidence_indexed", f"Indexed {len(evidence_chunks)} document evidence chunks.")
+        self.audit.record(
+            case_id, "evidence_indexed", f"Indexed {len(evidence_chunks)} document evidence chunks."
+        )
 
         compliance_score, compliance_findings = self.compliance.evaluate(documents)
         cross_document_checks = self.cross_document.verify(documents)
@@ -148,7 +156,9 @@ class DocumentIntelligencePipeline:
             compliance_findings,
             fraud_signals,
         )
-        risk_score = self.scoring.risk_score(compliance_score, fraud_probability_score, preliminary_action)
+        risk_score = self.scoring.risk_score(
+            compliance_score, fraud_probability_score, preliminary_action
+        )
         agent_decisions = self.agents.decide(
             documents,
             compliance_findings,
@@ -166,7 +176,9 @@ class DocumentIntelligencePipeline:
             evidence_count=len(finding_evidence) + len(evidence_chunks),
         )
         if workflow.recommended_action != preliminary_action:
-            risk_score = self.scoring.risk_score(compliance_score, fraud_probability_score, workflow.recommended_action)
+            risk_score = self.scoring.risk_score(
+                compliance_score, fraud_probability_score, workflow.recommended_action
+            )
             workflow = self.workflow.assign(
                 case_id,
                 risk_score,
@@ -280,15 +292,21 @@ class DocumentIntelligencePipeline:
         return {
             "documents_processed": sum(len(case.documents) for case in cases),
             "open_cases": len(cases),
-            "average_compliance_score": round(sum(case.compliance_score for case in cases) / len(cases)),
+            "average_compliance_score": round(
+                sum(case.compliance_score for case in cases) / len(cases)
+            ),
             "high_risk_cases": sum(1 for case in cases if case.risk_score >= 60),
             "fraud_alerts": sum(len(case.fraud_signals) for case in cases),
             "sla_breach_probability": self.predictive.predict_approval_delay(
                 max(case.risk_score for case in cases),
                 sum(len(case.compliance_findings) for case in cases),
             ),
-            "evidence_count": sum(len(case.evidence_chunks) + len(self.collect_evidence(case)) for case in cases),
-            "open_findings": sum(len(case.compliance_findings) + len(case.fraud_signals) for case in cases),
+            "evidence_count": sum(
+                len(case.evidence_chunks) + len(self.collect_evidence(case)) for case in cases
+            ),
+            "open_findings": sum(
+                len(case.compliance_findings) + len(case.fraud_signals) for case in cases
+            ),
             "approval_blocked_cases": sum(1 for case in cases if case.workflow.approval_blocked),
             "average_risk_score": round(sum(case.risk_score for case in cases) / len(cases)),
         }
@@ -358,11 +376,16 @@ class DocumentIntelligencePipeline:
         compliance_findings: list,
         fraud_signals: list,
     ) -> WorkflowAction:
-        if fraud_probability_score >= 60 or any(signal.severity.value in {"high", "critical"} for signal in fraud_signals):
+        if fraud_probability_score >= 60 or any(
+            signal.severity.value in {"high", "critical"} for signal in fraud_signals
+        ):
             return WorkflowAction.hold_payment
         if any(finding.severity.value == "critical" for finding in compliance_findings):
             return WorkflowAction.escalate_to_compliance
-        if any(finding.approval_blocking for finding in compliance_findings) or compliance_score < 85:
+        if (
+            any(finding.approval_blocking for finding in compliance_findings)
+            or compliance_score < 85
+        ):
             return WorkflowAction.request_changes
         return WorkflowAction.approve
 

@@ -65,9 +65,7 @@ class VisionInfrastructureReadinessService:
     async def readiness_async(self) -> dict[str, Any]:
         services = [await self.service_status_async(spec.backend_id) for spec in self._specs()]
         services.append(celery_readiness())
-        postgresql = next(
-            service for service in services if service["backend_id"] == "postgresql"
-        )
+        postgresql = next(service for service in services if service["backend_id"] == "postgresql")
         enabled_services = [service for service in services if service["enabled"]]
         blocked = [
             service
@@ -130,9 +128,7 @@ class VisionInfrastructureReadinessService:
         ):
             status = "misconfigured"
             reason = "MinIO is enabled but access credentials are not configured."
-        elif backend_id == "neo4j" and (
-            not settings.neo4j_user or not settings.neo4j_password
-        ):
+        elif backend_id == "neo4j" and (not settings.neo4j_user or not settings.neo4j_password):
             status = "misconfigured"
             reason = "Neo4j is enabled but database credentials are not configured."
         elif not spec.endpoint:
@@ -238,7 +234,9 @@ class VisionInfrastructureReadinessService:
                 endpoint=settings.redis_url,
                 enable_hint="Set ENABLE_REDIS=true and configure REDIS_URL.",
                 safe_config={"url": _redact_url(settings.redis_url), "queue_namespace": "vision"},
-                notes=["FastAPI background tasks remain the local default until Redis/Celery is enabled."],
+                notes=[
+                    "FastAPI background tasks remain the local default until Redis/Celery is enabled."
+                ],
             ),
             InfrastructureSpec(
                 backend_id="minio",
@@ -264,7 +262,12 @@ class VisionInfrastructureReadinessService:
                 safe_config={
                     "url": _redact_url(settings.qdrant_url),
                     "collection": "vision_evidence_chunks",
-                    "payload_indexes": ["tenant_id", "document_id", "document_type", "review_status"],
+                    "payload_indexes": [
+                        "tenant_id",
+                        "document_id",
+                        "document_type",
+                        "review_status",
+                    ],
                 },
                 notes=["BGE-M3 embedding generation is separately gated by the model registry."],
             ),
@@ -408,7 +411,9 @@ class MinIOVisionObjectStorage:
             )
         self.client = client
 
-    def put_bytes(self, object_key: str, content: bytes, content_type: str = "application/octet-stream") -> str:
+    def put_bytes(
+        self, object_key: str, content: bytes, content_type: str = "application/octet-stream"
+    ) -> str:
         if not self.client.bucket_exists(settings.minio_bucket):
             self.client.make_bucket(settings.minio_bucket)
         self.client.put_object(
@@ -433,7 +438,9 @@ class RedisVisionStatusStore:
         self.client = client
 
     def set_job_status(self, job: dict[str, Any]) -> None:
-        self.client.hset(f"vision:jobs:{job['job_id']}", mapping={key: str(value) for key, value in job.items()})
+        self.client.hset(
+            f"vision:jobs:{job['job_id']}", mapping={key: str(value) for key, value in job.items()}
+        )
 
     def get_job_status(self, job_id: str) -> dict[str, str]:
         return dict(self.client.hgetall(f"vision:jobs:{job_id}"))
@@ -442,7 +449,9 @@ class RedisVisionStatusStore:
 class QdrantVisionVectorStore:
     """Optional Qdrant evidence index; vectors are supplied by a gated embedding adapter."""
 
-    def __init__(self, client: Any | None = None, collection_name: str = "vision_evidence_chunks") -> None:
+    def __init__(
+        self, client: Any | None = None, collection_name: str = "vision_evidence_chunks"
+    ) -> None:
         if client is None:
             vision_infrastructure_readiness_service.require_ready("qdrant")
             from qdrant_client import QdrantClient

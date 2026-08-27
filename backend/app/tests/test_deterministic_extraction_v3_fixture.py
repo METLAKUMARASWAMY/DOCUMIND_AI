@@ -217,13 +217,9 @@ def test_review_counts_share_one_internally_consistent_contract(
     assert completeness.required_expected_count == 6
     assert completeness.required_matched_count == 6
     assert completeness.required_missing_count == 0
-    assert completeness.optional_extracted_count == len(
-        completeness.optional_extracted_fields
-    )
+    assert completeness.optional_extracted_count == len(completeness.optional_extracted_fields)
     assert completeness.optional_extracted_count == 1
-    assert completeness.total_extracted_count == len(
-        extracted_fixture.extracted_fields
-    )
+    assert completeness.total_extracted_count == len(extracted_fixture.extracted_fields)
     assert completeness.total_extracted_count == (
         completeness.required_matched_count + completeness.optional_extracted_count
     )

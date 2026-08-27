@@ -252,9 +252,7 @@ class SemanticValueRegistry:
         results = [
             result
             for kind in ordered_types
-            if (
-                result := self.validate(kind, value, observed_context)
-            ).valid
+            if (result := self.validate(kind, value, observed_context)).valid
             and result.confidence >= minimum_confidence
         ]
         results.sort(
@@ -387,8 +385,7 @@ class SemanticValueRegistry:
         if any(token in padded for token in positive.get(kind, ())):
             return 0.2
         if kind is SemanticValueType.PHONE and any(
-            token in padded
-            for token in (" account ", " invoice ", " reference ", " date ", " id ")
+            token in padded for token in (" account ", " invoice ", " reference ", " date ", " id ")
         ):
             return -0.35
         if kind is SemanticValueType.NUMBER and any(
@@ -606,7 +603,9 @@ def _validate_money(value: str, context: SemanticContext) -> ValidationDecision:
     )
     if not match and amount_context:
         match = _NUMBER_FULL.fullmatch(value.strip())
-    return _decision(bool(match), 0.92 if match else 0.0, "monetary_value" if match else "not_money")
+    return _decision(
+        bool(match), 0.92 if match else 0.0, "monetary_value" if match else "not_money"
+    )
 
 
 def _money_parts(value: str) -> tuple[str, str]:
@@ -691,7 +690,9 @@ def _validate_bank_account(value: str, context: SemanticContext) -> ValidationDe
     compact = re.sub(r"\s", "", value)
     iban = bool(re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]{10,30}", compact, re.I))
     valid = _account_shape(value) and (contextual or iban)
-    return _decision(valid, 0.9 if contextual else 0.87, "account_context" if valid else "not_account")
+    return _decision(
+        valid, 0.9 if contextual else 0.87, "account_context" if valid else "not_account"
+    )
 
 
 def _normalize_account(value: str, _context: SemanticContext) -> str:
@@ -761,7 +762,9 @@ def _validate_organisation(value: str, context: SemanticContext) -> ValidationDe
         )
     )
     valid = (contextual or suffix) and 2 <= len(value.strip()) <= 160
-    return _decision(valid, 0.83 if contextual else 0.78, "organisation_context" if valid else "not_organisation")
+    return _decision(
+        valid, 0.83 if contextual else 0.78, "organisation_context" if valid else "not_organisation"
+    )
 
 
 def _validate_address(value: str, context: SemanticContext) -> ValidationDecision:
@@ -785,17 +788,24 @@ def _validate_product(value: str, context: SemanticContext) -> ValidationDecisio
 
 def _validate_boolean(value: str, context: SemanticContext) -> ValidationDecision:
     normalized = _normalize_words(value)
-    valid = normalized in {"yes", "no", "true", "false", "enabled", "disabled", "active", "inactive"}
-    confidence = 0.94 if _label_has(context, " flag ", " enabled ", " active ", " approved ") else 0.82
+    valid = normalized in {
+        "yes",
+        "no",
+        "true",
+        "false",
+        "enabled",
+        "disabled",
+        "active",
+        "inactive",
+    }
+    confidence = (
+        0.94 if _label_has(context, " flag ", " enabled ", " active ", " approved ") else 0.82
+    )
     return _decision(valid, confidence, "boolean_lexeme" if valid else "not_boolean")
 
 
 def _normalize_boolean(value: str, _context: SemanticContext) -> str:
-    return (
-        "true"
-        if _normalize_words(value) in {"yes", "true", "enabled", "active"}
-        else "false"
-    )
+    return "true" if _normalize_words(value) in {"yes", "true", "enabled", "active"} else "false"
 
 
 def _validate_text(value: str, _context: SemanticContext) -> ValidationDecision:

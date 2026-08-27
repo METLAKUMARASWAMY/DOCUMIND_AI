@@ -48,9 +48,7 @@ def test_document_report_uses_the_shared_seven_field_completeness_counts():
     )
 
     payload = report.content["documents"][0]
-    assert payload["field_completeness"] == document.field_completeness.model_dump(
-        mode="json"
-    )
+    assert payload["field_completeness"] == document.field_completeness.model_dump(mode="json")
     assert "required expected 3" in payload["summary"]
     assert "required matched 1" in payload["summary"]
     assert "required missing 2" in payload["summary"]

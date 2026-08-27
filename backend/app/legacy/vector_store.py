@@ -65,12 +65,18 @@ class FinanceVectorStore:
             for hit in hits[:top_k]
         ]
 
-    def similar_risk_cases(self, risk_level: RiskLevel | None = None, top_k: int = 8) -> list[dict[str, Any]]:
+    def similar_risk_cases(
+        self, risk_level: RiskLevel | None = None, top_k: int = 8
+    ) -> list[dict[str, Any]]:
         grouped: dict[str, dict[str, Any]] = {}
         for record in self._records:
             if risk_level and record.risk_level != risk_level:
                 continue
-            if record.source_type not in {"risk_flag", "human_review_decision", "finance_narrative"}:
+            if record.source_type not in {
+                "risk_flag",
+                "human_review_decision",
+                "finance_narrative",
+            }:
                 continue
             current = grouped.setdefault(
                 record.document_id,
@@ -106,7 +112,10 @@ class FinanceVectorStore:
     def _metadata_boost(self, query: str, record: VectorRecord) -> float:
         lower = query.lower()
         boost = 0.0
-        if record.document_type != FinanceDocumentType.unknown and record.document_type.value.replace("_", " ") in lower:
+        if (
+            record.document_type != FinanceDocumentType.unknown
+            and record.document_type.value.replace("_", " ") in lower
+        ):
             boost += 0.08
         if record.source_type.replace("_", " ") in lower:
             boost += 0.08
@@ -114,6 +123,10 @@ class FinanceVectorStore:
             term in lower for term in ("risk", "fraud", "bank", "review", "escalate")
         ):
             boost += 0.1
-        if record.review_status in {FinanceWorkflowStatus.pending_review, FinanceWorkflowStatus.escalated} and "review" in lower:
+        if (
+            record.review_status
+            in {FinanceWorkflowStatus.pending_review, FinanceWorkflowStatus.escalated}
+            and "review" in lower
+        ):
             boost += 0.08
         return boost

@@ -115,7 +115,9 @@ class LocalForensicsAdapter(VisionAdapter):
             x, y, width, height = cv2.boundingRect(contour)
             local_score = float(combined[y : y + height, x : x + width].mean() / 255.0)
             crop_path = output_root / f"page-{page_number:04d}-candidate-{index + 1:02d}.png"
-            cv2.imwrite(str(crop_path), cv2.cvtColor(rgb[y : y + height, x : x + width], cv2.COLOR_RGB2BGR))
+            cv2.imwrite(
+                str(crop_path), cv2.cvtColor(rgb[y : y + height, x : x + width], cv2.COLOR_RGB2BGR)
+            )
             regions.append(
                 TamperRegion(
                     bounding_box=VisionBoundingBox(
@@ -144,10 +146,11 @@ class SegFormerTamperAdapter(VisionAdapter):
 
     def status(self) -> AdapterStatus:
         installed = all(
-            importlib.util.find_spec(package) is not None
-            for package in ("transformers", "torch")
+            importlib.util.find_spec(package) is not None for package in ("transformers", "torch")
         )
-        checkpoint = Path(settings.tamper_checkpoint).expanduser() if settings.tamper_checkpoint else None
+        checkpoint = (
+            Path(settings.tamper_checkpoint).expanduser() if settings.tamper_checkpoint else None
+        )
         checkpoint_validation = validate_transformer_checkpoint(
             checkpoint,
             expected_tasks={"tamper_segmentation", "document_forensics_segmentation"},
@@ -196,9 +199,15 @@ class SegFormerTamperAdapter(VisionAdapter):
                 )
                 probabilities = torch.softmax(logits, dim=1)[0]
             class_map = probabilities.argmax(dim=0).cpu().numpy().astype(np.uint8)
-            foreground = probabilities[1:].amax(dim=0).cpu().numpy() if probabilities.shape[0] > 1 else np.zeros_like(class_map)
+            foreground = (
+                probabilities[1:].amax(dim=0).cpu().numpy()
+                if probabilities.shape[0] > 1
+                else np.zeros_like(class_map)
+            )
             regions = self._model_regions(class_map, foreground, model.config.id2label)
-            heatmap = cv2.applyColorMap(np.clip(foreground * 255, 0, 255).astype(np.uint8), cv2.COLORMAP_TURBO)
+            heatmap = cv2.applyColorMap(
+                np.clip(foreground * 255, 0, 255).astype(np.uint8), cv2.COLORMAP_TURBO
+            )
             heatmap_path = output_root / f"page-{artifact.page_number:04d}-heatmap.png"
             cv2.imwrite(str(heatmap_path), heatmap)
             probability = float(foreground.max()) if foreground.size else 0.0
@@ -250,7 +259,9 @@ class SegFormerTamperAdapter(VisionAdapter):
                 score = float(foreground[y : y + height, x : x + width].mean())
                 regions.append(
                     TamperRegion(
-                        manipulation_class=str(id2label.get(class_id, id2label.get(str(class_id), "unknown"))),
+                        manipulation_class=str(
+                            id2label.get(class_id, id2label.get(str(class_id), "unknown"))
+                        ),
                         bounding_box=VisionBoundingBox(
                             x1=float(x),
                             y1=float(y),

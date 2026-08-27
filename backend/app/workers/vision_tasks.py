@@ -33,7 +33,11 @@ else:
 
 def dispatch_vision_job(job_id: str, tenant_id: str | None = None) -> dict[str, Any]:
     readiness = celery_readiness()
-    if settings.enable_redis and celery_app is not None and hasattr(process_vision_job, "apply_async"):
+    if (
+        settings.enable_redis
+        and celery_app is not None
+        and hasattr(process_vision_job, "apply_async")
+    ):
         try:
             result = process_vision_job.apply_async(
                 args=[job_id, tenant_id],
