@@ -5,6 +5,7 @@ import ReactDOM from "react-dom/client";
 
 import App from "./App";
 import { AuthProvider } from "./auth/AuthContext";
+import { NotificationProvider } from "./components/Notifications";
 import { BrowserRouter } from "./router";
 import { theme } from "./theme/theme";
 import "./styles.css";
@@ -23,7 +24,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <AuthProvider>
-            <App />
+            <NotificationProvider>
+              <App />
+            </NotificationProvider>
           </AuthProvider>
         </BrowserRouter>
       </QueryClientProvider>

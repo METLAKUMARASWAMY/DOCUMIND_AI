@@ -1615,3 +1615,44 @@ pre {
     display: none;
   }
 }
+
+/* Upload: drag-over feedback and the list of files that were not accepted. */
+.upload-dropzone {
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+.upload-dropzone.is-drag-active {
+  border-color: #087f78;
+  background: #f0f8f7;
+}
+.rejection-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+/* Screen-reader-only announcements: pipeline progress, live status changes. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.pipeline-stage .stage-status {
+  margin-left: 8px;
+  color: #6a7681;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
+.pipeline-stage.is-current {
+  background: #f2f7fa;
+  border-radius: 6px;
+}

@@ -1,5 +1,6 @@
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
   Checkbox,
@@ -17,25 +18,47 @@ import { useRef, useState } from "react";
 import { useNavigate } from "../router";
 
 import { api } from "../api/client";
+import { useNotify } from "../components/Notifications";
 import { PageHeader } from "../components/PageHeader";
+import {
+  ACCEPTED_EXTENSIONS,
+  MAX_FILES_PER_JOB,
+  MAX_UPLOAD_BYTES,
+  type Rejection,
+  formatBytes,
+  validateSelection,
+} from "../utils/uploadValidation";
 
-const accepted = ["PDF", "TXT", "PNG", "JPG", "JPEG", "TIFF"];
+const ACCEPT_ATTRIBUTE = ACCEPTED_EXTENSIONS.map((extension) => `.${extension}`).join(",");
 
 export function UploadWizardPage() {
   const navigate = useNavigate();
+  const notify = useNotify();
   const input = useRef<HTMLInputElement | null>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const [rejections, setRejections] = useState<Rejection[]>([]);
+  const [dragActive, setDragActive] = useState(false);
   const [documentType, setDocumentType] = useState("auto");
   const [advanced, setAdvanced] = useState(false);
   const [requiredSignature, setRequiredSignature] = useState(false);
   const [approvedBank, setApprovedBank] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const activeStep = files.length ? 1 : 0;
+  const activeStep = busy ? 2 : files.length ? 1 : 0;
 
   const selectFiles = (selected: FileList | null) => {
     if (!selected) return;
-    setFiles((current) => [...current, ...Array.from(selected)].slice(0, 20));
+    const { accepted, rejected } = validateSelection(Array.from(selected), files);
+    if (accepted.length) setFiles((current) => [...current, ...accepted]);
+    setRejections(rejected);
+    if (rejected.length) {
+      notify(
+        "warning",
+        rejected.length === 1
+          ? rejected[0].message
+          : `${rejected.length} files were not added. See the details below the drop zone.`,
+      );
+    }
   };
 
   const upload = async () => {
@@ -48,15 +71,23 @@ export function UploadWizardPage() {
         required_signature: requiredSignature,
         approved_bank_identifier: approvedBank || null,
       });
+      notify(
+        "success",
+        `Job created for ${files.length} document${files.length === 1 ? "" : "s"}.`,
+      );
       navigate(`/processing/${result.job_id}`, {
         state: { documentIds: result.document_ids },
       });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Upload failed");
+      const message = reason instanceof Error ? reason.message : "Upload failed";
+      setError(message);
+      notify("error", message);
     } finally {
       setBusy(false);
     }
   };
+
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
 
   return (
     <Box className="page-stack">
@@ -71,26 +102,43 @@ export function UploadWizardPage() {
           </Step>
         ))}
       </Stepper>
-      {error ? <Alert severity="error">{error}</Alert> : null}
+      {error ? (
+        <Alert severity="error" onClose={() => setError("")}>
+          <AlertTitle>The job could not be created</AlertTitle>
+          {error}
+        </Alert>
+      ) : null}
       <Box className="upload-layout">
         <Box
-          className="surface upload-dropzone"
-          onDragOver={(event) => event.preventDefault()}
+          className={`surface upload-dropzone${dragActive ? " is-drag-active" : ""}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={() => setDragActive(false)}
           onDrop={(event) => {
             event.preventDefault();
+            setDragActive(false);
             selectFiles(event.dataTransfer.files);
           }}
         >
-          <UploadCloud size={32} />
+          <UploadCloud size={32} aria-hidden />
           <Typography variant="h3">Drop documents here</Typography>
-          <Typography color="text.secondary">{accepted.join(", ")} up to 25 MB each</Typography>
+          <Typography color="text.secondary">
+            {ACCEPTED_EXTENSIONS.join(", ").toUpperCase()} · up to {formatBytes(MAX_UPLOAD_BYTES)}{" "}
+            each · {MAX_FILES_PER_JOB} per job
+          </Typography>
           <input
             ref={input}
             type="file"
             multiple
             hidden
-            accept=".pdf,.txt,.png,.jpg,.jpeg,.tif,.tiff"
-            onChange={(event) => selectFiles(event.target.files)}
+            accept={ACCEPT_ATTRIBUTE}
+            aria-label="Choose documents to upload"
+            onChange={(event) => {
+              selectFiles(event.target.files);
+              event.target.value = "";
+            }}
           />
           <Button
             variant="outlined"
@@ -107,6 +155,7 @@ export function UploadWizardPage() {
             label="Document type"
             value={documentType}
             onChange={(event) => setDocumentType(event.target.value)}
+            helperText="Automatic classification is used unless you pin a type."
             fullWidth
           >
             {[
@@ -147,25 +196,42 @@ export function UploadWizardPage() {
             label="Approved bank identifier"
             value={approvedBank}
             onChange={(event) => setApprovedBank(event.target.value)}
+            helperText="Optional. Bank details that differ from this value are flagged for review."
             fullWidth
           />
         </Box>
       </Box>
+      {rejections.length ? (
+        <Alert severity="warning" onClose={() => setRejections([])}>
+          <AlertTitle>
+            {rejections.length} file{rejections.length === 1 ? " was" : "s were"} not added
+          </AlertTitle>
+          <Box component="ul" className="rejection-list">
+            {rejections.map((rejection) => (
+              <li key={`${rejection.file.name}-${rejection.reason}`}>{rejection.message}</li>
+            ))}
+          </Box>
+        </Alert>
+      ) : null}
       {files.length ? (
         <Box className="surface file-queue">
-          <Typography variant="h3">Files ({files.length})</Typography>
+          <Typography variant="h3">
+            Files ({files.length}) · {formatBytes(totalBytes)}
+          </Typography>
           {files.map((file, index) => (
-            <Box className="file-row" key={`${file.name}-${file.lastModified}`}>
+            <Box className="file-row" key={`${file.name}-${file.size}-${file.lastModified}`}>
               <Box>
                 <Typography fontWeight={650}>{file.name}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                  {formatBytes(file.size)}
                 </Typography>
               </Box>
               <Button
                 color="inherit"
                 size="small"
+                disabled={busy}
                 startIcon={<X size={15} />}
+                aria-label={`Remove ${file.name}`}
                 onClick={() =>
                   setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))
                 }
@@ -174,7 +240,15 @@ export function UploadWizardPage() {
               </Button>
             </Box>
           ))}
-          {busy ? <LinearProgress /> : null}
+          {busy ? (
+            <Box>
+              <LinearProgress aria-label="Creating processing job" />
+              <Typography variant="caption" color="text.secondary">
+                Transferring documents and creating the job. Processing progress appears on the next
+                screen.
+              </Typography>
+            </Box>
+          ) : null}
           <Box className="form-actions">
             <Button
               variant="contained"
@@ -183,6 +257,9 @@ export function UploadWizardPage() {
               onClick={() => void upload()}
             >
               {busy ? "Creating job" : "Start processing"}
+            </Button>
+            <Button color="inherit" disabled={busy} onClick={() => setFiles([])}>
+              Clear queue
             </Button>
           </Box>
         </Box>
