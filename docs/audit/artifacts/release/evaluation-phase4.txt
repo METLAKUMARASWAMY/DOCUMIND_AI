@@ -1,0 +1,34 @@
+DocuMind AI — measured evaluation
+==========================================
+
+SAMPLE SIZE
+  3/3 documents ingested, 8 questions (5 answerable, 3 unanswerable)
+  This is a small controlled corpus (n=8). Percentages below
+  carry a 95% Wilson interval; read the interval, not the point estimate.
+  A score here is evidence the pipeline works end to end on unseen
+  documents. It is not a measurement of accuracy in production.
+
+  extraction_accuracy_pct          100.0%  (n=9, 9/9, 95% CI 70.1-100.0%)
+  answer_accuracy_pct              100.0%  (n=5, 5/5, 95% CI 56.6-100.0%)
+  citation_correctness_pct         100.0%  (n=5, 5/5, 95% CI 56.6-100.0%)
+  grounding_fidelity_pct           100.0%  (n=5, 5/5, 95% CI 56.6-100.0%)
+  abstention_correctness_pct       100.0%  (n=3, 3/3, 95% CI 43.8-100.0%)
+  overclaims                       0
+  ingest_latency_ms                3015.05
+      median: 1595.16
+      p95: 1595.16
+  answer_latency_ms                96.05
+      median: 97.35
+      p95: 108.09
+  failure_rate_pct                 0.0%  (n=3)
+      failures: 0
+
+runtime actually used:
+  vector_backend           local_hybrid_only
+  degraded                 False
+  embedding_adapter        local-hashing-embedding
+  reranker_status          disabled
+  qdrant_status            disabled
+  indexed_chunks           1180
+
+wrote docs/audit/artifacts/release/evaluation-phase4.json

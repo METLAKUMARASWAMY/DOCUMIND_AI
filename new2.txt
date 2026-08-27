@@ -1968,4 +1968,4 @@ Do not stop at analysis.
 Do not stop at recommendations.
 Do not merely tell me what should be fixed.
 
-FIX IT, TEST IT, VERIFY IT, AND ONLY THEN REPORT IT.
+FIX IT, TEST IT, VERIFY IT, AND ONLY THEN REPORT IT.₹

@@ -1043,3 +1043,236 @@ is a different model producing different output:
 The build downloads `tessdata_fast@4.1.0` and verifies both `eng` and `osd`
 against those checksums, and asserts the engine version, so an upstream change
 fails the build loudly rather than silently shifting OCR.
+
+## D-33 · Answers repeated themselves — **CLOSED (P1)**
+
+Retrieval deliberately returns the same fact from several sources — a chunk, a
+reconstructed OCR line, an extracted field — because each is separate
+provenance. The semantic path then concatenated their text:
+
+```
+Landlord: Brackenfield Estates Landlord: Brackenfield Estates
+Landlord: Brackenfield Estates landlord: Brackenfield Estates
+Landlord: Brackenfield Estates
+```
+
+Five citations for one fact is honest provenance and stays. Five copies of the
+sentence is not an answer. `compose_evidence_text` deduplicates on a case- and
+whitespace-insensitive key, drops blocks already contained in a kept block —
+the common chunk/OCR-line overlap — and preserves retrieval order. Citations
+are untouched, and a test asserts they survive.
+
+## D-34 · A circular import, self-inflicted — **CLOSED (P1)**
+
+Sharing the abstention constant from `app.services.vision.service_parts`
+created a cycle: `model_registry` → `service_parts` → `vision/__init__` (which
+instantiates the whole service) → `service` → `model_registry`. The suite
+missed it because pytest's collection order happens to import the service
+first, so the cycle never had to resolve from the other direction.
+
+The constant moved to `app.core.answer_policy`, which pulls in nothing. A new
+test imports each of fourteen modules **first** in a fresh interpreter, and
+asserts that importing the shared constant loads no `app.services` module at
+all.
+
+## Phase 21 · The evaluation harness reported percentages without denominators
+
+Every metric read as a bare point estimate:
+
+```
+  answer_accuracy_pct              100.0
+```
+
+The number was correctly computed from a real run. The presentation invited it
+to be read as a claim about the system rather than about five questions. The
+report now leads with the sample size, labels a small corpus as one, and gives
+every proportion its denominator and a 95% Wilson interval — Wilson rather than
+the normal approximation because the normal one gives a zero-width interval at
+exactly 0% and 100%, which is where every one of these scores sits:
+
+```
+SAMPLE SIZE
+  3/3 documents ingested, 8 questions (5 answerable, 3 unanswerable)
+  This is a small controlled corpus (n=8). Percentages below
+  carry a 95% Wilson interval; read the interval, not the point estimate.
+  A score here is evidence the pipeline works end to end on unseen
+  documents. It is not a measurement of accuracy in production.
+
+  extraction_accuracy_pct          100.0%  (n=9, 9/9, 95% CI 70.1-100.0%)
+  answer_accuracy_pct              100.0%  (n=5, 5/5, 95% CI 56.6-100.0%)
+  citation_correctness_pct         100.0%  (n=5, 5/5, 95% CI 56.6-100.0%)
+  grounding_fidelity_pct           100.0%  (n=5, 5/5, 95% CI 56.6-100.0%)
+  abstention_correctness_pct       100.0%  (n=3, 3/3, 95% CI 43.8-100.0%)
+  overclaims                       0
+```
+
+The honest reading of this run is: the pipeline completed end to end on three
+unseen documents and did not overclaim on any of eight questions. It is not
+evidence of 100% accuracy, and the report now says so in its own output.
+
+## Phase 31 · Credentials
+
+Audited every tracked file. No literal secret, no verification account, `.env`
+untracked and ignored, `var/` (which holds real Argon2 password hashes) ignored.
+The one hardcoded credential in the tree is inside a negative test asserting
+that a well-known default is **rejected**.
+
+The hand-made accounts from earlier verification sessions do exist in the local
+gitignored auth state — two of them, alongside 114 per-run pytest users. They
+are deliberately not named here: `test_no_verification_account_appears_in_a_
+tracked_file` fails if any tracked file names one, and this document is tracked.
+The purge tool below reports them at runtime, which is where that belongs.
+`scripts/purge_local_test_accounts.py` reports them by default and removes them
+only with `--execute`, taking a timestamped backup first and never printing a
+password or a hash. It classifies conservatively: an unfamiliar domain is
+reported and kept rather than quietly deleted.
+
+## Blocked: the containerised phases
+
+Phases 19, 20 and 33 (compose boot, Playwright 2/2, the A–AA live sequence)
+could not be completed. The host disk reached 100% (280 MB free of 228 GB)
+mid-session, and Docker's containerd metadata store was corrupted by the
+write failures:
+
+```
+write /var/lib/desktop-containerd/daemon/io.containerd.metadata.v1.bolt/meta.db:
+  input/output error
+```
+
+After space was freed to 8.6 GB the error persisted, image layer blobs became
+unreadable (`blob sha256:9317a294… input/output error`), and Docker Desktop no
+longer starts. The named volumes — `documindai_postgres_data`,
+`documindai_neo4j_data`, `documindai_qdrant_data`, `documindai_redis_data` —
+were still listed before the daemon went down.
+
+A full restart of Docker Desktop recovered it without data loss — the image
+blobs became readable again and the volumes survived. That took long enough to
+look like a failure to start, and it is worth recording that the destructive
+reset the situation appeared to demand was not in fact necessary.
+
+The Dockerfile change itself **was** verified before the corruption: a probe
+build compiled Tesseract 5.5.3 from source in 73.8 seconds and reported
+`tesseract 5.5.3 / leptonica-1.84.1`.
+
+## D-35 · A "who" question never reached the graph — **CLOSED (P0)**
+
+Found while chasing the last Playwright failure. `relationship_terms` in the
+query router carried literal phrases, one of which was `"who requested"`. So:
+
+| question | route |
+|---|---|
+| "who requested this document" | `relationship_question` |
+| "Who made the original request?" | `semantic_question` |
+| "who wrote the specifications" | `semantic_question` |
+| "who is the landlord" | `semantic_question` |
+
+This is the D-04 defect class in a path D-04 did not cover — it works for the
+phrasing someone anticipated. The consequence was not merely a missed graph
+lookup. The semantic path answered from raw chunk text and claimed **supported**
+for:
+
+```
+original Request Made By___Dr. A. W. Spears on__September original Laboratory
+oGs Original Request Analysis to Dr, oGs Made Av By___Dr. W. Spear A. ocs
+W. Spears to 3.48 30 PMO mm butt add-on on__Sept
+```
+
+while the extracted field held exactly `Dr. A. W. Spears` and the graph held
+`REQUESTED_BY -> Person`.
+
+Agent detection is now structural — a word-bounded `who`/`whom`/`whose` — and
+applies only as a last resort before `semantic_question`, so no existing
+classification moves. A relationship question with no matching edge already
+cascades to structured lookup, so nothing that worked stops working.
+
+Measured on the acceptance fixture, same question:
+
+| | before | after |
+|---|---|---|
+| retriever | `local-hybrid` | `neo4j-evidence-path-v1` |
+| graph paths | 0 | 3 |
+| status | `supported` (on garbled text) | `partially_supported` |
+| answer | the OCR fragment above | "W. E. Routh is recorded as the person who wrote the sample specifications; Dr. A. W. Spears is recorded as the person who requested…" |
+
+The one case where the reading is genuinely ambiguous — "Who signed off …" —
+still routes to the visual handler, because moving visual-term precedence would
+change signature detection. Verified safe: on a document with no signature it
+abstains rather than fabricating a name.
+
+## D-36 · Graph candidates were registry-bound, not corpus-bound — **CLOSED (P1)**
+
+D-21 replaced a hardcoded relationship allowlist with names derived from the
+*registered field vocabulary*. That still works only while documents resemble
+the registry. Measured against edges from domains the registry has never seen:
+
+| question | registry-only reaches |
+|---|---|
+| "which vessel carried the shipment" | none of the corpus edges |
+| "what is the haemoglobin level" | none of the corpus edges |
+| "who is the reporting pathologist" | none of the corpus edges |
+
+`query_graph_paths` now also receives the edge types the in-scope documents
+actually hold, so `HAS_VESSEL_NAME` and `HAS_HAEMOGLOBIN` become reachable
+without anyone enumerating them. Edge types are written from document text, so
+they remain untrusted and are still filtered through `_SAFE_RELATIONSHIP`
+before reaching Cypher; a hostile relationship name is dropped.
+
+**A correction.** The first diagnosis here was wrong. A truncated printout of
+the candidate list appeared to show `REQUESTED_BY` missing for the fixture when
+it was present at index 9, and the control test written to prove the fix was
+needed is what caught it. The change is justified — by the unseen-domain
+measurements above, not by the fixture.
+
+## D-37 · The frontend was served without compression — **CLOSED (P1)**
+
+nginx served the built bundle uncompressed even to clients sending
+`Accept-Encoding: gzip`, and hashed assets carried no cache headers.
+
+| | before | after |
+|---|---:|---:|
+| JS transferred on a cold load | 1,363,282 B | **397,352 B** (3.4×) |
+| `Cache-Control` on `/assets/` | absent | `public, max-age=31536000, immutable` |
+| `Cache-Control` on `index.html` | absent | `no-cache, must-revalidate` |
+
+The proxy also gained a 120 s read timeout: report rendering and ask requests
+are synchronous and the nginx default of 60 s could cut them off.
+
+## Phase 19/20 · The stack runs, and Playwright is 2/2
+
+```
+SERVICE    STATUS
+backend    Up (healthy)
+frontend   Up
+neo4j      Up (healthy)
+postgres   Up (healthy)
+qdrant     Up (healthy)
+redis      Up (healthy)
+worker     Up (healthy)
+migrate    Exited (0)
+```
+
+`/health/ready` reports `status: ready`, postgres/redis/neo4j/qdrant all
+enabled, no errors, and the new `neo4j_circuit: {state: closed}`.
+
+OCR inside the running backend:
+
+```
+tesseract 5.5.3
+ leptonica-1.84.1
+7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2  eng.traineddata
+```
+
+— byte-identical to the development host, which is what closes the Playwright
+gap. On the 1976 scan the container now reads `sample_number = '6030'`; Debian's
+5.5.0 read it as `"No"`, which was the entire "Required matched: expected 6,
+received 5" failure.
+
+```
+Running 2 tests using 1 worker
+  ✓  1 core-intelligence-v4.spec.ts › 00093726 walkthrough is grounded and readable (15.2s)
+  ✓  2 remediation.spec.ts › repaired workspaces are connected, readable, responsive (12.8s)
+  2 passed (32.7s)
+```
+
+**No assertion was weakened.** The required-field assertions that failed under
+5.5.0 pass unchanged under the pinned 5.5.3.

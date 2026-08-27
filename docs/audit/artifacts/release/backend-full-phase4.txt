@@ -53,3 +53,4 @@ app/tests/test_document_variation_acceptance.py::test_scanned_multi_page_tiff_an
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 484 passed, 1 skipped, 115 warnings in 351.62s (0:05:51)
 <sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+EXIT=0

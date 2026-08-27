@@ -8,6 +8,7 @@ import mimetypes
 import re
 import threading
 import time
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -126,13 +127,27 @@ GRAPH_QUERY_INTENTS: dict[str, tuple[str, ...]] = {
 _SAFE_RELATIONSHIP = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 
 
-def graph_relationship_candidates(question: str) -> list[str]:
+def graph_relationship_candidates(
+    question: str,
+    *,
+    present_relationships: Iterable[str] = (),
+) -> list[str]:
     """Relationship types a question could plausibly be asking about.
 
-    Combines the stated intents above with relationship names *derived* from the
-    document field vocabulary, using the same naming rule the graph builder uses
-    when it creates the edges. That keeps question -> edge resolution working for
-    field names nobody enumerated in advance.
+    Three sources, in order of authority:
+
+    * the stated intents above;
+    * ``present_relationships`` — the edge types the documents in scope
+      *actually* hold;
+    * names derived from the registered field vocabulary.
+
+    The second source is what makes this work on unseen documents. Deriving
+    candidates from the registry alone means a field the registry never heard
+    of is unreachable: this document's ``requested_by`` produced a real
+    ``REQUESTED_BY`` edge, but the registry offered ``ORIGINAL_REQUEST_MADE_BY``
+    (from a schema alias) and the query could never match. Asking the graph
+    what it holds and filtering *that* by the question inverts the dependency —
+    the corpus decides what exists, the question decides what is relevant.
 
     Every candidate is validated against :data:`_SAFE_RELATIONSHIP` before it can
     reach Cypher, so this stays injection-safe even though the vocabulary is
@@ -147,6 +162,7 @@ def graph_relationship_candidates(question: str) -> list[str]:
         for relationship, aliases in GRAPH_QUERY_INTENTS.items()
         if any(alias in normalized for alias in aliases)
     ]
+    candidates.extend(_relevant_present_relationships(normalized, present_relationships))
     candidates.extend(_derived_relationship_candidates(normalized))
     seen: set[str] = set()
     ordered: list[str] = []
@@ -161,6 +177,36 @@ def graph_relationship_candidates(question: str) -> list[str]:
 #: Bound on derived candidates so one broad question cannot widen the Cypher
 #: relationship filter without limit.
 _MAX_DERIVED_RELATIONSHIPS = 24
+
+#: Structural edges carry no answer on their own, so a question never selects
+#: them; they are how the graph is stitched together, not what it asserts.
+_STRUCTURAL_RELATIONSHIPS = frozenset({"CONTAINS_PAGE", "HAS_FIELD", "MATCHES", "HAS_RISK"})
+
+
+def _relevant_present_relationships(
+    normalized: str,
+    present: Iterable[str],
+) -> list[str]:
+    """Filters the edges the corpus actually holds down to the relevant ones.
+
+    An edge type earns a place if the question mentions the words in its name,
+    or if the question asks *who* and the edge names an agent (``*_BY``).
+    """
+    asks_who = re.search(r"(?<![\w-])who(?![\w-])", normalized) is not None
+    selected: list[str] = []
+    for raw in present:
+        relationship = str(raw or "").strip().upper()
+        if not relationship or relationship in _STRUCTURAL_RELATIONSHIPS:
+            continue
+        if not _SAFE_RELATIONSHIP.match(relationship):
+            continue
+        words = [word for word in relationship.lower().split("_") if len(word) >= 3]
+        mentioned = any(
+            re.search(rf"(?<![\w-]){re.escape(word)}(?![\w-])", normalized) for word in words
+        )
+        if mentioned or (asks_who and relationship.endswith("_BY")):
+            selected.append(relationship)
+    return selected[:_MAX_DERIVED_RELATIONSHIPS]
 
 
 def _derived_relationship_candidates(normalized: str) -> list[str]:
@@ -723,6 +769,7 @@ class VisionPersistenceCoordinator:
         document_ids: list[str],
         *,
         limit: int = 5,
+        present_relationships: Iterable[str] = (),
     ) -> list[dict[str, Any]]:
         """Execute a controlled tenant-scoped Neo4j path query.
 
@@ -733,7 +780,10 @@ class VisionPersistenceCoordinator:
             return []
         if self._neo4j_circuit_open():
             return []
-        relationships = graph_relationship_candidates(question)
+        relationships = graph_relationship_candidates(
+            question,
+            present_relationships=present_relationships,
+        )
         if not relationships:
             return []
         try:

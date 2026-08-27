@@ -109,11 +109,27 @@ def service_with_lease():
     return service, tenant
 
 
+# The semantic path is where evidence blocks are concatenated, so the question
+# used here must actually route there. An agent question now reaches the graph
+# and returns a single precise citation instead, which is a better answer but
+# does not exercise deduplication.
+SEMANTIC_QUESTION = "what is the monthly rent"
+
+
+def test_the_question_used_here_really_does_take_the_semantic_path(service_with_lease):
+    """Otherwise the tests below would pass without testing anything."""
+    service, tenant = service_with_lease
+    response = service.ask(VisionAskRequest(question=SEMANTIC_QUESTION), tenant_id=tenant)
+
+    assert response.query_type == "semantic_question", response.query_type
+    assert len(response.citations) > 1, "not enough overlapping sources to deduplicate"
+
+
 def test_an_answer_does_not_repeat_the_same_sentence(service_with_lease):
     service, tenant = service_with_lease
-    response = service.ask(VisionAskRequest(question="who is the landlord"), tenant_id=tenant)
+    response = service.ask(VisionAskRequest(question=SEMANTIC_QUESTION), tenant_id=tenant)
 
-    occurrences = response.answer.lower().count("brackenfield")
+    occurrences = response.answer.lower().count("monthly rent")
     assert occurrences == 1, f"repeated {occurrences}x: {response.answer}"
 
 
@@ -121,7 +137,7 @@ def test_deduplication_does_not_discard_provenance(service_with_lease):
     """Several sources for one fact is good evidence, not noise. The citations
     must survive even though their text collapses to one sentence."""
     service, tenant = service_with_lease
-    response = service.ask(VisionAskRequest(question="who is the landlord"), tenant_id=tenant)
+    response = service.ask(VisionAskRequest(question=SEMANTIC_QUESTION), tenant_id=tenant)
 
     assert len(response.citations) > 1, "distinct provenance was lost"
     for citation in response.citations:
@@ -131,6 +147,6 @@ def test_deduplication_does_not_discard_provenance(service_with_lease):
 
 def test_the_answer_still_contains_the_value(service_with_lease):
     service, tenant = service_with_lease
-    response = service.ask(VisionAskRequest(question="who is the landlord"), tenant_id=tenant)
+    response = service.ask(VisionAskRequest(question=SEMANTIC_QUESTION), tenant_id=tenant)
 
-    assert "brackenfield" in response.answer.lower(), response.answer
+    assert "1,275" in response.answer, response.answer

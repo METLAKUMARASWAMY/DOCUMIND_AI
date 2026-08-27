@@ -1,0 +1,142 @@
+{
+  "corpus": {
+    "documents": 3,
+    "ingested": 3,
+    "ingest_failures": [],
+    "answerable_questions": 5,
+    "unanswerable_questions": 3
+  },
+  "metrics": {
+    "extraction_accuracy_pct": {
+      "status": "measured",
+      "value": 100.0,
+      "correct": 9,
+      "total": 9,
+      "expected": 9,
+      "missing": [],
+      "incorrect": []
+    },
+    "answer_accuracy_pct": {
+      "status": "measured",
+      "value": 100.0,
+      "correct": 5,
+      "total": 5
+    },
+    "citation_correctness_pct": {
+      "status": "measured",
+      "value": 100.0,
+      "correct": 5,
+      "total": 5
+    },
+    "grounding_fidelity_pct": {
+      "status": "measured",
+      "value": 100.0,
+      "correct": 5,
+      "claims_with_evidence": 5,
+      "total": 5,
+      "note": "share of claimed answers that carried at least one citation"
+    },
+    "abstention_correctness_pct": {
+      "status": "measured",
+      "value": 100.0,
+      "correct": 3,
+      "total": 3
+    },
+    "overclaims": {
+      "status": "measured",
+      "value": 0,
+      "instances": [],
+      "note": "lower is better; 0 is required"
+    },
+    "ingest_latency_ms": {
+      "status": "measured",
+      "value": 3015.05,
+      "median": 1595.16,
+      "p95": 1595.16,
+      "min": 1516.59,
+      "max": 5933.38,
+      "samples": 3
+    },
+    "answer_latency_ms": {
+      "status": "measured",
+      "value": 96.05,
+      "median": 97.35,
+      "p95": 108.09,
+      "min": 38.06,
+      "max": 133.54,
+      "samples": 8
+    },
+    "failure_rate_pct": {
+      "status": "measured",
+      "value": 0.0,
+      "failures": 0,
+      "total": 3
+    }
+  },
+  "runtime": {
+    "vector_backend": "local_hybrid_only",
+    "degraded": false,
+    "embedding_adapter": "local-hashing-embedding",
+    "reranker_status": "disabled",
+    "qdrant_status": "disabled",
+    "indexed_chunks": 1180
+  },
+  "per_question": [
+    {
+      "question": "what is the total amount",
+      "answer_status": "supported",
+      "correct": true,
+      "citations": 10,
+      "retriever": "persisted-structured-field-store"
+    },
+    {
+      "question": "what are the payment terms",
+      "answer_status": "supported",
+      "correct": true,
+      "citations": 10,
+      "retriever": "persisted-structured-field-store"
+    },
+    {
+      "question": "what is the invoice number",
+      "answer_status": "supported",
+      "correct": true,
+      "citations": 10,
+      "retriever": "persisted-structured-field-store"
+    },
+    {
+      "question": "which vendor issued this",
+      "answer_status": "supported",
+      "correct": true,
+      "citations": 10,
+      "retriever": "persisted-structured-field-store"
+    },
+    {
+      "question": "what is the bank account number",
+      "answer_status": "supported",
+      "correct": true,
+      "citations": 10,
+      "retriever": "persisted-structured-field-store"
+    },
+    {
+      "question": "what is the mean time between failures",
+      "answer_status": "not_found",
+      "correct": true,
+      "citations": 0,
+      "retriever": "local-hybrid"
+    },
+    {
+      "question": "what was the share price on the invoice date",
+      "answer_status": "partially_supported",
+      "correct": true,
+      "citations": 10,
+      "retriever": "persisted-structured-field-store"
+    },
+    {
+      "question": "what is the weather in Leeds",
+      "answer_status": "not_found",
+      "correct": true,
+      "citations": 0,
+      "retriever": "not_used"
+    }
+  ]
+}

@@ -244,12 +244,37 @@ class VisionQueryRouter:
             return "ocr_lookup"
         if self._matches(lower, self.out_of_scope_terms):
             return "unsupported_question"
+        # Last resort before falling back to raw semantic chunks: a question
+        # asking *who* wants an entity related to the document, which is what
+        # the graph models. `relationship_terms` above carries literal phrases
+        # like "who requested", so "who requested this document" reached the
+        # graph while "Who made the original request?" did not — and the
+        # semantic path answered it from raw OCR text, claiming support for
+        # "original Request Made By___Dr. A. W. Spears on__September original
+        # Laboratory oGs Original Request Analysis to Dr, oGs Made Av By___..."
+        # while the extracted field held exactly "Dr. A. W. Spears".
+        #
+        # This only reclassifies questions that would otherwise be
+        # `semantic_question`, and a relationship question with no matching
+        # edge cascades to structured lookup, so nothing that worked stops
+        # working.
+        if self._asks_for_an_agent(lower):
+            return "relationship_question"
         return "semantic_question"
 
     # ------------------------------------------------------------------ helpers
 
     def _matches(self, lower: str, terms: tuple[str, ...]) -> bool:
         return bool(_boundary_pattern(terms).search(lower))
+
+    #: Word-bounded so "whose" and "whom" count but "whole" does not.
+    _AGENT_INTERROGATIVE: ClassVar[re.Pattern[str]] = re.compile(
+        r"(?<![\w-])(?:who|whom|whose)(?![\w-])"
+    )
+
+    def _asks_for_an_agent(self, lower: str) -> bool:
+        """Whether the question asks which entity did or holds something."""
+        return bool(self._AGENT_INTERROGATIVE.search(lower))
 
     def _is_arithmetic(self, lower: str, tokens: set[str]) -> bool:
         if self._matches(lower, self.arithmetic_terms):

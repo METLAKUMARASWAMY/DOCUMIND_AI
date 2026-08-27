@@ -1,0 +1,8 @@
+
+Running 2 tests using 1 worker
+
+  ✓  1 e2e/core-intelligence-v4.spec.ts:63:1 › 00093726 core-intelligence walkthrough is grounded and readable (15.2s)
+  ✓  2 e2e/remediation.spec.ts:63:1 › repaired workspaces are connected, readable, and responsive (12.8s)
+
+  2 passed (32.7s)
+PW_EXIT=0

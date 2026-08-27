@@ -1,0 +1,45 @@
+[PASS] A. authentication
+       expected: a session token for a new tenant
+       observed: HTTP 200, token=yes
+[PASS] B-D. upload and process document A
+       expected: a processed document with OCR/parsed text
+       observed: status=REVIEW_REQUIRED, text_chars=232
+[PASS] E. extraction
+       expected: >=4 structured fields discovered without a supplied schema
+       observed: 8 fields: ['total_amount', 'invoice_number', 'invoice_date', 'currency', 'practice_name', 'client_name']
+[PASS] F. chunks + provenance
+       expected: every chunk carries document, tenant and page
+       observed: 45 chunks
+[PASS] H-I. graph entities and relationships
+       expected: nodes and typed edges
+       observed: 20 nodes, 22 edges
+[PASS] J-K. ask about A -> A evidence
+       expected: an answer citing only document A, containing 486.50
+       observed: status=supported, cites=1 doc(s), answer='total_amount: 486.50 EUR'
+[PASS] L-N. ask about B -> different evidence
+       expected: cites B and not A
+       observed: status=supported, cites_B=True, cites_A=False
+[PASS] O-Q. cross-document question
+       expected: evidence drawn from the two genuinely related documents
+       observed: status=partially_supported, cites=2, graph_paths=0
+[PASS] Q2. unrelated documents stay unrelated
+       expected: no fabricated relationship
+       observed: status=partially_supported, graph_paths=1
+[PASS] R-S. unsupported question abstains
+       expected: not_found with no citations
+       observed: status=not_found, citations=0
+[PASS] T-U. low confidence routes to review
+       expected: at least one document awaiting review
+       observed: A status=REVIEW_REQUIRED, C status=REVIEW_REQUIRED
+[PASS] V-W. unauthorised access refused
+       expected: 401/403 anonymous, 403/404 cross-tenant
+       observed: anonymous=401, cross_tenant=404
+[PASS] X-Y. reprocess is idempotent
+       expected: HTTP 200 and node/edge counts stay at 20/22
+       observed: reprocess HTTP 200, now 20/22
+[PASS] Z-AA. delete removes the document from retrieval
+       expected: document gone and never cited again
+       observed: delete HTTP 200, fetch HTTP 404, still_cited=False
+
+==============================================================
+Phase 33 sequence: 14/14 steps passed

@@ -37,6 +37,10 @@ class GraphMixin:
             question,
             [document.document_id for document in documents],
             limit=top_k,
+            # What the corpus holds decides what can be asked for; deriving the
+            # candidates from the registry alone left open-set fields
+            # unreachable.
+            present_relationships=self._relationships_in_scope(documents),
         )
         matches = self._neo4j_graph_matches(neo4j_paths, documents)
         graph_backend = "neo4j-evidence-path-v1" if matches else "local-semantic-graph-path-v1"
@@ -118,6 +122,18 @@ class GraphMixin:
             retrieval_path="graph_path_query",
             graph_paths=paths,
         )
+
+    @staticmethod
+    def _relationships_in_scope(documents: list[VisionDocumentRecord]) -> list[str]:
+        """Every edge type present on the documents the question is scoped to."""
+        seen: set[str] = set()
+        for document in documents:
+            graph = getattr(document, "graph", None)
+            for edge in getattr(graph, "edges", None) or []:
+                relationship = str((edge or {}).get("type") or "").strip()
+                if relationship:
+                    seen.add(relationship)
+        return sorted(seen)
 
     def _neo4j_graph_matches(
         self,

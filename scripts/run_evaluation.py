@@ -159,6 +159,37 @@ def _percent(numerator: int, denominator: int) -> float:
     return round(100.0 * numerator / denominator, 2) if denominator else 0.0
 
 
+#: Below this many observations a proportion says very little on its own, and
+#: the report says so rather than letting "100.0" stand unqualified.
+SMALL_SAMPLE_THRESHOLD = 30
+
+
+def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson score interval for a proportion, as percentages.
+
+    A bare "100%" on five questions reads like a claim about the system. The
+    interval is what makes the sample size impossible to overlook: 5/5 is
+    100% with a 95% interval of roughly 56%-100%, which is an honest summary
+    of what five questions can establish.
+
+    Wilson rather than the normal approximation because the normal one gives a
+    zero-width interval at 0% and 100% — exactly the cases here.
+    """
+    if total <= 0:
+        return (0.0, 0.0)
+    proportion = successes / total
+    denominator = 1 + z**2 / total
+    centre = (proportion + z**2 / (2 * total)) / denominator
+    spread = (
+        z
+        * ((proportion * (1 - proportion) / total + z**2 / (4 * total**2)) ** 0.5)
+        / denominator
+    )
+    low = max(0.0, centre - spread) * 100
+    high = min(1.0, centre + spread) * 100
+    return (round(low, 1), round(high, 1))
+
+
 def run_evaluation(corpus: dict[str, Any]) -> dict[str, Any]:
     service = VisionAIService()
     documents = corpus["documents"]
@@ -211,6 +242,7 @@ def run_evaluation(corpus: dict[str, Any]) -> dict[str, Any]:
         reason="" if expected_total else "no labelled fields in corpus",
         detail={
             "correct": correct,
+            "total": expected_total,
             "expected": expected_total,
             "missing": missing,
             "incorrect": wrong,
@@ -323,6 +355,7 @@ def run_evaluation(corpus: dict[str, Any]) -> dict[str, Any]:
                 value=_percent(grounded, len(answerable)),
                 reason="" if answerable else "no answerable questions",
                 detail={
+                    "correct": grounded,
                     "claims_with_evidence": grounded,
                     "total": len(answerable),
                     "note": "share of claimed answers that carried at least one citation",
@@ -388,11 +421,30 @@ def _normalise(value: str) -> str:
 def render(results: dict[str, Any]) -> str:
     lines = ["DocuMind AI — measured evaluation", "=" * 42, ""]
     corpus = results["corpus"]
+    questions = corpus["answerable_questions"] + corpus["unanswerable_questions"]
+
+    # The sample size goes first and in its own block. A reader who takes one
+    # thing from this report should take away how much it was measured on.
+    lines.append("SAMPLE SIZE")
     lines.append(
-        f"corpus: {corpus['ingested']}/{corpus['documents']} documents ingested, "
-        f"{corpus['answerable_questions']} answerable + "
-        f"{corpus['unanswerable_questions']} unanswerable questions"
+        f"  {corpus['ingested']}/{corpus['documents']} documents ingested, "
+        f"{questions} questions "
+        f"({corpus['answerable_questions']} answerable, "
+        f"{corpus['unanswerable_questions']} unanswerable)"
     )
+    if questions < SMALL_SAMPLE_THRESHOLD:
+        lines.append(
+            f"  This is a small controlled corpus (n={questions}). Percentages below"
+        )
+        lines.append(
+            "  carry a 95% Wilson interval; read the interval, not the point estimate."
+        )
+        lines.append(
+            "  A score here is evidence the pipeline works end to end on unseen"
+        )
+        lines.append(
+            "  documents. It is not a measurement of accuracy in production."
+        )
     if corpus["ingest_failures"]:
         lines.append(f"  ingest failures: {corpus['ingest_failures']}")
     lines.append("")
@@ -401,8 +453,19 @@ def render(results: dict[str, Any]) -> str:
         if payload["status"] != "measured":
             lines.append(f"  {name:32s} not measured ({payload['reason']})")
             continue
-        lines.append(f"  {name:32s} {payload['value']}")
-        for key in ("median", "p95", "correct", "total", "failures"):
+        value = payload["value"]
+        correct = payload.get("correct")
+        total = payload.get("total")
+        if name.endswith("_pct") and isinstance(correct, int) and isinstance(total, int) and total:
+            low, high = wilson_interval(correct, total)
+            lines.append(
+                f"  {name:32s} {value}%  (n={total}, {correct}/{total}, 95% CI {low}-{high}%)"
+            )
+        elif name.endswith("_pct") and isinstance(total, int) and total:
+            lines.append(f"  {name:32s} {value}%  (n={total})")
+        else:
+            lines.append(f"  {name:32s} {value}")
+        for key in ("median", "p95", "failures"):
             if key in payload:
                 lines.append(f"      {key}: {payload[key]}")
         if payload.get("missing"):
