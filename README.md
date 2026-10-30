@@ -307,3 +307,4 @@ See [DOCUMIND VISION AI Migration Plan](docs/VISION_AI_MIGRATION_PLAN.md) for th
 ## Current Scope
 
 This is a complete enterprise scaffold with runnable local intelligence and clean production integration points. For regulated production deployment, connect approved OCR/LLM providers, enable persistent stores, configure identity/RBAC, add human evaluation sets, run threat modeling, and complete organization-specific compliance controls.
+# DOCUMIND_AI
