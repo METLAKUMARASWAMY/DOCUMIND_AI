@@ -139,6 +139,85 @@ class DocumentPreprocessor:
         image.save(target, format="PNG")
         return target
 
+    @staticmethod
+    def _native_words_for_page(page: Any, page_number: int, zoom: float) -> list[dict[str, Any]]:
+        """Words for one PDF page, keyed by the visual line they sit on.
+
+        PyMuPDF reports words as (block, line, word) where the line number is
+        scoped to its block. Two things follow, and both were wrong before:
+        keying a line id on the page and line number alone merged the first line
+        of every block together; and even a correct block-scoped id does not
+        describe a *visual* line, because a ruled table is emitted as one block
+        per row with one line per cell.
+
+        Downstream consumers -- table detection, reading order, label/value
+        pairing -- all mean "the words that sit on one line of the page", so the
+        id is derived from vertical position instead. Prose is unaffected (one
+        band per line as before); a table row becomes a single line whose cells
+        are separated by wide horizontal gaps, which is exactly what the
+        geometry table detector looks for.
+        """
+        import pymupdf
+
+        raw = []
+        for x1, y1, x2, y2, text, block_index, _line_index, _word_index in (
+            word[:8] for word in page.get_text("words", sort=True)
+        ):
+            if not str(text).strip():
+                continue
+            raw.append(
+                {
+                    "text": str(text),
+                    "x1": float(x1 * zoom),
+                    "y1": float(y1 * zoom),
+                    "x2": float(x2 * zoom),
+                    "y2": float(y2 * zoom),
+                    "block": int(block_index) + 1,
+                }
+            )
+        if not raw:
+            return []
+
+        heights = sorted(item["y2"] - item["y1"] for item in raw)
+        median_height = heights[len(heights) // 2] or 1.0
+        # Half a line height: enough to absorb the baseline jitter within a row,
+        # tight enough that adjacent rows never merge.
+        tolerance = median_height * 0.5
+
+        bands: list[list[dict[str, Any]]] = []
+        for item in sorted(raw, key=lambda entry: (entry["y1"], entry["x1"])):
+            centre = (item["y1"] + item["y2"]) / 2.0
+            for band in bands:
+                band_centre = sum((w["y1"] + w["y2"]) / 2.0 for w in band) / len(band)
+                if abs(centre - band_centre) <= tolerance:
+                    band.append(item)
+                    break
+            else:
+                bands.append([item])
+
+        native_words: list[dict[str, Any]] = []
+        reading_order = 1
+        for line_number, band in enumerate(bands, start=1):
+            for item in sorted(band, key=lambda entry: entry["x1"]):
+                native_words.append(
+                    {
+                        "text": item["text"],
+                        "confidence": 1.0,
+                        "x1": item["x1"],
+                        "y1": item["y1"],
+                        "x2": item["x2"],
+                        "y2": item["y2"],
+                        "page": page_number,
+                        "line_id": f"p{page_number}-line-{line_number}",
+                        "block_id": f"p{page_number}-block-{item['block']}",
+                        "reading_order": reading_order,
+                        "model_name": "PyMuPDF-native-text",
+                        "model_version": getattr(pymupdf, "__version__", "unknown"),
+                    }
+                )
+                reading_order += 1
+        return native_words
+
     def _render_pdf(self, content: bytes) -> list[dict[str, Any]]:
         import pymupdf
 
@@ -151,25 +230,7 @@ class DocumentPreprocessor:
         for page_number, page in enumerate(document, start=1):
             pixmap = page.get_pixmap(matrix=matrix, alpha=False, colorspace=pymupdf.csRGB)
             image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
-            native_words = []
-            for reading_order, word in enumerate(page.get_text("words", sort=True), start=1):
-                x1, y1, x2, y2, text, block_id, line_id, _ = word[:8]
-                native_words.append(
-                    {
-                        "text": str(text),
-                        "confidence": 1.0,
-                        "x1": float(x1 * zoom),
-                        "y1": float(y1 * zoom),
-                        "x2": float(x2 * zoom),
-                        "y2": float(y2 * zoom),
-                        "page": page_number,
-                        "line_id": f"p{page_number}-line-{int(line_id) + 1}",
-                        "block_id": f"p{page_number}-block-{int(block_id) + 1}",
-                        "reading_order": reading_order,
-                        "model_name": "PyMuPDF-native-text",
-                        "model_version": getattr(pymupdf, "__version__", "unknown"),
-                    }
-                )
+            native_words = self._native_words_for_page(page, page_number, zoom)
             pages.append(
                 {
                     "image": image,

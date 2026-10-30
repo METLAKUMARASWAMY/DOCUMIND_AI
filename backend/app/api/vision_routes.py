@@ -53,6 +53,7 @@ async def upload_vision_documents(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     user: AuthUser = Depends(require_user),
 ) -> dict:
+    _require_uploader(user)
     parsed_metadata = _json_metadata(metadata)
     payload = []
     for file in files:
@@ -87,6 +88,7 @@ async def analyze_vision_text(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     user: AuthUser = Depends(require_user),
 ) -> dict:
+    _require_uploader(user)
     try:
         document = vision_ai_service.process_text(
             request,
@@ -1053,6 +1055,24 @@ def _json_metadata(raw: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail="metadata must be a JSON object")
     return parsed
+
+
+def _require_uploader(user: AuthUser) -> None:
+    """Ingestion is a write action.
+
+    The console has always hidden Upload from VIEWER and AUDITOR, but the API
+    accepted an upload from any authenticated user, so the restriction the UI
+    advertised was not actually enforced. AUDITOR is read-only by design and
+    VIEWER is the role public registration grants, so neither may create work.
+    """
+    if user.role not in {
+        UserRole.admin,
+        UserRole.processor,
+        UserRole.reviewer,
+        UserRole.senior_reviewer,
+        UserRole.compliance_officer,
+    }:
+        raise HTTPException(status_code=403, detail="Upload requires a processing role")
 
 
 def _require_reviewer(user: AuthUser) -> None:

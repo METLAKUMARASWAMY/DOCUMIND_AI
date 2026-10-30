@@ -19,6 +19,11 @@ from app.models.vision import (
     VisionDocumentRecord,
     VisionGraphProjection,
 )
+from app.services.vision.agent_answers import (
+    asks_for_an_agent,
+    semantic_types_by_value,
+    value_cannot_be_an_agent,
+)
 from app.services.vision.graph_builder import evidence_graph_builder
 
 
@@ -42,7 +47,7 @@ class GraphMixin:
             # unreachable.
             present_relationships=self._relationships_in_scope(documents),
         )
-        matches = self._neo4j_graph_matches(neo4j_paths, documents)
+        matches = self._neo4j_graph_matches(neo4j_paths, documents, question)
         graph_backend = "neo4j-evidence-path-v1" if matches else "local-semantic-graph-path-v1"
         if not matches:
             matches = self._matching_graph_edges(question, documents)
@@ -139,6 +144,7 @@ class GraphMixin:
         self,
         paths: list[dict[str, Any]],
         documents: list[VisionDocumentRecord],
+        question: str = "",
     ) -> list[
         tuple[
             VisionDocumentRecord,
@@ -148,6 +154,16 @@ class GraphMixin:
         ]
     ]:
         by_document = {document.document_id: document for document in documents}
+        # The Neo4j path is the primary one whenever the graph is reachable, so
+        # it needs the same agent guard as the local fallback. Applying it only
+        # to the fallback meant the wrong-answer bug reappeared exactly when
+        # Neo4j was available -- and disappeared in test runs where it was not.
+        wants_an_agent = asks_for_an_agent(question)
+        semantic_types = {
+            key: value
+            for document in documents
+            for key, value in (semantic_types_by_value(document) if wants_an_agent else {}).items()
+        }
         matches = []
         for path in paths:
             document = by_document.get(str(path.get("document_id") or ""))
@@ -194,6 +210,11 @@ class GraphMixin:
                     or "related entity"
                 ),
             }
+            if wants_an_agent and any(
+                value_cannot_be_an_agent(target_node.get(key), semantic_types)
+                for key in ("value", "label", "display_label")
+            ):
+                continue
             matches.append((document, edge, source_node, target_node))
         return matches
 
@@ -265,6 +286,7 @@ class GraphMixin:
             for token in re.findall(r"[a-z0-9]+", lower)
             if len(token) >= 3 and token not in stopwords
         }
+        wants_an_agent = asks_for_an_agent(lower)
         ranked: list[
             tuple[
                 int,
@@ -276,6 +298,7 @@ class GraphMixin:
         ] = []
         for document in documents:
             nodes = {str(node.get("id")): node for node in document.graph.nodes}
+            semantic_types = semantic_types_by_value(document) if wants_an_agent else {}
             for edge in document.graph.edges:
                 relationship = str(edge.get("type", ""))
                 if relationship in {"HAS_FIELD", "MATCHES", "CONTAINS_PAGE", "CONTAINS"}:
@@ -294,9 +317,25 @@ class GraphMixin:
                 edge_tokens = set(re.findall(r"[a-z0-9]+", haystack))
                 if intents and relationship not in intents:
                     continue
-                overlap = len(tokens & edge_tokens)
-                if not intents and not overlap:
+                if wants_an_agent and any(
+                    value_cannot_be_an_agent(target_node.get(key), semantic_types)
+                    for key in ("value", "label")
+                ):
+                    # Answering "who ..." with an address or an amount is a wrong
+                    # answer, not a weak one. Drop it rather than rank it: the
+                    # caller then abstains instead of claiming support.
                     continue
+                shared = tokens & edge_tokens
+                overlap = len(shared)
+                if not intents:
+                    # No relationship intent matched, so this candidate rests
+                    # entirely on shared words. One word is far too weak:
+                    # "what is the insurance policy number" shares only "number"
+                    # with Purchase Order Number, and that was enough to return
+                    # the purchase order as the answer. Require the shared words
+                    # to cover at least half of what was actually asked.
+                    if not shared or len(shared) * 2 < len(tokens):
+                        continue
                 score = (100 if relationship in intents else 0) + overlap * 5
                 score += 3 if edge.get("status") == "verified" else 0
                 ranked.append((score, document, edge, source_node, target_node))

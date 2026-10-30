@@ -511,6 +511,43 @@ class VisionPersistenceCoordinator:
                 self._errors.pop("minio", None)
             except Exception as exc:
                 self._record_error("minio", exc)
+        self.delete_graph(document_id, tenant_id)
+
+    def delete_graph(self, document_id: str, tenant_id: str) -> None:
+        """Remove a document's nodes and relationships from Neo4j.
+
+        Deletion previously cleaned MongoDB, Redis and MinIO but left the
+        knowledge graph untouched, so a deleted document's filename, page
+        structure and every extracted entity value stayed queryable in Neo4j
+        indefinitely. Both identifiers are bound as parameters; neither is
+        interpolated into the Cypher.
+        """
+        if not settings.enable_neo4j or not tenant_id or not document_id:
+            return
+        if self._neo4j_circuit_open():
+            return
+        try:
+            with self._neo4j_driver().session(database=settings.neo4j_database) as session:
+                session.execute_write(self._delete_graph_tx, tenant_id, document_id)
+            self._neo4j_recovered()
+        except Exception as exc:
+            self._neo4j_failed(exc)
+
+    @staticmethod
+    def _delete_graph_tx(tx: Any, tenant_id: str, document_id: str) -> None:
+        # DETACH DELETE drops the relationships with the nodes, so no dangling
+        # edge survives. Scoped by tenant as well as document so a crafted
+        # document id cannot reach another tenant's graph.
+        tx.run(
+            """
+            MATCH (node)
+            WHERE node.document_id = $document_id
+              AND node.tenant_id = $tenant_id
+            DETACH DELETE node
+            """,
+            document_id=document_id,
+            tenant_id=tenant_id,
+        )
 
     def save_job(self, job: dict[str, Any]) -> None:
         if settings.enable_mongodb:

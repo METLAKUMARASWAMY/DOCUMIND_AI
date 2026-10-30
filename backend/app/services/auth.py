@@ -59,7 +59,11 @@ class AuthService:
                 if allow_privileged_role
                 else UserRole(settings.public_registration_role)
             )
-            tenant_id = self._tenant_id(request.organisation_name)
+            tenant_id = (
+                self._tenant_id(request.organisation_name)
+                if allow_privileged_role
+                else self._isolated_tenant_id(request.organisation_name)
+            )
             user = AuthUser(
                 user_id=f"user-{uuid4().hex[:12]}",
                 name=request.name.strip(),
@@ -411,8 +415,31 @@ class AuthService:
         return email.strip().lower()
 
     def _tenant_id(self, organisation_name: str) -> str:
+        """Tenant for a *privileged* creation: named, and therefore joinable.
+
+        Only reachable from ``create_bootstrap_user``, which is server-side
+        provisioning. Public signup must not use this -- see
+        ``_isolated_tenant_id``.
+        """
         slug = re.sub(r"[^a-z0-9]+", "-", organisation_name.strip().lower()).strip("-")
         return f"tenant-{slug[:48] or uuid4().hex[:12]}"
+
+    def _isolated_tenant_id(self, organisation_name: str) -> str:
+        """Tenant for a public self-registration: always a brand new one.
+
+        Deriving the tenant from the organisation name alone made tenancy a
+        function of a string the registrant types. Anyone could self-register
+        with an existing customer's organisation name, land inside that tenant
+        and read its documents -- verified end to end before this changed.
+
+        There is no invitation or membership flow in the product, so no
+        self-service request can legitimately join an existing tenant. Public
+        signups therefore always get their own workspace; the slug is kept only
+        so the id stays readable, and a random suffix guarantees separation
+        even when two registrants type the same name.
+        """
+        slug = re.sub(r"[^a-z0-9]+", "-", organisation_name.strip().lower()).strip("-")
+        return f"tenant-{slug[:40] or 'org'}-{uuid4().hex[:12]}"
 
     def _token_key(self, token_id: str) -> str:
         return hashlib.sha256(token_id.encode("utf-8")).hexdigest()

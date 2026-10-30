@@ -182,6 +182,7 @@ class TesseractOCRAdapter(OCRAdapter):
             y2 = y1 + float(data["height"][index])
             block_number = int(data.get("block_num", [1] * len(data["text"]))[index])
             line_number = int(data.get("line_num", [1] * len(data["text"]))[index])
+            line_key = f"p{page_number}-line-{line_number}"
             words.append(
                 OCRWord(
                     text=text,
@@ -189,7 +190,7 @@ class TesseractOCRAdapter(OCRAdapter):
                     polygon=[[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
                     bounding_box=VisionBoundingBox(x1=x1, y1=y1, x2=x2, y2=y2),
                     page=page_number,
-                    line_id=f"p{page_number}-line-{line_number}",
+                    line_id=line_key,
                     block_id=f"p{page_number}-block-{block_number}",
                     reading_order=reading_order_start + len(words),
                     review_required=confidence < settings.ocr_low_confidence_threshold,

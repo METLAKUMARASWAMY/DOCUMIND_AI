@@ -63,24 +63,79 @@ function authHeaders(headers: HeadersInit = {}): Headers {
   return result;
 }
 
+/**
+ * A human message for a transport-level failure. Used when the response body is
+ * not JSON the API produced -- a proxy error page, a gateway timeout, an empty
+ * body. Those bodies are never shown to the user: an nginx 502 page rendered
+ * into an error banner tells them nothing and hides the real problem.
+ */
+function transportMessage(status: number): string {
+  if (status === 0) return "Could not reach the server. Check your connection and try again.";
+  if (status === 401) return "Your session has expired. Please sign in again.";
+  if (status === 403) return "You do not have permission to do that.";
+  if (status === 404) return "That resource no longer exists.";
+  if (status === 413) return "That file is too large to upload.";
+  if (status === 429) return "Too many requests. Wait a moment and try again.";
+  if (status === 502 || status === 503 || status === 504) {
+    return "The server is unavailable. It may still be starting up -- try again in a moment.";
+  }
+  if (status >= 500) return "The server hit an unexpected error. Please try again.";
+  return `Request failed (${status}).`;
+}
+
+/** Plain text short enough, and unmarked-up enough, to be worth showing as-is. */
+function usableTextBody(body: string): string | null {
+  const trimmed = body.trim();
+  if (!trimmed || trimmed.length > 200) return null;
+  if (trimmed.startsWith("<") || /<\/?[a-z][\s\S]*>/i.test(trimmed)) return null;
+  return trimmed;
+}
+
+/** The error shape the API actually returns; every field is optional. */
+interface ErrorBody {
+  detail?: string | { message?: string } | null;
+  errors?: Array<{ code?: string; message?: string }> | null;
+  message?: string | null;
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") || "";
-  const payload = contentType.includes("application/json")
-    ? await response.json()
-    : await response.text();
+  const isJson = contentType.includes("application/json");
+  const payload: unknown = isJson ? await response.json() : await response.text();
   if (!response.ok) {
-    const detail = typeof payload === "object" && payload ? payload.detail : null;
-    const message =
-      typeof detail === "object" && detail
-        ? String(detail.message || "Request failed")
-        : typeof payload === "object" && payload
-          ? String(detail || payload.message || "Request failed")
-          : String(payload || `Request failed with ${response.status}`);
+    let message: string;
+    if (isJson && typeof payload === "object" && payload) {
+      const errorBody = payload as ErrorBody;
+      const detail = errorBody.detail;
+      const fromDetail =
+        typeof detail === "object" && detail
+          ? detail.message
+          : typeof detail === "string"
+            ? detail
+            : null;
+      const fromErrors = Array.isArray(errorBody.errors) ? errorBody.errors[0]?.message : null;
+      message = String(
+        fromDetail || fromErrors || errorBody.message || transportMessage(response.status),
+      );
+    } else {
+      // Non-JSON body: a proxy page or similar. Never surface it verbatim.
+      message = usableTextBody(String(payload ?? "")) || transportMessage(response.status);
+    }
     throw new ApiError(message, response.status, payload);
   }
   if (typeof payload === "object" && payload && "success" in payload && "data" in payload) {
     const envelope = payload as ApiEnvelope<T>;
-    if (!envelope.success) throw new ApiError("Request failed", response.status, envelope.errors);
+    if (!envelope.success) {
+      // A 200 carrying success:false still describes what went wrong -- use it.
+      const first = (Array.isArray(envelope.errors) ? envelope.errors[0] : null) as {
+        message?: string;
+      } | null;
+      throw new ApiError(
+        String(first?.message || transportMessage(response.status)),
+        response.status,
+        envelope.errors,
+      );
+    }
     return envelope.data;
   }
   return payload as T;

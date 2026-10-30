@@ -22,10 +22,14 @@ ____________ test_no_verification_account_appears_in_a_tracked_file ____________
                 if account in text and path.name != "test_credential_hygiene.py":
                     offenders.append(f"{path.relative_to(PROJECT_ROOT)}: {account}")
 >       assert not offenders, offenders
-E       AssertionError: ['docs/audit/AUDIT_2026.md: stack-admin@documind.local', 'docs/audit/AUDIT_2026.md: fresh-tenant@documind.local']
-E       assert not ['docs/audit/AUDIT_2026.md: stack-admin@documind.local', 'docs/audit/AUDIT_2026.md: fresh-tenant@documind.local']
+E       AssertionError: ['docs/audit/AUDIT_2026.md: <redacted-verification-account-1>', 'docs/audit/AUDIT_2026.md: <redacted-verification-account-2>']
+E       assert not ['docs/audit/AUDIT_2026.md: <redacted-verification-account-1>', 'docs/audit/AUDIT_2026.md: <redacted-verification-account-2>']
 
 app/tests/test_credential_hygiene.py:53: AssertionError
+
+[archive note] The two account names this assertion printed are redacted above.
+The failure is retained verbatim otherwise: it is the evidence that the hygiene
+test caught the leak in AUDIT_2026.md, which was then removed.
 ________________ test_deduplication_does_not_discard_provenance ________________
 
 service_with_lease = (<app.services.vision.service.VisionAIService object at 0x13f8496d0>, 'tenant-compose-61d81cda1bff')

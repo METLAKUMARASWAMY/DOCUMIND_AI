@@ -19,6 +19,7 @@ from app.models.vision import (
     VisionRiskSeverity,
     VisionUploadResponse,
 )
+from app.services.vision.ingestion_errors import PendingContentUnavailable
 
 
 class IngestionMixin:
@@ -212,7 +213,28 @@ class IngestionMixin:
             if document_id not in self.documents:
                 self._load_document(document_id)
         if not any(document_id in self._pending_content for document_id in job["document_ids"]):
-            return
+            # Pending content is consumed once a document is processed, so a
+            # re-run of a finished job legitimately finds none: that is
+            # idempotent, not a failure.
+            unfinished = [
+                document_id
+                for document_id in job["document_ids"]
+                if (document := self.documents.get(document_id)) is None
+                or document.status
+                in {
+                    VisionProcessingStatus.queued,
+                    VisionProcessingStatus.preprocessing,
+                }
+            ]
+            if not unfinished:
+                return
+            # Still-queued documents with no readable upload is the real fault.
+            # Returning here left them in QUEUED for ever: no error, no status
+            # change, and the Celery task reported success, so nothing retried
+            # and the console showed the upload processing indefinitely. Raise
+            # so the task's retry policy re-runs it once the upload has landed,
+            # and so a genuine failure becomes visible.
+            raise PendingContentUnavailable(job_id, unfinished)
         job["status"] = VisionProcessingStatus.preprocessing.value
         job["updated_at"] = utc_now_iso()
         self._persist_job(job)

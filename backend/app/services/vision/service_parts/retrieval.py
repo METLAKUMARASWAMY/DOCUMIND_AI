@@ -23,6 +23,11 @@ from app.models.vision import (
     VisionProcessingStatus,
     VisionRetrievalTrace,
 )
+from app.services.vision.agent_answers import (
+    asks_for_an_agent,
+    semantic_types_by_value,
+    value_cannot_be_an_agent,
+)
 from app.services.vision.deterministic_extraction import deterministic_schema_extractor
 from app.services.vision.generic_field_discovery import generic_field_discovery_engine
 from app.services.vision.ocr_lines import ocr_line_reconstructor
@@ -609,21 +614,56 @@ class RetrievalMixin:
         )
         return f"vis-chk-{identity[:16]}"
 
+    @staticmethod
+    def _field_name_answers(name_tokens: set[str], content_tokens: set[str]) -> bool:
+        """Whether a field name plausibly answers a question.
+
+        Sharing one token is far too weak on its own: "what is the client's VAT
+        registration number" shares "number" with purchase_order_number and
+        "client" with client, so both were returned as an answer about VAT.
+        Requiring the name to cover at least half of the question's content
+        words keeps the direct hits (purchase_order_number answers "what is the
+        purchase order number", 3 of 3) while rejecting the incidental ones
+        (1 of 4).
+        """
+        if not content_tokens:
+            return False
+        covered = name_tokens & content_tokens
+        if not covered:
+            return False
+        return len(covered) * 2 >= len(content_tokens)
+
     def _field_matches(
         self, question: str, documents: list[VisionDocumentRecord]
     ) -> list[ExtractedVisionField]:
         question_tokens = set(re.findall(r"[a-z0-9_]+", question))
+        # Function words carry no topic, but they are shared by almost every
+        # field name, so counting them made unrelated fields "match": asked for
+        # a VAT registration number, the lookup returned notice_to_the_other_party
+        # and the_united_kingdom purely on the token "the", and presented the
+        # result as a partially supported answer.
+        content_tokens = {
+            token for token in question_tokens if token not in self.question_stopwords
+        }
         requested_names = self._requested_field_names(question)
+        wants_an_agent = asks_for_an_agent(question)
         matches = []
         for document in documents:
+            semantic_types = semantic_types_by_value(document) if wants_an_agent else {}
             for field in document.extracted_fields:
                 name_tokens = set(field.name.lower().split("_"))
-                if (
-                    field.name in requested_names
-                    or name_tokens & question_tokens
-                    or field.name.lower() in question
+                explicit = field.name in requested_names or field.name.lower() in question
+                if not explicit and not self._field_name_answers(name_tokens, content_tokens):
+                    continue
+                if wants_an_agent and value_cannot_be_an_agent(
+                    field.reviewed_value or field.value, semantic_types
                 ):
-                    matches.append(field)
+                    # "who ..." matched this field on a shared generic token
+                    # ("property" against property_address), but the document
+                    # typed its value as something no party can be. Returning it
+                    # would answer the question wrongly rather than weakly.
+                    continue
+                matches.append(field)
         return sorted(matches, key=lambda item: item.confidence or 0.0, reverse=True)
 
     def _field_citation(self, field: ExtractedVisionField) -> VisionAskCitation:

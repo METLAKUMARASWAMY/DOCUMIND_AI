@@ -79,6 +79,7 @@ async def alias_upload_vision_documents(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     user: AuthUser = Depends(require_user),
 ) -> dict:
+    _require_uploader(user)
     return await upload_vision_documents(
         background_tasks,
         files,
@@ -1039,6 +1040,24 @@ def _review_or_404(review_id: str, tenant_id: str | None = None):
         return vision_ai_service.get_review(review_id, tenant_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _require_uploader(user: AuthUser) -> None:
+    """Ingestion is a write action.
+
+    The console has always hidden Upload from VIEWER and AUDITOR, but the API
+    accepted an upload from any authenticated user, so the restriction the UI
+    advertised was not actually enforced. AUDITOR is read-only by design and
+    VIEWER is the role public registration grants, so neither may create work.
+    """
+    if user.role not in {
+        UserRole.admin,
+        UserRole.processor,
+        UserRole.reviewer,
+        UserRole.senior_reviewer,
+        UserRole.compliance_officer,
+    }:
+        raise HTTPException(status_code=403, detail="Upload requires a processing role")
 
 
 def _require_reviewer(user: AuthUser) -> None:
